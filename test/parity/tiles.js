@@ -464,8 +464,24 @@ const staticTiles = [
   },
 ];
 
-// A custom brush so the add() registration path is covered.
-// Registered once per module instance, before tiles draw.
+// Deterministic image tip for the stampImage path: an inline SVG data URI, so
+// no asset file and identical bytes on every machine. White background is
+// load-bearing — imageToWhite() maps alpha = 255 - brightness, so transparent
+// pixels (brightness 0) would become fully OPAQUE. Dark shape on white.
+const PARITY_TIP =
+  "data:image/svg+xml," +
+  encodeURIComponent(
+    "<svg xmlns='http://www.w3.org/2000/svg' width='64' height='64'>" +
+      "<rect width='64' height='64' fill='white'/>" +
+      "<path d='M32 6 58 32 32 58 6 32Z' fill='black'/>" +
+      "<circle cx='32' cy='32' r='7' fill='white'/>" +
+      "</svg>",
+  );
+
+// Custom brushes so the add() registration paths are covered: a standard brush
+// and an image-tip brush (the stampImage path, distinct from procedural discs).
+// Registered once per module instance, before tiles draw. Returns a Promise —
+// image tips load async and MUST resolve before anything draws with the brush.
 export function registerCustomBrush(b) {
   b.add("parity-custom", {
     type: "standard",
@@ -477,6 +493,17 @@ export function registerCustomBrush(b) {
     spacing: 0.15,
     blend: true,
     pressure: { curve: [0.2, 0.3], min_max: [1.2, 0.9] },
+  });
+  // Shows up in box() and therefore gets its own enumerated brush tile.
+  return b.add("parity-image", {
+    type: "image",
+    weight: 12,
+    scatter: 0.1,
+    opacity: 40,
+    spacing: 1.5,
+    pressure: [0.8, 1.2],
+    rotate: "natural",
+    image: { src: PARITY_TIP },
   });
 }
 

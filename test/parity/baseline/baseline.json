@@ -1,5 +1,5 @@
 {
-  "frozenAt": "2026-08-31T05:03:31.075Z",
+  "frozenAt": "2026-08-31T05:12:13.784Z",
   "seed": "parity-0",
   "left": "/node_modules/p5.brush/dist/brush.esm.js",
   "tileSize": 150,
@@ -63,6 +63,11 @@
     {
       "tile": "brush-parity-custom",
       "feature": "parity-custom",
+      "section": "brushes"
+    },
+    {
+      "tile": "brush-parity-image",
+      "feature": "parity-image",
       "section": "brushes"
     },
     {

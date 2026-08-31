@@ -57,7 +57,7 @@ document.getElementById("right-caption").textContent = `right: ${RIGHT_URL}`;
 const appliedScale = new WeakMap();
 const initialized = new WeakSet();
 
-function renderGrid(brush, parent) {
+async function renderGrid(brush, parent) {
   const canvas = brush.createCanvas(CANVAS_W, CANVAS_H, {
     parent,
     pixelDensity: 1,
@@ -66,7 +66,8 @@ function renderGrid(brush, parent) {
 
   brush.angleMode("degrees");
   if (!initialized.has(brush)) {
-    registerCustomBrush(brush);
+    // Async: the image-tip brush's add() resolves when its tip is loaded.
+    await registerCustomBrush(brush);
     initialized.add(brush);
   }
   const current = appliedScale.get(brush) ?? 1;
@@ -191,11 +192,11 @@ window.__parityDiff = (i, gain = 8) => {
   try {
     // Sequential on purpose — see header comment.
     const modLeft = await import(LEFT_URL);
-    const left = renderGrid(modLeft, document.getElementById("left-host"));
+    const left = await renderGrid(modLeft, document.getElementById("left-host"));
     pixLeft = snapshot(left.canvas);
 
     const modRight = await import(RIGHT_URL);
-    const right = renderGrid(modRight, document.getElementById("right-host"));
+    const right = await renderGrid(modRight, document.getElementById("right-host"));
     pixRight = snapshot(right.canvas);
 
     tileList = left.tiles;

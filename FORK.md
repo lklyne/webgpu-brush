@@ -57,10 +57,12 @@ rendering API.
 
 `node scripts/diff-parity.mjs` with both panes on byte-identical bundles
 (the npm dist and this fork's freshly built dist hash identically at W0),
-53 tiles, seed `parity-0`:
+54 tiles, seed `parity-0`:
 
-- **42 of 53 tiles: RMSE exactly 0** across repeated runs — every stroke,
-  field, hatch, and geometry tile is pixel-exact.
+- **43 of 54 tiles: RMSE exactly 0** across repeated runs — every stroke,
+  field, hatch, and geometry tile is pixel-exact, including the image-tip
+  brush tile (`brush-parity-image`, the stampImage path, deterministic
+  inline SVG data-URI tip).
 - **Fill/wash tiles: residual RMSE ≤ ~0.15/255, varying run-to-run.** The
   nonzero set is exactly the tiles that touch the canvas2d fill-mask path
   (`fill()`, `wash()`, hatch-with-fill, multi-color fill, alpha extremes,
@@ -71,7 +73,7 @@ rendering API.
   `--disable-accelerated-2d-canvas` + disabling SkiaGraphite cut it ~7×
   (mean 0.014 → 0.002); it was not fought to zero per the plan ("visual
   equivalence is the standard; byte-identity is a free signal, not a gate").
-- Verdicts: 53/53 pass at the default 2.0 tolerance; worst tile ≈ 0.10–0.15
+- Verdicts: 54/54 pass at the default 2.0 tolerance; worst tile ≈ 0.01–0.15
   depending on run.
 
 Implication for later waves: pixel-exact 0 is only ever expectable on
@@ -80,7 +82,7 @@ non-fill tiles; fill-path comparisons bottom out around 0.15 RMSE noise.
 ## Parity tooling
 
 - `test/parity/parity.html` + `parity.js` + `tiles.js` — split-screen
-  53-tile grid, browser half. Tile list is a JS port of the host site's
+  54-tile grid, browser half. Tile list is a JS port of the host site's
   `src/content/experiments/2026-08-30-brush-parity/tiles.ts`; keep in sync.
 - `scripts/diff-parity.mjs` — headless driver. Emits
   `test/parity/parity-report.json`
