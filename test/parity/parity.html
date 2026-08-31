@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>brush-gpu parity grid</title>
+    <style>
+      body { margin: 16px; font: 11px/1.4 Menlo, Monaco, monospace; background: #eee; }
+      .panes { display: flex; gap: 16px; align-items: flex-start; }
+      figure { margin: 0; }
+      figcaption { margin-bottom: 4px; color: #555; }
+      #status { margin-bottom: 12px; }
+    </style>
+  </head>
+  <body>
+    <div id="status">rendering…</div>
+    <div class="panes">
+      <figure>
+        <figcaption id="left-caption">left</figcaption>
+        <div id="left-host"></div>
+      </figure>
+      <figure>
+        <figcaption id="right-caption">right</figcaption>
+        <div id="right-host"></div>
+      </figure>
+    </div>
+    <script type="module" src="./parity.js"></script>
+  </body>
+</html>

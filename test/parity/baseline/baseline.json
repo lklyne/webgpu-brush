@@ -1,0 +1,274 @@
+{
+  "frozenAt": "2026-08-31T05:03:31.075Z",
+  "seed": "parity-0",
+  "left": "/node_modules/p5.brush/dist/brush.esm.js",
+  "tileSize": 150,
+  "cols": 6,
+  "tiles": [
+    {
+      "tile": "brush-pen",
+      "feature": "pen",
+      "section": "brushes"
+    },
+    {
+      "tile": "brush-rotring",
+      "feature": "rotring",
+      "section": "brushes"
+    },
+    {
+      "tile": "brush-2B",
+      "feature": "2B",
+      "section": "brushes"
+    },
+    {
+      "tile": "brush-HB",
+      "feature": "HB",
+      "section": "brushes"
+    },
+    {
+      "tile": "brush-2H",
+      "feature": "2H",
+      "section": "brushes"
+    },
+    {
+      "tile": "brush-cpencil",
+      "feature": "cpencil",
+      "section": "brushes"
+    },
+    {
+      "tile": "brush-pastel",
+      "feature": "pastel",
+      "section": "brushes"
+    },
+    {
+      "tile": "brush-crayon",
+      "feature": "crayon",
+      "section": "brushes"
+    },
+    {
+      "tile": "brush-charcoal",
+      "feature": "charcoal",
+      "section": "brushes"
+    },
+    {
+      "tile": "brush-spray",
+      "feature": "spray",
+      "section": "brushes"
+    },
+    {
+      "tile": "brush-marker",
+      "feature": "marker",
+      "section": "brushes"
+    },
+    {
+      "tile": "brush-parity-custom",
+      "feature": "parity-custom",
+      "section": "brushes"
+    },
+    {
+      "tile": "field-hand",
+      "feature": "hand",
+      "section": "fields"
+    },
+    {
+      "tile": "field-curved",
+      "feature": "curved",
+      "section": "fields"
+    },
+    {
+      "tile": "field-zigzag",
+      "feature": "zigzag",
+      "section": "fields"
+    },
+    {
+      "tile": "field-waves",
+      "feature": "waves",
+      "section": "fields"
+    },
+    {
+      "tile": "field-seabed",
+      "feature": "seabed",
+      "section": "fields"
+    },
+    {
+      "tile": "field-spiral",
+      "feature": "spiral",
+      "section": "fields"
+    },
+    {
+      "tile": "field-columns",
+      "feature": "columns",
+      "section": "fields"
+    },
+    {
+      "tile": "fill-basic",
+      "feature": "fill",
+      "section": "fill"
+    },
+    {
+      "tile": "fill-bleed-out",
+      "feature": "fillBleed out",
+      "section": "fill"
+    },
+    {
+      "tile": "fill-bleed-in",
+      "feature": "fillBleed in",
+      "section": "fill"
+    },
+    {
+      "tile": "fill-texture",
+      "feature": "fillTexture",
+      "section": "fill"
+    },
+    {
+      "tile": "fill-stroke-border",
+      "feature": "fill + stroke border",
+      "section": "fill"
+    },
+    {
+      "tile": "wash",
+      "feature": "wash",
+      "section": "fill"
+    },
+    {
+      "tile": "hatch-basic",
+      "feature": "hatch 5/45",
+      "section": "hatch"
+    },
+    {
+      "tile": "hatch-dense",
+      "feature": "hatch 2/0",
+      "section": "hatch"
+    },
+    {
+      "tile": "hatch-rand",
+      "feature": "hatch rand",
+      "section": "hatch"
+    },
+    {
+      "tile": "hatch-continuous",
+      "feature": "hatch continuous",
+      "section": "hatch"
+    },
+    {
+      "tile": "hatch-gradient",
+      "feature": "hatch gradient",
+      "section": "hatch"
+    },
+    {
+      "tile": "hatch-style",
+      "feature": "hatchStyle marker",
+      "section": "hatch"
+    },
+    {
+      "tile": "hatch-with-fill",
+      "feature": "hatch + fill",
+      "section": "hatch"
+    },
+    {
+      "tile": "mass",
+      "feature": "mass",
+      "section": "hatch"
+    },
+    {
+      "tile": "geo-line",
+      "feature": "line",
+      "section": "geometry"
+    },
+    {
+      "tile": "geo-flowline",
+      "feature": "flowLine",
+      "section": "geometry"
+    },
+    {
+      "tile": "geo-spline",
+      "feature": "spline",
+      "section": "geometry"
+    },
+    {
+      "tile": "geo-polygon",
+      "feature": "polygon",
+      "section": "geometry"
+    },
+    {
+      "tile": "geo-beginshape",
+      "feature": "beginShape curved",
+      "section": "geometry"
+    },
+    {
+      "tile": "geo-beginstroke",
+      "feature": "beginStroke/move",
+      "section": "geometry"
+    },
+    {
+      "tile": "geo-rect-circle-arc",
+      "feature": "rect/circle/arc",
+      "section": "geometry"
+    },
+    {
+      "tile": "geo-transform",
+      "feature": "push/rotate/scale",
+      "section": "geometry"
+    },
+    {
+      "tile": "color-multi",
+      "feature": "multi-color",
+      "section": "color"
+    },
+    {
+      "tile": "color-overdraw",
+      "feature": "heavy overdraw",
+      "section": "color"
+    },
+    {
+      "tile": "color-darken",
+      "feature": "darken branch",
+      "section": "color"
+    },
+    {
+      "tile": "color-alpha-low",
+      "feature": "alpha 5",
+      "section": "color"
+    },
+    {
+      "tile": "color-alpha-full",
+      "feature": "alpha 255",
+      "section": "color"
+    },
+    {
+      "tile": "edge-subpixel",
+      "feature": "sub-pixel weight",
+      "section": "edge"
+    },
+    {
+      "tile": "edge-oversize",
+      "feature": "exits canvas",
+      "section": "edge"
+    },
+    {
+      "tile": "edge-self-intersect",
+      "feature": "self-intersecting fill",
+      "section": "edge"
+    },
+    {
+      "tile": "edge-zero-length",
+      "feature": "zero-length + dot",
+      "section": "edge"
+    },
+    {
+      "tile": "edge-tiny-shape",
+      "feature": "tiny fill",
+      "section": "edge"
+    },
+    {
+      "tile": "edge-custom-brush",
+      "feature": "custom add()",
+      "section": "edge"
+    },
+    {
+      "tile": "edge-wiggle",
+      "feature": "wiggle field",
+      "section": "edge"
+    }
+  ]
+}

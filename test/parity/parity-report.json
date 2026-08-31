@@ -1,0 +1,441 @@
+{
+  "generatedAt": "2026-08-31T05:03:31.075Z",
+  "regime": "parity",
+  "tolerance": 2,
+  "seed": "parity-0",
+  "left": "/node_modules/p5.brush/dist/brush.esm.js",
+  "right": "/dist/brush.esm.js",
+  "summary": {
+    "tiles": 53,
+    "worst": 0.099,
+    "mean": 0.0019,
+    "failing": 0,
+    "pageErrors": []
+  },
+  "tiles": [
+    {
+      "tile": "brush-pen",
+      "feature": "pen",
+      "section": "brushes",
+      "regime": "parity",
+      "rmse": 0,
+      "verdict": "pass"
+    },
+    {
+      "tile": "brush-rotring",
+      "feature": "rotring",
+      "section": "brushes",
+      "regime": "parity",
+      "rmse": 0,
+      "verdict": "pass"
+    },
+    {
+      "tile": "brush-2B",
+      "feature": "2B",
+      "section": "brushes",
+      "regime": "parity",
+      "rmse": 0,
+      "verdict": "pass"
+    },
+    {
+      "tile": "brush-HB",
+      "feature": "HB",
+      "section": "brushes",
+      "regime": "parity",
+      "rmse": 0,
+      "verdict": "pass"
+    },
+    {
+      "tile": "brush-2H",
+      "feature": "2H",
+      "section": "brushes",
+      "regime": "parity",
+      "rmse": 0,
+      "verdict": "pass"
+    },
+    {
+      "tile": "brush-cpencil",
+      "feature": "cpencil",
+      "section": "brushes",
+      "regime": "parity",
+      "rmse": 0,
+      "verdict": "pass"
+    },
+    {
+      "tile": "brush-pastel",
+      "feature": "pastel",
+      "section": "brushes",
+      "regime": "parity",
+      "rmse": 0,
+      "verdict": "pass"
+    },
+    {
+      "tile": "brush-crayon",
+      "feature": "crayon",
+      "section": "brushes",
+      "regime": "parity",
+      "rmse": 0,
+      "verdict": "pass"
+    },
+    {
+      "tile": "brush-charcoal",
+      "feature": "charcoal",
+      "section": "brushes",
+      "regime": "parity",
+      "rmse": 0,
+      "verdict": "pass"
+    },
+    {
+      "tile": "brush-spray",
+      "feature": "spray",
+      "section": "brushes",
+      "regime": "parity",
+      "rmse": 0,
+      "verdict": "pass"
+    },
+    {
+      "tile": "brush-marker",
+      "feature": "marker",
+      "section": "brushes",
+      "regime": "parity",
+      "rmse": 0,
+      "verdict": "pass"
+    },
+    {
+      "tile": "brush-parity-custom",
+      "feature": "parity-custom",
+      "section": "brushes",
+      "regime": "parity",
+      "rmse": 0,
+      "verdict": "pass"
+    },
+    {
+      "tile": "field-hand",
+      "feature": "hand",
+      "section": "fields",
+      "regime": "parity",
+      "rmse": 0,
+      "verdict": "pass"
+    },
+    {
+      "tile": "field-curved",
+      "feature": "curved",
+      "section": "fields",
+      "regime": "parity",
+      "rmse": 0,
+      "verdict": "pass"
+    },
+    {
+      "tile": "field-zigzag",
+      "feature": "zigzag",
+      "section": "fields",
+      "regime": "parity",
+      "rmse": 0,
+      "verdict": "pass"
+    },
+    {
+      "tile": "field-waves",
+      "feature": "waves",
+      "section": "fields",
+      "regime": "parity",
+      "rmse": 0,
+      "verdict": "pass"
+    },
+    {
+      "tile": "field-seabed",
+      "feature": "seabed",
+      "section": "fields",
+      "regime": "parity",
+      "rmse": 0,
+      "verdict": "pass"
+    },
+    {
+      "tile": "field-spiral",
+      "feature": "spiral",
+      "section": "fields",
+      "regime": "parity",
+      "rmse": 0,
+      "verdict": "pass"
+    },
+    {
+      "tile": "field-columns",
+      "feature": "columns",
+      "section": "fields",
+      "regime": "parity",
+      "rmse": 0,
+      "verdict": "pass"
+    },
+    {
+      "tile": "fill-basic",
+      "feature": "fill",
+      "section": "fill",
+      "regime": "parity",
+      "rmse": 0.099,
+      "verdict": "pass"
+    },
+    {
+      "tile": "fill-bleed-out",
+      "feature": "fillBleed out",
+      "section": "fill",
+      "regime": "parity",
+      "rmse": 0,
+      "verdict": "pass"
+    },
+    {
+      "tile": "fill-bleed-in",
+      "feature": "fillBleed in",
+      "section": "fill",
+      "regime": "parity",
+      "rmse": 0,
+      "verdict": "pass"
+    },
+    {
+      "tile": "fill-texture",
+      "feature": "fillTexture",
+      "section": "fill",
+      "regime": "parity",
+      "rmse": 0,
+      "verdict": "pass"
+    },
+    {
+      "tile": "fill-stroke-border",
+      "feature": "fill + stroke border",
+      "section": "fill",
+      "regime": "parity",
+      "rmse": 0,
+      "verdict": "pass"
+    },
+    {
+      "tile": "wash",
+      "feature": "wash",
+      "section": "fill",
+      "regime": "parity",
+      "rmse": 0,
+      "verdict": "pass"
+    },
+    {
+      "tile": "hatch-basic",
+      "feature": "hatch 5/45",
+      "section": "hatch",
+      "regime": "parity",
+      "rmse": 0,
+      "verdict": "pass"
+    },
+    {
+      "tile": "hatch-dense",
+      "feature": "hatch 2/0",
+      "section": "hatch",
+      "regime": "parity",
+      "rmse": 0,
+      "verdict": "pass"
+    },
+    {
+      "tile": "hatch-rand",
+      "feature": "hatch rand",
+      "section": "hatch",
+      "regime": "parity",
+      "rmse": 0,
+      "verdict": "pass"
+    },
+    {
+      "tile": "hatch-continuous",
+      "feature": "hatch continuous",
+      "section": "hatch",
+      "regime": "parity",
+      "rmse": 0,
+      "verdict": "pass"
+    },
+    {
+      "tile": "hatch-gradient",
+      "feature": "hatch gradient",
+      "section": "hatch",
+      "regime": "parity",
+      "rmse": 0,
+      "verdict": "pass"
+    },
+    {
+      "tile": "hatch-style",
+      "feature": "hatchStyle marker",
+      "section": "hatch",
+      "regime": "parity",
+      "rmse": 0,
+      "verdict": "pass"
+    },
+    {
+      "tile": "hatch-with-fill",
+      "feature": "hatch + fill",
+      "section": "hatch",
+      "regime": "parity",
+      "rmse": 0,
+      "verdict": "pass"
+    },
+    {
+      "tile": "mass",
+      "feature": "mass",
+      "section": "hatch",
+      "regime": "parity",
+      "rmse": 0,
+      "verdict": "pass"
+    },
+    {
+      "tile": "geo-line",
+      "feature": "line",
+      "section": "geometry",
+      "regime": "parity",
+      "rmse": 0,
+      "verdict": "pass"
+    },
+    {
+      "tile": "geo-flowline",
+      "feature": "flowLine",
+      "section": "geometry",
+      "regime": "parity",
+      "rmse": 0,
+      "verdict": "pass"
+    },
+    {
+      "tile": "geo-spline",
+      "feature": "spline",
+      "section": "geometry",
+      "regime": "parity",
+      "rmse": 0,
+      "verdict": "pass"
+    },
+    {
+      "tile": "geo-polygon",
+      "feature": "polygon",
+      "section": "geometry",
+      "regime": "parity",
+      "rmse": 0,
+      "verdict": "pass"
+    },
+    {
+      "tile": "geo-beginshape",
+      "feature": "beginShape curved",
+      "section": "geometry",
+      "regime": "parity",
+      "rmse": 0,
+      "verdict": "pass"
+    },
+    {
+      "tile": "geo-beginstroke",
+      "feature": "beginStroke/move",
+      "section": "geometry",
+      "regime": "parity",
+      "rmse": 0,
+      "verdict": "pass"
+    },
+    {
+      "tile": "geo-rect-circle-arc",
+      "feature": "rect/circle/arc",
+      "section": "geometry",
+      "regime": "parity",
+      "rmse": 0,
+      "verdict": "pass"
+    },
+    {
+      "tile": "geo-transform",
+      "feature": "push/rotate/scale",
+      "section": "geometry",
+      "regime": "parity",
+      "rmse": 0,
+      "verdict": "pass"
+    },
+    {
+      "tile": "color-multi",
+      "feature": "multi-color",
+      "section": "color",
+      "regime": "parity",
+      "rmse": 0,
+      "verdict": "pass"
+    },
+    {
+      "tile": "color-overdraw",
+      "feature": "heavy overdraw",
+      "section": "color",
+      "regime": "parity",
+      "rmse": 0,
+      "verdict": "pass"
+    },
+    {
+      "tile": "color-darken",
+      "feature": "darken branch",
+      "section": "color",
+      "regime": "parity",
+      "rmse": 0,
+      "verdict": "pass"
+    },
+    {
+      "tile": "color-alpha-low",
+      "feature": "alpha 5",
+      "section": "color",
+      "regime": "parity",
+      "rmse": 0,
+      "verdict": "pass"
+    },
+    {
+      "tile": "color-alpha-full",
+      "feature": "alpha 255",
+      "section": "color",
+      "regime": "parity",
+      "rmse": 0,
+      "verdict": "pass"
+    },
+    {
+      "tile": "edge-subpixel",
+      "feature": "sub-pixel weight",
+      "section": "edge",
+      "regime": "parity",
+      "rmse": 0,
+      "verdict": "pass"
+    },
+    {
+      "tile": "edge-oversize",
+      "feature": "exits canvas",
+      "section": "edge",
+      "regime": "parity",
+      "rmse": 0,
+      "verdict": "pass"
+    },
+    {
+      "tile": "edge-self-intersect",
+      "feature": "self-intersecting fill",
+      "section": "edge",
+      "regime": "parity",
+      "rmse": 0,
+      "verdict": "pass"
+    },
+    {
+      "tile": "edge-zero-length",
+      "feature": "zero-length + dot",
+      "section": "edge",
+      "regime": "parity",
+      "rmse": 0,
+      "verdict": "pass"
+    },
+    {
+      "tile": "edge-tiny-shape",
+      "feature": "tiny fill",
+      "section": "edge",
+      "regime": "parity",
+      "rmse": 0,
+      "verdict": "pass"
+    },
+    {
+      "tile": "edge-custom-brush",
+      "feature": "custom add()",
+      "section": "edge",
+      "regime": "parity",
+      "rmse": 0,
+      "verdict": "pass"
+    },
+    {
+      "tile": "edge-wiggle",
+      "feature": "wiggle field",
+      "section": "edge",
+      "regime": "parity",
+      "rmse": 0,
+      "verdict": "pass"
+    }
+  ]
+}

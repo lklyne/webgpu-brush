@@ -1,3 +1,13 @@
+> **FORK NOTICE — brush-gpu**
+>
+> This is a fork of [p5.brush](https://github.com/acamposuribe/p5.brush) by
+> Alejandro Campos Uribe (MIT License, preserved in [LICENSE.md](./LICENSE.md)),
+> forked at upstream commit `fc37da3da3fa07e58edf880fb2788c5529a51ebe` (v2.2.2).
+> The renderer is being replaced with pure WebGPU + WGSL and GPU-resident
+> geometry. Upstream p5.brush (installed from npm at the pinned version) remains
+> the visual reference; see `FORK.md` for the baseline and the divergence list.
+> All credit for the library's design and algorithms belongs to upstream.
+
 ![Teaser](/images/p5brush.gif)
 
 # p5.brush.js
