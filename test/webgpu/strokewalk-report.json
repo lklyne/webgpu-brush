@@ -1,0 +1,190 @@
+{
+  "generatedAt": "2026-08-31T14:14:29.273Z",
+  "adapter": {
+    "vendor": "apple",
+    "architecture": "metal-3"
+  },
+  "tests": [
+    {
+      "name": "hash-battery",
+      "pass": true,
+      "tuples": 4096,
+      "mismatches": 0
+    },
+    {
+      "name": "prefix-scan",
+      "pass": true,
+      "n": 777,
+      "total": 1817525,
+      "mismatches": 0
+    },
+    {
+      "name": "walk-parity",
+      "pass": true,
+      "strokes": 11,
+      "totalStamps": 112596,
+      "cpuTotalStamps": 112646,
+      "worstPosDiff": 0.0890607274316153,
+      "worstSizeDiff": 5.934922704398105e-7,
+      "worstAlphaDiff": 0.00004783103315730841,
+      "tolerances": {
+        "pos": 0.05,
+        "posField": 0.15,
+        "size": "max(1e-3, 2e-3*|v|)",
+        "alpha": "max(2e-2, 2e-3*|v|)",
+        "sprayFlipBudget": 0.005
+      },
+      "perStroke": [
+        {
+          "stroke": 0,
+          "brush": "HB",
+          "steps": 5517,
+          "stepsMatch": true,
+          "cpuCount": 3694,
+          "gpuCount": 3694,
+          "maxPosDiff": 0.00005755788970418507,
+          "maxSizeDiff": 1.0470757477731851e-7,
+          "maxAlphaDiff": 0.00003523027083929264
+        },
+        {
+          "stroke": 1,
+          "brush": "HB",
+          "steps": 94,
+          "stepsMatch": true,
+          "cpuCount": 65,
+          "gpuCount": 65,
+          "maxPosDiff": 0.00003438740884575964,
+          "maxSizeDiff": 6.287558734774379e-8,
+          "maxAlphaDiff": 0.000028744827716309373
+        },
+        {
+          "stroke": 2,
+          "brush": "crayon",
+          "steps": 6027,
+          "stepsMatch": true,
+          "cpuCount": 6027,
+          "gpuCount": 6027,
+          "maxPosDiff": 0.00007762677012124186,
+          "maxSizeDiff": 1.3855220720726535e-7,
+          "maxAlphaDiff": 0.00003181817484687599
+        },
+        {
+          "stroke": 3,
+          "brush": "marker",
+          "steps": 10138,
+          "stepsMatch": true,
+          "cpuCount": 10156,
+          "gpuCount": 10156,
+          "maxPosDiff": 0.00003062064780579021,
+          "maxSizeDiff": 5.934922704398105e-7,
+          "maxAlphaDiff": 6.947605104556942e-7
+        },
+        {
+          "stroke": 4,
+          "brush": "spray",
+          "steps": 945,
+          "stepsMatch": true,
+          "cpuCount": 45295,
+          "gpuCount": 45265,
+          "maxPosDiff": 0.00006052208948403859,
+          "maxSizeDiff": 2.4065375275883483e-8,
+          "maxAlphaDiff": 0.0000019733956548861897,
+          "cpuSteps": 945,
+          "gpuSteps": 945,
+          "flippedDots": 30,
+          "flipFraction": 0.0006623247599072745
+        },
+        {
+          "stroke": 5,
+          "brush": "HB",
+          "steps": 50,
+          "stepsMatch": true,
+          "cpuCount": 33,
+          "gpuCount": 33,
+          "maxPosDiff": 0.000038319856514590356,
+          "maxSizeDiff": 5.8022651683309334e-8,
+          "maxAlphaDiff": 0.0000229645515332777
+        },
+        {
+          "stroke": 6,
+          "brush": "HB",
+          "steps": 7602,
+          "stepsMatch": true,
+          "cpuCount": 5104,
+          "gpuCount": 5104,
+          "maxPosDiff": 0.00008717768639598944,
+          "maxSizeDiff": 1.0226319102635273e-7,
+          "maxAlphaDiff": 0.00003663303004941554
+        },
+        {
+          "stroke": 7,
+          "brush": "HB",
+          "steps": 5000,
+          "stepsMatch": true,
+          "cpuCount": 3316,
+          "gpuCount": 3316,
+          "maxPosDiff": 0.00894464848013854,
+          "maxSizeDiff": 1.1244035724722323e-7,
+          "maxAlphaDiff": 0.00004783103315730841
+        },
+        {
+          "stroke": 8,
+          "brush": "spray",
+          "steps": 600,
+          "stepsMatch": true,
+          "cpuCount": 28230,
+          "gpuCount": 28210,
+          "maxPosDiff": 0.0014162704082991695,
+          "maxSizeDiff": 2.3823231415365242e-8,
+          "maxAlphaDiff": 8.458235072339448e-7,
+          "cpuSteps": 600,
+          "gpuSteps": 600,
+          "flippedDots": 20,
+          "flipFraction": 0.0007084661707403471
+        },
+        {
+          "stroke": 9,
+          "brush": "HB",
+          "steps": 6000,
+          "stepsMatch": true,
+          "cpuCount": 4041,
+          "gpuCount": 4041,
+          "maxPosDiff": 0.0890607274316153,
+          "maxSizeDiff": 1.094565394432756e-7,
+          "maxAlphaDiff": 0.000038580613050953616
+        },
+        {
+          "stroke": 10,
+          "brush": "marker",
+          "steps": 6667,
+          "stepsMatch": true,
+          "cpuCount": 6685,
+          "gpuCount": 6685,
+          "maxPosDiff": 0.007370651433760145,
+          "maxSizeDiff": 4.414570335953272e-7,
+          "maxAlphaDiff": 6.017628617627224e-7
+        }
+      ]
+    },
+    {
+      "name": "determinism",
+      "pass": true,
+      "totalStamps": 112596
+    },
+    {
+      "name": "timing",
+      "pass": true,
+      "informational": true,
+      "note": "field-driven walk, 256 strokes x 2500 steps; CPU includes gl_draw queueing/flush; real target measured at W4a",
+      "strokes": 256,
+      "stepsPerStroke": 2500,
+      "gpuStamps": 428200,
+      "cpuMs": 49.6,
+      "gpuBuildDescMs": 0.3,
+      "gpuWalkMs": 3.4,
+      "speedup": 14.6,
+      "cpuFixtureMs": 35
+    }
+  ],
+  "pageErrors": []
+}

@@ -1,0 +1,139 @@
+{
+  "generatedAt": "2026-08-31T05:46:42.480Z",
+  "adapter": {
+    "vendor": "apple",
+    "architecture": "metal-3",
+    "description": ""
+  },
+  "tests": [
+    {
+      "name": "disc-grid",
+      "pass": true,
+      "rmse": 0,
+      "maxDiff": 0,
+      "stampCount": 52,
+      "glCoverage": 13791,
+      "gpuCoverage": 13791,
+      "glPointSizeRange": [
+        1,
+        511
+      ],
+      "gate": 2
+    },
+    {
+      "name": "image-grid",
+      "pass": true,
+      "rmse": 0,
+      "maxDiff": 0,
+      "stampCount": 22,
+      "glCoverage": 16847,
+      "gpuCoverage": 16847,
+      "gate": 2
+    },
+    {
+      "name": "brush-smoke",
+      "pass": true,
+      "brushCount": 13,
+      "brushes": [
+        {
+          "name": "pen",
+          "discStamps": 1273,
+          "imageStamps": 0,
+          "pixels": 229,
+          "pass": true
+        },
+        {
+          "name": "rotring",
+          "discStamps": 1627,
+          "imageStamps": 0,
+          "pixels": 230,
+          "pass": true
+        },
+        {
+          "name": "2B",
+          "discStamps": 1380,
+          "imageStamps": 0,
+          "pixels": 332,
+          "pass": true
+        },
+        {
+          "name": "HB",
+          "discStamps": 1156,
+          "imageStamps": 0,
+          "pixels": 304,
+          "pass": true
+        },
+        {
+          "name": "2H",
+          "discStamps": 1285,
+          "imageStamps": 0,
+          "pixels": 298,
+          "pass": true
+        },
+        {
+          "name": "cpencil",
+          "discStamps": 1295,
+          "imageStamps": 0,
+          "pixels": 297,
+          "pass": true
+        },
+        {
+          "name": "pastel",
+          "discStamps": 5778,
+          "imageStamps": 0,
+          "pixels": 1681,
+          "pass": true
+        },
+        {
+          "name": "crayon",
+          "discStamps": 2458,
+          "imageStamps": 0,
+          "pixels": 651,
+          "pass": true
+        },
+        {
+          "name": "charcoal",
+          "discStamps": 5735,
+          "imageStamps": 0,
+          "pixels": 644,
+          "pass": true
+        },
+        {
+          "name": "spray",
+          "discStamps": 16708,
+          "imageStamps": 0,
+          "pixels": 2374,
+          "pass": true
+        },
+        {
+          "name": "marker",
+          "discStamps": 5753,
+          "imageStamps": 0,
+          "pixels": 417,
+          "pass": true
+        },
+        {
+          "name": "parity-custom",
+          "discStamps": 1147,
+          "imageStamps": 0,
+          "pixels": 250,
+          "pass": true
+        },
+        {
+          "name": "parity-image",
+          "discStamps": 0,
+          "imageStamps": 123,
+          "pixels": 2043,
+          "pass": true
+        }
+      ]
+    },
+    {
+      "name": "pipeline-count",
+      "pass": true,
+      "pipelines": 2,
+      "pipelineHits": 2
+    }
+  ],
+  "pageErrors": []
+}

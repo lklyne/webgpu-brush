@@ -1,0 +1,468 @@
+{
+  "generatedAt": "2026-08-31T05:41:24.229Z",
+  "adapter": {
+    "vendor": "apple",
+    "architecture": "metal-3"
+  },
+  "gate": "maxChannelDiff < 1.5/255 vs GLSL LUT, every pixel",
+  "tests": [
+    {
+      "name": "red-blue",
+      "pass": true,
+      "worstDiff": 0,
+      "rows": [
+        {
+          "t": 0,
+          "maxDiff": 0,
+          "glsl": [
+            255,
+            0,
+            0
+          ],
+          "wgsl": [
+            255,
+            0,
+            0
+          ],
+          "cpu": null
+        },
+        {
+          "t": 0.25,
+          "maxDiff": 0,
+          "glsl": [
+            144,
+            29,
+            31
+          ],
+          "wgsl": [
+            144,
+            29,
+            31
+          ],
+          "cpu": [
+            144,
+            29,
+            31
+          ]
+        },
+        {
+          "t": 0.5,
+          "maxDiff": 0,
+          "glsl": [
+            73,
+            24,
+            43
+          ],
+          "wgsl": [
+            73,
+            24,
+            43
+          ],
+          "cpu": [
+            73,
+            24,
+            43
+          ]
+        },
+        {
+          "t": 0.75,
+          "maxDiff": 0,
+          "glsl": [
+            43,
+            24,
+            75
+          ],
+          "wgsl": [
+            43,
+            24,
+            75
+          ],
+          "cpu": [
+            43,
+            24,
+            75
+          ]
+        },
+        {
+          "t": 1,
+          "maxDiff": 0,
+          "glsl": [
+            0,
+            0,
+            255
+          ],
+          "wgsl": [
+            0,
+            0,
+            255
+          ],
+          "cpu": [
+            0,
+            0,
+            255
+          ]
+        }
+      ]
+    },
+    {
+      "name": "red-blue-brush",
+      "pass": true,
+      "worstDiff": 0,
+      "rows": [
+        {
+          "t": 0.5,
+          "maxDiff": 0,
+          "glsl": [
+            73,
+            24,
+            43
+          ],
+          "wgsl": [
+            73,
+            24,
+            43
+          ],
+          "cpu": null
+        },
+        {
+          "t": 0.85,
+          "maxDiff": 0,
+          "glsl": [
+            33,
+            20,
+            105
+          ],
+          "wgsl": [
+            33,
+            20,
+            105
+          ],
+          "cpu": null
+        },
+        {
+          "t": 1,
+          "maxDiff": 0,
+          "glsl": [
+            0,
+            0,
+            198
+          ],
+          "wgsl": [
+            0,
+            0,
+            198
+          ],
+          "cpu": null
+        }
+      ]
+    },
+    {
+      "name": "white-black",
+      "pass": true,
+      "worstDiff": 0,
+      "rows": [
+        {
+          "t": 0,
+          "maxDiff": 0,
+          "glsl": [
+            255,
+            255,
+            255
+          ],
+          "wgsl": [
+            255,
+            255,
+            255
+          ],
+          "cpu": null
+        },
+        {
+          "t": 0.25,
+          "maxDiff": 0,
+          "glsl": [
+            220,
+            220,
+            220
+          ],
+          "wgsl": [
+            220,
+            220,
+            220
+          ],
+          "cpu": [
+            220,
+            220,
+            220
+          ]
+        },
+        {
+          "t": 0.5,
+          "maxDiff": 0,
+          "glsl": [
+            166,
+            166,
+            166
+          ],
+          "wgsl": [
+            166,
+            166,
+            166
+          ],
+          "cpu": [
+            166,
+            166,
+            166
+          ]
+        },
+        {
+          "t": 0.75,
+          "maxDiff": 0,
+          "glsl": [
+            86,
+            86,
+            86
+          ],
+          "wgsl": [
+            86,
+            86,
+            86
+          ],
+          "cpu": [
+            86,
+            86,
+            86
+          ]
+        },
+        {
+          "t": 1,
+          "maxDiff": 0,
+          "glsl": [
+            0,
+            0,
+            0
+          ],
+          "wgsl": [
+            0,
+            0,
+            0
+          ],
+          "cpu": [
+            0,
+            0,
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "name": "white-black-brush",
+      "pass": true,
+      "worstDiff": 0,
+      "rows": [
+        {
+          "t": 0.5,
+          "maxDiff": 0,
+          "glsl": [
+            166,
+            166,
+            166
+          ],
+          "wgsl": [
+            166,
+            166,
+            166
+          ],
+          "cpu": null
+        },
+        {
+          "t": 0.85,
+          "maxDiff": 0,
+          "glsl": [
+            48,
+            48,
+            47
+          ],
+          "wgsl": [
+            48,
+            48,
+            47
+          ],
+          "cpu": null
+        },
+        {
+          "t": 1,
+          "maxDiff": 0,
+          "glsl": [
+            0,
+            0,
+            0
+          ],
+          "wgsl": [
+            0,
+            0,
+            0
+          ],
+          "cpu": null
+        }
+      ]
+    },
+    {
+      "name": "desaturated",
+      "pass": true,
+      "worstDiff": 0,
+      "rows": [
+        {
+          "t": 0,
+          "maxDiff": 0,
+          "glsl": [
+            184,
+            140,
+            115
+          ],
+          "wgsl": [
+            184,
+            140,
+            115
+          ],
+          "cpu": null
+        },
+        {
+          "t": 0.25,
+          "maxDiff": 0,
+          "glsl": [
+            170,
+            140,
+            118
+          ],
+          "wgsl": [
+            170,
+            140,
+            118
+          ],
+          "cpu": [
+            170,
+            141,
+            118
+          ]
+        },
+        {
+          "t": 0.5,
+          "maxDiff": 0,
+          "glsl": [
+            135,
+            141,
+            133
+          ],
+          "wgsl": [
+            135,
+            141,
+            133
+          ],
+          "cpu": [
+            135,
+            141,
+            133
+          ]
+        },
+        {
+          "t": 0.75,
+          "maxDiff": 0,
+          "glsl": [
+            112,
+            141,
+            158
+          ],
+          "wgsl": [
+            112,
+            141,
+            158
+          ],
+          "cpu": [
+            112,
+            141,
+            158
+          ]
+        },
+        {
+          "t": 1,
+          "maxDiff": 0,
+          "glsl": [
+            107,
+            140,
+            168
+          ],
+          "wgsl": [
+            107,
+            140,
+            168
+          ],
+          "cpu": [
+            107,
+            140,
+            168
+          ]
+        }
+      ]
+    },
+    {
+      "name": "desaturated-brush",
+      "pass": true,
+      "worstDiff": 0,
+      "rows": [
+        {
+          "t": 0.5,
+          "maxDiff": 0,
+          "glsl": [
+            135,
+            141,
+            133
+          ],
+          "wgsl": [
+            135,
+            141,
+            133
+          ],
+          "cpu": null
+        },
+        {
+          "t": 0.85,
+          "maxDiff": 0,
+          "glsl": [
+            91,
+            121,
+            144
+          ],
+          "wgsl": [
+            91,
+            121,
+            144
+          ],
+          "cpu": null
+        },
+        {
+          "t": 1,
+          "maxDiff": 0,
+          "glsl": [
+            72,
+            100,
+            124
+          ],
+          "wgsl": [
+            72,
+            100,
+            124
+          ],
+          "cpu": null
+        }
+      ]
+    }
+  ],
+  "timing": {
+    "resolution": "768x768",
+    "passes": 150,
+    "msPerPassFull": 0.2347,
+    "msPerPassPrecomputed": 0.2293,
+    "speedup": 1.023
+  },
+  "pageErrors": []
+}

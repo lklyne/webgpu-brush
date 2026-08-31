@@ -1,0 +1,479 @@
+{
+  "generatedAt": "2026-08-31T14:10:32.694Z",
+  "adapter": {
+    "vendor": "apple",
+    "architecture": "metal-3"
+  },
+  "tolerances": {
+    "vert": 0.05,
+    "mod": 0.00001
+  },
+  "globalMaxVertDev": 0.000029713944400100445,
+  "globalMaxModDev": 8.009374141693115e-8,
+  "tests": [
+    {
+      "name": "hash-parity",
+      "pass": true,
+      "samples": 8192,
+      "mismatches": 0
+    },
+    {
+      "name": "int-parity",
+      "pass": true,
+      "checked": 425984,
+      "mismatches": 0,
+      "firstBad": null
+    },
+    {
+      "name": "chain-A-n24-out",
+      "pass": true,
+      "layers": 8,
+      "chain": [
+        1,
+        999,
+        997,
+        0.9875,
+        999,
+        997,
+        0.35,
+        999
+      ],
+      "counts": [
+        48,
+        96,
+        192,
+        384,
+        384,
+        384,
+        276,
+        276
+      ],
+      "maxVertDev": 0.000011715795992017775,
+      "maxModDev": 2.7660280454977482e-8,
+      "opCounter": {
+        "gpu": 13,
+        "cpu": 13,
+        "ok": true
+      },
+      "steps": [
+        {
+          "name": "f=1",
+          "countGpu": 48,
+          "countCpu": 48,
+          "maxVertDev": 0.000003814697265625,
+          "maxModDev": 2.7939677238464355e-9,
+          "dirMismatches": 0,
+          "indirectOk": true,
+          "pass": true
+        },
+        {
+          "name": "f=999",
+          "countGpu": 96,
+          "countCpu": 96,
+          "maxVertDev": 0.0000072886038395836295,
+          "maxModDev": 6.51925802230835e-9,
+          "dirMismatches": 0,
+          "indirectOk": true,
+          "pass": true
+        },
+        {
+          "name": "f=997",
+          "countGpu": 192,
+          "countCpu": 192,
+          "maxVertDev": 0.000011123358930831273,
+          "maxModDev": 8.731149137020111e-9,
+          "dirMismatches": 0,
+          "indirectOk": true,
+          "pass": true
+        },
+        {
+          "name": "f=0.9875",
+          "countGpu": 384,
+          "countCpu": 384,
+          "maxVertDev": 0.000011448239689570983,
+          "maxModDev": 9.49949024997565e-9,
+          "dirMismatches": 0,
+          "indirectOk": true,
+          "pass": true
+        },
+        {
+          "name": "f=999",
+          "countGpu": 384,
+          "countCpu": 384,
+          "maxVertDev": 0.000011448239689570983,
+          "maxModDev": 9.49949024997565e-9,
+          "dirMismatches": 0,
+          "indirectOk": true,
+          "pass": true
+        },
+        {
+          "name": "f=997",
+          "countGpu": 384,
+          "countCpu": 384,
+          "maxVertDev": 0.000011448239689570983,
+          "maxModDev": 9.49949024997565e-9,
+          "dirMismatches": 0,
+          "indirectOk": true,
+          "pass": true
+        },
+        {
+          "name": "f=0.35",
+          "countGpu": 276,
+          "countCpu": 276,
+          "maxVertDev": 0.000011715795992017775,
+          "maxModDev": 2.7660280454977482e-8,
+          "dirMismatches": 0,
+          "indirectOk": true,
+          "pass": true
+        },
+        {
+          "name": "f=999",
+          "countGpu": 276,
+          "countCpu": 276,
+          "maxVertDev": 0.000011715795992017775,
+          "maxModDev": 2.7660280454977482e-8,
+          "dirMismatches": 0,
+          "indirectOk": true,
+          "pass": true
+        }
+      ]
+    },
+    {
+      "name": "chain-B-n200-out",
+      "pass": true,
+      "layers": 8,
+      "chain": [
+        1,
+        1,
+        999,
+        997,
+        0.975,
+        0.45,
+        999,
+        997
+      ],
+      "counts": [
+        400,
+        800,
+        1600,
+        1600,
+        1562,
+        1428,
+        1428,
+        1428
+      ],
+      "maxVertDev": 0.000029713944400100445,
+      "maxModDev": 8.009374141693115e-8,
+      "opCounter": {
+        "gpu": 13,
+        "cpu": 13,
+        "ok": true
+      },
+      "steps": [
+        {
+          "name": "f=1",
+          "countGpu": 400,
+          "countCpu": 400,
+          "maxVertDev": 0.000015106623436622613,
+          "maxModDev": 2.9802322387695312e-8,
+          "dirMismatches": 0,
+          "indirectOk": true,
+          "pass": true
+        },
+        {
+          "name": "f=1",
+          "countGpu": 800,
+          "countCpu": 800,
+          "maxVertDev": 0.00002204647435632978,
+          "maxModDev": 5.029141902923584e-8,
+          "dirMismatches": 0,
+          "indirectOk": true,
+          "pass": true
+        },
+        {
+          "name": "f=999",
+          "countGpu": 1600,
+          "countCpu": 1600,
+          "maxVertDev": 0.00002767384290791597,
+          "maxModDev": 8.009374141693115e-8,
+          "dirMismatches": 0,
+          "indirectOk": true,
+          "pass": true
+        },
+        {
+          "name": "f=997",
+          "countGpu": 1600,
+          "countCpu": 1600,
+          "maxVertDev": 0.00002767384290791597,
+          "maxModDev": 8.009374141693115e-8,
+          "dirMismatches": 0,
+          "indirectOk": true,
+          "pass": true
+        },
+        {
+          "name": "f=0.975",
+          "countGpu": 1562,
+          "countCpu": 1562,
+          "maxVertDev": 0.00002767384290791597,
+          "maxModDev": 8.009374141693115e-8,
+          "dirMismatches": 0,
+          "indirectOk": true,
+          "pass": true
+        },
+        {
+          "name": "f=0.45",
+          "countGpu": 1428,
+          "countCpu": 1428,
+          "maxVertDev": 0.000029713944400100445,
+          "maxModDev": 5.494803190231323e-8,
+          "dirMismatches": 0,
+          "indirectOk": true,
+          "pass": true
+        },
+        {
+          "name": "f=999",
+          "countGpu": 1428,
+          "countCpu": 1428,
+          "maxVertDev": 0.000029713944400100445,
+          "maxModDev": 5.494803190231323e-8,
+          "dirMismatches": 0,
+          "indirectOk": true,
+          "pass": true
+        },
+        {
+          "name": "f=997",
+          "countGpu": 1428,
+          "countCpu": 1428,
+          "maxVertDev": 0.000029713944400100445,
+          "maxModDev": 5.494803190231323e-8,
+          "dirMismatches": 0,
+          "indirectOk": true,
+          "pass": true
+        }
+      ]
+    },
+    {
+      "name": "chain-C-n24-in",
+      "pass": true,
+      "layers": 6,
+      "chain": [
+        1,
+        999,
+        997,
+        0.7,
+        999,
+        997
+      ],
+      "counts": [
+        48,
+        96,
+        192,
+        274,
+        274,
+        274
+      ],
+      "maxVertDev": 0.00001046955487993273,
+      "maxModDev": 1.5040859557835518e-8,
+      "opCounter": {
+        "gpu": 10,
+        "cpu": 10,
+        "ok": true
+      },
+      "steps": [
+        {
+          "name": "f=1",
+          "countGpu": 48,
+          "countCpu": 48,
+          "maxVertDev": 0.000003814697265625,
+          "maxModDev": 0,
+          "dirMismatches": 0,
+          "indirectOk": true,
+          "pass": true
+        },
+        {
+          "name": "f=999",
+          "countGpu": 96,
+          "countCpu": 96,
+          "maxVertDev": 0.00000887314348574364,
+          "maxModDev": 3.725290298461914e-9,
+          "dirMismatches": 0,
+          "indirectOk": true,
+          "pass": true
+        },
+        {
+          "name": "f=997",
+          "countGpu": 192,
+          "countCpu": 192,
+          "maxVertDev": 0.00000887314348574364,
+          "maxModDev": 3.725290298461914e-9,
+          "dirMismatches": 0,
+          "indirectOk": true,
+          "pass": true
+        },
+        {
+          "name": "f=0.7",
+          "countGpu": 274,
+          "countCpu": 274,
+          "maxVertDev": 0.00001046955487993273,
+          "maxModDev": 1.5040859557835518e-8,
+          "dirMismatches": 0,
+          "indirectOk": true,
+          "pass": true
+        },
+        {
+          "name": "f=999",
+          "countGpu": 274,
+          "countCpu": 274,
+          "maxVertDev": 0.00001046955487993273,
+          "maxModDev": 1.5040859557835518e-8,
+          "dirMismatches": 0,
+          "indirectOk": true,
+          "pass": true
+        },
+        {
+          "name": "f=997",
+          "countGpu": 274,
+          "countCpu": 274,
+          "maxVertDev": 0.00001046955487993273,
+          "maxModDev": 1.5040859557835518e-8,
+          "dirMismatches": 0,
+          "indirectOk": true,
+          "pass": true
+        }
+      ]
+    },
+    {
+      "name": "chain-E-n550-cap",
+      "pass": true,
+      "layers": 3,
+      "chain": [
+        1,
+        0.9,
+        999
+      ],
+      "counts": [
+        367,
+        333,
+        333
+      ],
+      "maxVertDev": 0.000015234846330258733,
+      "maxModDev": 1.7695128917694092e-8,
+      "opCounter": {
+        "gpu": 7,
+        "cpu": 7,
+        "ok": true
+      },
+      "steps": [
+        {
+          "name": "f=1",
+          "countGpu": 367,
+          "countCpu": 367,
+          "maxVertDev": 0.000015234846330258733,
+          "maxModDev": 7.450580596923828e-9,
+          "dirMismatches": 0,
+          "indirectOk": true,
+          "pass": true
+        },
+        {
+          "name": "f=0.9",
+          "countGpu": 333,
+          "countCpu": 333,
+          "maxVertDev": 0.000015234846330258733,
+          "maxModDev": 1.7695128917694092e-8,
+          "dirMismatches": 0,
+          "indirectOk": true,
+          "pass": true
+        },
+        {
+          "name": "f=999",
+          "countGpu": 333,
+          "countCpu": 333,
+          "maxVertDev": 0.000015234846330258733,
+          "maxModDev": 1.7695128917694092e-8,
+          "dirMismatches": 0,
+          "indirectOk": true,
+          "pass": true
+        }
+      ]
+    },
+    {
+      "name": "chain-D-branching",
+      "pass": true,
+      "layers": 4,
+      "counts": [
+        80,
+        44,
+        160,
+        320
+      ],
+      "maxVertDev": 0.000010471741205719809,
+      "maxModDev": 1.8347054708822697e-8,
+      "opCounter": {
+        "gpu": 12,
+        "cpu": 12,
+        "ok": true
+      },
+      "steps": [
+        {
+          "name": "grow(1)",
+          "countGpu": 80,
+          "countCpu": 80,
+          "maxVertDev": 0.000007519201489003535,
+          "maxModDev": 3.725290298461914e-9,
+          "dirMismatches": 0,
+          "indirectOk": true,
+          "pass": true
+        },
+        {
+          "name": "grow(0.5)",
+          "countGpu": 44,
+          "countCpu": 44,
+          "maxVertDev": 0.000004530206908270884,
+          "maxModDev": 1.8347054708822697e-8,
+          "dirMismatches": 0,
+          "indirectOk": true,
+          "pass": true
+        },
+        {
+          "name": "grow(999)",
+          "countGpu": 160,
+          "countCpu": 160,
+          "maxVertDev": 0.000009290410559970042,
+          "maxModDev": 5.995389074087143e-9,
+          "dirMismatches": 0,
+          "indirectOk": true,
+          "pass": true
+        },
+        {
+          "name": "grow(997)",
+          "countGpu": 320,
+          "countCpu": 320,
+          "maxVertDev": 0.000010471741205719809,
+          "maxModDev": 9.313225746154785e-9,
+          "dirMismatches": 0,
+          "indirectOk": true,
+          "pass": true
+        }
+      ]
+    },
+    {
+      "name": "batched-single-pass",
+      "pass": true,
+      "layers": 8,
+      "finalCount": 276,
+      "maxVertDev": 0.000011715795992017775,
+      "maxModDev": 2.7660280454977482e-8,
+      "step": {
+        "name": "batched-final",
+        "countGpu": 276,
+        "countCpu": 276,
+        "maxVertDev": 0.000011715795992017775,
+        "maxModDev": 2.7660280454977482e-8,
+        "dirMismatches": 0,
+        "indirectOk": true,
+        "pass": true
+      }
+    }
+  ],
+  "pageErrors": []
+}

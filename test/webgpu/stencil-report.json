@@ -1,0 +1,155 @@
+{
+  "generatedAt": "2026-08-31T14:09:09.597Z",
+  "adapter": {
+    "vendor": "apple",
+    "architecture": "metal-3"
+  },
+  "fixture": {
+    "layerOps": 90,
+    "eraseOps": 4,
+    "eraseCircles": 3489,
+    "selfIntersectingPolys": 197,
+    "totalVerts": 23238
+  },
+  "tests": [
+    {
+      "name": "convex-fill",
+      "pass": true,
+      "gated": true,
+      "alpha": 0.5,
+      "rmse": 0.9062,
+      "maxDiff": 40,
+      "alphaRmse": 1.1099
+    },
+    {
+      "name": "selfx-fill-realistic",
+      "pass": true,
+      "gated": true,
+      "alpha": 0.016,
+      "rmse": 0.0468,
+      "maxDiff": 2,
+      "alphaRmse": 0.0573
+    },
+    {
+      "name": "selfx-fill-amplified",
+      "pass": true,
+      "gated": true,
+      "alpha": 0.5,
+      "rmse": 0.9785,
+      "maxDiff": 49,
+      "alphaRmse": 1.1985
+    },
+    {
+      "name": "overlap-once",
+      "pass": true,
+      "gated": true,
+      "winding": {
+        "single": 1,
+        "overlap": 2
+      },
+      "gpuAlpha": {
+        "single": 128,
+        "overlap": 128
+      },
+      "refAlpha": {
+        "single": 128,
+        "overlap": 128
+      },
+      "expectedOnce": 128,
+      "expectedDouble": 191
+    },
+    {
+      "name": "border-realistic",
+      "pass": true,
+      "gated": true,
+      "lineWidth": 1.561,
+      "alpha": 0.008,
+      "rmse": 0.0775,
+      "maxDiff": 2,
+      "alphaRmse": 0.0949
+    },
+    {
+      "name": "border-amplified",
+      "pass": true,
+      "gated": true,
+      "lineWidth": 6,
+      "alpha": 0.5,
+      "rmse": 1.3807,
+      "maxDiff": 40,
+      "alphaRmse": 1.691
+    },
+    {
+      "name": "layer-combined",
+      "pass": true,
+      "gated": true,
+      "fillAlpha": 0.016,
+      "lineWidth": 1.561,
+      "strokeAlpha": 0.008,
+      "rmse": 0.1437,
+      "maxDiff": 3,
+      "alphaRmse": 0.176
+    },
+    {
+      "name": "erase",
+      "pass": true,
+      "gated": true,
+      "circles": 895,
+      "eraseAlpha": 0.25,
+      "capturedAlpha": 0.133,
+      "rmse": 0.7286,
+      "maxDiff": 43,
+      "alphaRmse": 0.8923
+    },
+    {
+      "name": "full-fill-replay",
+      "pass": true,
+      "gated": true,
+      "tolerance": 3,
+      "layerOps": 90,
+      "rmse": 2.406,
+      "maxDiff": 80,
+      "alphaRmse": 2.9467
+    },
+    {
+      "name": "full-fill-replay-16f",
+      "pass": true,
+      "gated": false,
+      "maskFormat": "rgba16float",
+      "rmse": 2.3226,
+      "maxDiff": 78.87,
+      "alphaRmse": 2.8445
+    },
+    {
+      "name": "full-fill-replay-f16ref",
+      "pass": true,
+      "gated": false,
+      "note": "float16 canvas2d reference vs rgba16float GPU mask",
+      "rmse": 0.1384,
+      "maxDiff": 2.93,
+      "alphaRmse": 0.1695
+    },
+    {
+      "name": "full-fill-replay-ss2",
+      "pass": true,
+      "gated": false,
+      "note": "2x supersampled mask, box downsample",
+      "rmse": 2.3831,
+      "maxDiff": 77.25,
+      "alphaRmse": 2.9187
+    }
+  ],
+  "encoder": {
+    "passesPerFill": 185,
+    "drawsPerFill": 364,
+    "polygons": 90,
+    "strokes": 90,
+    "erases": 4,
+    "vertexFloatsWritten": 559638,
+    "pipelines": 4,
+    "encodeSubmitMsMedian": 4.1,
+    "gpuWaitMsMedian": 10.8,
+    "runs": 7,
+    "note": "encode+submit is CPU JS; gpuWait is submit->onSubmittedWorkDone. Per plan, no batching applied — W4a's problem."
+  },
+  "pageErrors": []
+}
