@@ -5,6 +5,7 @@
 // Randomness and other auxiliary functions
 export { weightedRand as wRand } from "./core/utils.js";
 export { seed, noiseSeed } from "./core/utils.js";
+export { Stats as _stats } from "./core/stats.js"; // test instrumentation, not API
 
 // Color Blending
 export { load } from "./core/color.js";

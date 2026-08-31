@@ -1,0 +1,73 @@
+{
+  "generatedAt": "2026-08-31T05:15:22.955Z",
+  "adapter": {
+    "vendor": "apple",
+    "architecture": "metal-3",
+    "description": ""
+  },
+  "tests": [
+    {
+      "name": "premultiplied",
+      "pass": true,
+      "maxDiff": 0,
+      "rmse": 0,
+      "analyticDiff": 0,
+      "expected": [
+        169,
+        196,
+        234
+      ],
+      "gotCenter": [
+        169,
+        196,
+        234
+      ]
+    },
+    {
+      "name": "dirty-rect",
+      "pass": true,
+      "outsideChangedPixels": 0,
+      "insideChangedPixels": 4096,
+      "insideExpected": 4096
+    },
+    {
+      "name": "resize-leaks",
+      "pass": true,
+      "deviceLost": false,
+      "resizes": 20,
+      "buffers": {
+        "before": 1,
+        "after": 1
+      },
+      "textures": {
+        "before": 0,
+        "after": 0
+      },
+      "bufferBytes": {
+        "before": 16384,
+        "after": 16384
+      },
+      "pipelines": {
+        "before": 1,
+        "after": 1
+      }
+    },
+    {
+      "name": "pipeline-stability",
+      "pass": true,
+      "frames": 60,
+      "warmupFrames": 5,
+      "pipelines": {
+        "afterWarmup": 3,
+        "end": 3
+      },
+      "bindGroups": {
+        "afterWarmup": 3,
+        "end": 3
+      },
+      "pipelineHits": 177,
+      "bindGroupHits": 177
+    }
+  ],
+  "pageErrors": []
+}

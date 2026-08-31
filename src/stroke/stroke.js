@@ -18,20 +18,23 @@ import {
   State,
 } from "../core/color.js";
 import {
-  rr,
   map,
   dist,
-  randInt,
   calcAngle,
   toDegrees,
   gaussian,
-  rArray,
   noise,
-  _onSeed, 
+  _onSeed,
   cos,
-  sin
+  sin,
+  STREAM,
+  hashU32,
+  hash01,
+  rh,
+  nh,
 } from "../core/utils.js";
 import { createColor } from "../core/runtime.js";
+import { Stats } from "../core/stats.js";
 import { Position, isFieldReady } from "../core/flowfield.js";
 import { Polygon } from "../core/polygon.js";
 import { Plot } from "../core/plot.js";
@@ -334,10 +337,31 @@ function initializeDrawingState(x, y, length, plot = false) {
   if (_plot) _plot.calcIndex(0);
 }
 
-const gaussians = [];
+// Fixed-size gaussian pool, hash-picked per stamp (W1b). Filled with the
+// sequential seeded generator at first use / reseed — the pool contents are
+// CPU-side data the W2 compute shaders receive as a buffer; only the PICK is
+// counter-based.
+const GAUSS_POOL_N = 512;
+const gaussians = new Array(GAUSS_POOL_N);
+let _gaussPoolReady = false;
+
+function fillGaussPool() {
+  for (let i = 0; i < GAUSS_POOL_N; i++) gaussians[i] = gaussian();
+  _gaussPoolReady = true;
+}
+
+/** Hash-picked gaussian pool sample. */
+const gaussPick = (streamId, salt, index) =>
+  gaussians[hashU32(streamId, salt, index) % GAUSS_POOL_N];
+
+// Per-stroke scope counter for the hash streams. The stamp salt reserves the
+// low 2 bits for the draw phase: 0 = main stamp loop, 1 = markerTip at stroke
+// start, 2 = markerTip at stroke end.
+let _strokeId = 0;
 
 _onSeed(() => {
-  gaussians.length = 0;
+  _gaussPoolReady = false;
+  _strokeId = 0;
 });
 
 /**
@@ -353,17 +377,13 @@ function draw(angleScale, isPlot) {
   const totalSteps = Math.round(
     (_length * (isPlot ? angleScale : 1)) / stepSize,
   );
+  if (Stats.enabled && Stats._stroke) Stats._stroke.steps = totalSteps;
   current.pressureCount = 10;
   current.cachedPressure = undefined;
 
-  const neededGaussians = totalSteps * 2;
-  while (gaussians.length < neededGaussians) {
-    gaussians.push(gaussian());
-  }
-
   for (let i = 0; i < totalSteps; i++) {
     if (isPlot) _cachedPlotAngle = _plot.angle(_position.plotted);
-    tip();
+    tip(i);
     if (isPlot) {
       _position.plotTo(_plot, stepSize, stepSize, angleScale, _cachedPlotAngle);
     } else {
@@ -377,27 +397,35 @@ function draw(angleScale, isPlot) {
  * Prepares the environment for a brush stroke.
  */
 function saveState() {
-  current.seed = rr() * 999999;
+  if (Stats.enabled) Stats.beginStroke();
+  if (!_gaussPoolReady) fillGaussPool();
+  _strokeId++;
+  // Stamp salt: low 2 bits reserved for draw phase (0 loop, 1 start, 2 end).
+  current.salt = (_strokeId << 2) >>> 0;
+  current.phase = 0;
+  const salt = current.salt;
+  current.seed = hash01(STREAM.STROKE_SETUP, salt, 6) * 999999;
   const { param } = list.get(State.stroke.type) ?? {};
   if (!param) return;
   current.p = param;
 
-  // Set pressure values for the stroke
+  // Set pressure values for the stroke — STROKE_SETUP slots 0..5: a, b, cp,
+  // ct, cs, ck (slot 6 above is the legacy per-stroke seed).
   const { pressure } = param;
   current.isCustomPressure = pressure.type === "custom";
-  current.a = !current.isCustomPressure ? rr(-1, 1) : 0;
-  current.b = !current.isCustomPressure ? rr(1, 1.5) : 0;
+  current.a = !current.isCustomPressure ? rh(STREAM.STROKE_SETUP, salt, 0, -1, 1) : 0;
+  current.b = !current.isCustomPressure ? rh(STREAM.STROKE_SETUP, salt, 1, 1, 1.5) : 0;
   if (!current.isCustomPressure) {
-    current.cp = rr(3, 3.5);
+    current.cp = rh(STREAM.STROKE_SETUP, salt, 2, 3, 3.5);
     current.ct = 0;
     current.cs = 1;
     current.ck = 0;
   } else {
     const variation = pressure.variation ?? DEFAULT_CUSTOM_PRESSURE_VARIATION;
-    current.cp = rr(-variation.offset, variation.offset);
-    current.ct = rr(-variation.warp, variation.warp);
-    current.cs = rr(1 - variation.scale, 1 + variation.scale);
-    current.ck = rr(-variation.tilt, variation.tilt);
+    current.cp = rh(STREAM.STROKE_SETUP, salt, 2, -variation.offset, variation.offset);
+    current.ct = rh(STREAM.STROKE_SETUP, salt, 3, -variation.warp, variation.warp);
+    current.cs = rh(STREAM.STROKE_SETUP, salt, 4, 1 - variation.scale, 1 + variation.scale);
+    current.ck = rh(STREAM.STROKE_SETUP, salt, 5, -variation.tilt, variation.tilt);
   }
   [current.min, current.max] = pressure.min_max;
 
@@ -422,7 +450,7 @@ function saveState() {
   const baseAlpha = calculateAlpha();
   const noiseStrength = 0.1 * (current.p.noise ?? 0);
   current.alpha = noiseStrength > 0
-    ? Math.max(0, baseAlpha * (1 + gaussian(0, noiseStrength)))
+    ? Math.max(0, baseAlpha * (1 + nh(STREAM.STROKE_ALPHA_NOISE, salt, 0, 0, noiseStrength)))
     : baseAlpha;
   current.overscan = getImageTipOverscan();
   current.drawFn =
@@ -431,14 +459,15 @@ function saveState() {
     (current.p.type === "custom" || current.p.type === "image") ? drawImageTip :
     drawDefault;
 
-  markerTip();
+  markerTip(1);
 }
 
 /**
  * Restores drawing state after completing a stroke.
  */
 function restoreState() {
-  markerTip();
+  markerTip(2);
+  if (Stats.enabled) Stats.endStroke();
   glDraw();
   const type = current.p?.type;
   if (type === "image") glDrawImages(T.tips.get(current.p.image.src), current.p.image.src);
@@ -448,10 +477,10 @@ function restoreState() {
 /**
  * Renders the brush tip based on current pressure and position.
  */
-function tip() {
+function tip(index) {
   const pressure = calculatePressure();
 
-  current.drawFn(pressure);
+  current.drawFn(pressure, index);
 }
 
 /**
@@ -557,16 +586,18 @@ function getImageTipOverscan() {
  * Draws the spray tip effect.
  * @param {number} pressure - Current pressure.
  */
-function drawSpray(pressure) {
+function drawSpray(pressure, idx) {
+  const salt = (current.salt | current.phase) >>> 0;
   const vibration =
     State.stroke.weight * current.p.scatter * pressure +
-    (State.stroke.weight * rArray(gaussians) * current.p.scatter) / 3;
-  const sw = current.p.weight * rr(0.9, 1.1);
+    (State.stroke.weight * gaussPick(STREAM.SPRAY_GAUSS, salt, idx) * current.p.scatter) / 3;
+  const sw = current.p.weight * rh(STREAM.SPRAY_SW, salt, idx, 0.9, 1.1);
   const iterations = Math.ceil(current.p.grain / pressure);
   for (let j = 0; j < iterations; j++) {
-    const r = rr(0.9, 1.1);
-    const rX = r * vibration * rr(-1, 1);
-    const yRandomFactor = rr(-1, 1);
+    const dotIdx = ((idx << 12) + j) >>> 0;
+    const r = rh(STREAM.SPRAY_DOT_R, salt, dotIdx, 0.9, 1.1);
+    const rX = r * vibration * rh(STREAM.SPRAY_DOT_X, salt, dotIdx, -1, 1);
+    const yRandomFactor = rh(STREAM.SPRAY_DOT_Y, salt, dotIdx, -1, 1);
     const sqrtPart = Math.sqrt((r * vibration) ** 2 - rX ** 2);
     circle(
       _position.x + rX,
@@ -582,15 +613,16 @@ function drawSpray(pressure) {
  * @param {number} pressure - Current pressure.
  * @param {boolean} [vibrate=true] - Whether to apply vibration.
  */
-function drawMarker(pressure, vibrate = true, alpha = current.alpha) {
+function drawMarker(pressure, idx, vibrate = true, alpha = current.alpha) {
+  const salt = (current.salt | current.phase) >>> 0;
   const vibration = vibrate ? State.stroke.weight * current.p.scatter : 0;
-  const rx = vibrate ? vibration * rr(-1, 1) : 0;
-  const ry = vibrate ? vibration * rr(-1, 1) : 0;
+  const rx = vibrate ? vibration * rh(STREAM.MARKER_VIB_X, salt, idx, -1, 1) : 0;
+  const ry = vibrate ? vibration * rh(STREAM.MARKER_VIB_Y, salt, idx, -1, 1) : 0;
   circle(
     _position.x + rx,
     _position.y + ry,
     State.stroke.weight * current.p.weight * pressure,
-    alpha * Math.max(0.8, pressure) * rr(0.9,1.1),
+    alpha * Math.max(0.8, pressure) * rh(STREAM.MARKER_ALPHA, salt, idx, 0.9, 1.1),
   );
 }
 
@@ -600,15 +632,16 @@ function drawMarker(pressure, vibrate = true, alpha = current.alpha) {
  * @param {number} pressure - Current pressure.
  * @param {number} alpha - Opacity [0..255].
  */
-function drawImageTip(pressure, alpha = current.alpha) {
+function drawImageTip(pressure, idx, alpha = current.alpha) {
+  const salt = (current.salt | current.phase) >>> 0;
   const vibration = State.stroke.weight * current.p.scatter;
-  const rx = vibration * rr(-1, 1);
-  const ry = vibration * rr(-1, 1);
+  const rx = vibration * rh(STREAM.TIP_VIB_X, salt, idx, -1, 1);
+  const ry = vibration * rh(STREAM.TIP_VIB_Y, salt, idx, -1, 1);
   const size = current.p.weight * State.stroke.weight * pressure;
   const overscan = current.overscan;
   let angle = 0;
   if (current.p.rotate === "random") {
-    angle = randInt(0, 360) * (Math.PI / 180);
+    angle = ~~rh(STREAM.TIP_ROT, salt, idx, 0, 360) * (Math.PI / 180);
   } else if (current.p.rotate === "natural") {
     angle = ((_plot ? -_cachedPlotAngle : -_dir) + _position.angle()) * (Math.PI / 180);
   }
@@ -617,7 +650,7 @@ function drawImageTip(pressure, alpha = current.alpha) {
     _position.y + ry,
     size,
     angle,
-    alpha * Math.max(0.8, pressure) * rr(0.9, 1.1),
+    alpha * Math.max(0.8, pressure) * rh(STREAM.TIP_ALPHA, salt, idx, 0.9, 1.1),
     overscan,
   );
 }
@@ -626,25 +659,26 @@ function drawImageTip(pressure, alpha = current.alpha) {
  * Draws the default brush tip.
  * @param {number} pressure - Current pressure.
  */
-function drawDefault(pressure) {
-  if (rr(0, 1) >= current.p.grain * pressure) return;
+function drawDefault(pressure, idx) {
+  const salt = (current.salt | current.phase) >>> 0;
+  if (hash01(STREAM.DEFAULT_GATE, salt, idx) >= current.p.grain * pressure) return;
   const vibration =
     State.stroke.weight *
     current.p.scatter *
     (current.p.sharpness +
-      ((1 - current.p.sharpness) * rArray(gaussians)) / pressure);
+      ((1 - current.p.sharpness) * gaussPick(STREAM.DEFAULT_SCATTER, salt, idx)) / pressure);
     let dx, dy;
     if (_plot) {
       const plotAngle = _cachedPlotAngle;
       const plotCos = cos(plotAngle);
       const plotSin = sin(plotAngle);
-      const perp = vibration * rr(-1, 1);
-      const along = 0.3 * vibration * rr(-1, 1);
+      const perp = vibration * rh(STREAM.DEFAULT_PERP, salt, idx, -1, 1);
+      const along = 0.3 * vibration * rh(STREAM.DEFAULT_ALONG, salt, idx, -1, 1);
       dx = perp * plotSin + along * plotCos;
       dy = perp * plotCos - along * plotSin;
     } else {
-      const perp = vibration * rr(-1, 1);
-      const along = 0.3 * vibration * rr(-1, 1);
+      const perp = vibration * rh(STREAM.DEFAULT_PERP, salt, idx, -1, 1);
+      const along = 0.3 * vibration * rh(STREAM.DEFAULT_ALONG, salt, idx, -1, 1);
       dx = perp * current.sin + along * current.cos;
       dy = perp * current.cos - along * current.sin;
     }
@@ -652,9 +686,9 @@ function drawDefault(pressure) {
       pressure *
       pressure *
       current.p.weight *
-      rr(0.85, 1.15) *
+      rh(STREAM.DEFAULT_SIZE, salt, idx, 0.85, 1.15) *
       State.stroke.weight;
-    const alpha = Math.max(0.9, pressure) * current.alpha * rr(0.75, 1.1);
+    const alpha = Math.max(0.9, pressure) * current.alpha * rh(STREAM.DEFAULT_ALPHA, salt, idx, 0.75, 1.1);
     circle(
       _position.x + dx,
       _position.y + dy,
@@ -667,19 +701,22 @@ function drawDefault(pressure) {
 /**
  * Draws the marker tip with a blend effect.
  */
-function markerTip() {
+function markerTip(phase) {
   if (current.p.markerTip === false) return;
+  const prevPhase = current.phase;
+  current.phase = phase; // 1 = stroke start, 2 = stroke end
   let pressure = calculatePressure();
   let alpha = current.alpha;
   if (current.p.type === "marker") {
     for (let s = 1; s < 10; s++) {
-      drawMarker((pressure * s) / 10, true, alpha * 8);
+      drawMarker((pressure * s) / 10, s, true, alpha * 8);
     }
   } else if (current.p.type === "custom" || current.p.type === "image") {
     for (let s = 1; s < 5; s++) {
-      drawImageTip((pressure * s) / 10, alpha * 2);
+      drawImageTip((pressure * s) / 10, s, alpha * 2);
     }
   }
+  current.phase = prevPhase;
 }
 
 // ---------------------------------------------------------------------------

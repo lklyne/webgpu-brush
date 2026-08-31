@@ -1,0 +1,5159 @@
+{
+  "seed": "parity-0",
+  "module": "/dist/brush.esm.js",
+  "scale": 0.8,
+  "bg": "#f6f1e8",
+  "tile": 150,
+  "cols": 6,
+  "geomHash": 510959639,
+  "tiles": [
+    {
+      "tile": "brush-pen",
+      "feature": "pen",
+      "section": "brushes",
+      "strokes": [
+        {
+          "steps": 1729,
+          "drawn": 1270
+        },
+        {
+          "steps": 1312,
+          "drawn": 982
+        },
+        {
+          "steps": 1532,
+          "drawn": 1144
+        }
+      ],
+      "fills": [],
+      "geomHash": 4016949295,
+      "coverage": 443
+    },
+    {
+      "tile": "brush-rotring",
+      "feature": "rotring",
+      "section": "brushes",
+      "strokes": [
+        {
+          "steps": 1729,
+          "drawn": 1648
+        },
+        {
+          "steps": 1312,
+          "drawn": 1249
+        },
+        {
+          "steps": 1532,
+          "drawn": 1456
+        }
+      ],
+      "fills": [],
+      "geomHash": 2135262501,
+      "coverage": 446
+    },
+    {
+      "tile": "brush-2B",
+      "feature": "2B",
+      "section": "brushes",
+      "strokes": [
+        {
+          "steps": 1729,
+          "drawn": 1345
+        },
+        {
+          "steps": 1312,
+          "drawn": 1011
+        },
+        {
+          "steps": 1532,
+          "drawn": 1202
+        }
+      ],
+      "fills": [],
+      "geomHash": 820156969,
+      "coverage": 630
+    },
+    {
+      "tile": "brush-HB",
+      "feature": "HB",
+      "section": "brushes",
+      "strokes": [
+        {
+          "steps": 1729,
+          "drawn": 1178
+        },
+        {
+          "steps": 1312,
+          "drawn": 898
+        },
+        {
+          "steps": 1532,
+          "drawn": 1023
+        }
+      ],
+      "fills": [],
+      "geomHash": 342327097,
+      "coverage": 566
+    },
+    {
+      "tile": "brush-2H",
+      "feature": "2H",
+      "section": "brushes",
+      "strokes": [
+        {
+          "steps": 1729,
+          "drawn": 1257
+        },
+        {
+          "steps": 1312,
+          "drawn": 937
+        },
+        {
+          "steps": 1532,
+          "drawn": 1096
+        }
+      ],
+      "fills": [],
+      "geomHash": 3118509139,
+      "coverage": 549
+    },
+    {
+      "tile": "brush-cpencil",
+      "feature": "cpencil",
+      "section": "brushes",
+      "strokes": [
+        {
+          "steps": 1729,
+          "drawn": 1285
+        },
+        {
+          "steps": 1312,
+          "drawn": 971
+        },
+        {
+          "steps": 1532,
+          "drawn": 1147
+        }
+      ],
+      "fills": [],
+      "geomHash": 945065490,
+      "coverage": 490
+    },
+    {
+      "tile": "brush-pastel",
+      "feature": "pastel",
+      "section": "brushes",
+      "strokes": [
+        {
+          "steps": 6101,
+          "drawn": 5862
+        },
+        {
+          "steps": 4632,
+          "drawn": 4406
+        },
+        {
+          "steps": 5405,
+          "drawn": 5133
+        }
+      ],
+      "fills": [],
+      "geomHash": 3108350657,
+      "coverage": 2266
+    },
+    {
+      "tile": "brush-crayon",
+      "feature": "crayon",
+      "section": "brushes",
+      "strokes": [
+        {
+          "steps": 2470,
+          "drawn": 2470
+        },
+        {
+          "steps": 1875,
+          "drawn": 1875
+        },
+        {
+          "steps": 2188,
+          "drawn": 2188
+        }
+      ],
+      "fills": [],
+      "geomHash": 2020066706,
+      "coverage": 1249
+    },
+    {
+      "tile": "brush-charcoal",
+      "feature": "charcoal",
+      "section": "brushes",
+      "strokes": [
+        {
+          "steps": 5762,
+          "drawn": 5762
+        },
+        {
+          "steps": 4375,
+          "drawn": 4375
+        },
+        {
+          "steps": 5105,
+          "drawn": 5105
+        }
+      ],
+      "fills": [],
+      "geomHash": 458029188,
+      "coverage": 1160
+    },
+    {
+      "tile": "brush-spray",
+      "feature": "spray",
+      "section": "brushes",
+      "strokes": [
+        {
+          "steps": 346,
+          "drawn": 16332
+        },
+        {
+          "steps": 263,
+          "drawn": 12394
+        },
+        {
+          "steps": 306,
+          "drawn": 14488
+        }
+      ],
+      "fills": [],
+      "geomHash": 2525553949,
+      "coverage": 3964
+    },
+    {
+      "tile": "brush-marker",
+      "feature": "marker",
+      "section": "brushes",
+      "strokes": [
+        {
+          "steps": 5762,
+          "drawn": 5780
+        },
+        {
+          "steps": 4375,
+          "drawn": 4393
+        },
+        {
+          "steps": 5105,
+          "drawn": 5123
+        }
+      ],
+      "fills": [],
+      "geomHash": 3868550474,
+      "coverage": 264
+    },
+    {
+      "tile": "brush-parity-custom",
+      "feature": "parity-custom",
+      "section": "brushes",
+      "strokes": [
+        {
+          "steps": 1152,
+          "drawn": 1152
+        },
+        {
+          "steps": 875,
+          "drawn": 875
+        },
+        {
+          "steps": 1021,
+          "drawn": 1021
+        }
+      ],
+      "fills": [],
+      "geomHash": 2773423266,
+      "coverage": 470
+    },
+    {
+      "tile": "brush-parity-image",
+      "feature": "parity-image",
+      "section": "brushes",
+      "strokes": [
+        {
+          "steps": 115,
+          "drawn": 123
+        },
+        {
+          "steps": 87,
+          "drawn": 95
+        },
+        {
+          "steps": 102,
+          "drawn": 110
+        }
+      ],
+      "fills": [],
+      "geomHash": 1556281242,
+      "coverage": 2488
+    },
+    {
+      "tile": "field-hand",
+      "feature": "hand",
+      "section": "fields",
+      "strokes": [
+        {
+          "steps": 1425,
+          "drawn": 942
+        },
+        {
+          "steps": 1425,
+          "drawn": 967
+        },
+        {
+          "steps": 1425,
+          "drawn": 976
+        },
+        {
+          "steps": 1425,
+          "drawn": 938
+        },
+        {
+          "steps": 1425,
+          "drawn": 929
+        }
+      ],
+      "fills": [],
+      "geomHash": 2431366482,
+      "coverage": 1082
+    },
+    {
+      "tile": "field-curved",
+      "feature": "curved",
+      "section": "fields",
+      "strokes": [
+        {
+          "steps": 1425,
+          "drawn": 962
+        },
+        {
+          "steps": 1425,
+          "drawn": 972
+        },
+        {
+          "steps": 1425,
+          "drawn": 965
+        },
+        {
+          "steps": 1425,
+          "drawn": 957
+        },
+        {
+          "steps": 1425,
+          "drawn": 930
+        }
+      ],
+      "fills": [],
+      "geomHash": 2882584336,
+      "coverage": 751
+    },
+    {
+      "tile": "field-zigzag",
+      "feature": "zigzag",
+      "section": "fields",
+      "strokes": [
+        {
+          "steps": 1425,
+          "drawn": 967
+        },
+        {
+          "steps": 1425,
+          "drawn": 944
+        },
+        {
+          "steps": 1425,
+          "drawn": 948
+        },
+        {
+          "steps": 1425,
+          "drawn": 940
+        },
+        {
+          "steps": 1425,
+          "drawn": 952
+        }
+      ],
+      "fills": [],
+      "geomHash": 1953829436,
+      "coverage": 912
+    },
+    {
+      "tile": "field-waves",
+      "feature": "waves",
+      "section": "fields",
+      "strokes": [
+        {
+          "steps": 1425,
+          "drawn": 928
+        },
+        {
+          "steps": 1425,
+          "drawn": 990
+        },
+        {
+          "steps": 1425,
+          "drawn": 920
+        },
+        {
+          "steps": 1425,
+          "drawn": 956
+        },
+        {
+          "steps": 1425,
+          "drawn": 951
+        }
+      ],
+      "fills": [],
+      "geomHash": 3608476824,
+      "coverage": 936
+    },
+    {
+      "tile": "field-seabed",
+      "feature": "seabed",
+      "section": "fields",
+      "strokes": [
+        {
+          "steps": 1425,
+          "drawn": 978
+        },
+        {
+          "steps": 1425,
+          "drawn": 915
+        },
+        {
+          "steps": 1425,
+          "drawn": 939
+        },
+        {
+          "steps": 1425,
+          "drawn": 959
+        },
+        {
+          "steps": 1425,
+          "drawn": 946
+        }
+      ],
+      "fills": [],
+      "geomHash": 1588650264,
+      "coverage": 926
+    },
+    {
+      "tile": "field-spiral",
+      "feature": "spiral",
+      "section": "fields",
+      "strokes": [
+        {
+          "steps": 1425,
+          "drawn": 947
+        },
+        {
+          "steps": 1425,
+          "drawn": 931
+        },
+        {
+          "steps": 1425,
+          "drawn": 962
+        },
+        {
+          "steps": 1425,
+          "drawn": 951
+        },
+        {
+          "steps": 1425,
+          "drawn": 940
+        }
+      ],
+      "fills": [],
+      "geomHash": 386221941,
+      "coverage": 499
+    },
+    {
+      "tile": "field-columns",
+      "feature": "columns",
+      "section": "fields",
+      "strokes": [
+        {
+          "steps": 1425,
+          "drawn": 916
+        },
+        {
+          "steps": 1425,
+          "drawn": 932
+        },
+        {
+          "steps": 1425,
+          "drawn": 956
+        },
+        {
+          "steps": 1425,
+          "drawn": 919
+        },
+        {
+          "steps": 1425,
+          "drawn": 955
+        }
+      ],
+      "fills": [],
+      "geomHash": 1315028646,
+      "coverage": 745
+    },
+    {
+      "tile": "fill-basic",
+      "feature": "fill",
+      "section": "fill",
+      "strokes": [],
+      "fills": [
+        {
+          "layers": {
+            "0": [
+              320,
+              240,
+              296,
+              16,
+              224
+            ],
+            "1": [
+              320,
+              240,
+              296,
+              16
+            ],
+            "2": [
+              320,
+              224,
+              272,
+              16,
+              236
+            ],
+            "3": [
+              320,
+              224,
+              272,
+              16
+            ],
+            "4": [
+              308,
+              212,
+              236,
+              16,
+              220
+            ],
+            "5": [
+              308,
+              212,
+              236,
+              16
+            ],
+            "6": [
+              302,
+              206,
+              216,
+              16,
+              220
+            ],
+            "7": [
+              302,
+              206,
+              216,
+              16
+            ],
+            "8": [
+              291,
+              396,
+              400,
+              16,
+              219
+            ],
+            "9": [
+              291,
+              396,
+              400,
+              16
+            ],
+            "10": [
+              282,
+              380,
+              368,
+              16,
+              220
+            ],
+            "11": [
+              282,
+              380,
+              368,
+              16
+            ],
+            "12": [
+              274,
+              364,
+              336,
+              16,
+              219
+            ],
+            "13": [
+              274,
+              364,
+              336,
+              16
+            ],
+            "14": [
+              266,
+              346,
+              300,
+              16,
+              220
+            ],
+            "15": [
+              266,
+              346,
+              300,
+              16
+            ],
+            "16": [
+              259,
+              330,
+              264,
+              16,
+              219
+            ],
+            "17": [
+              259,
+              330,
+              264,
+              16
+            ],
+            "18": [
+              251,
+              316,
+              232,
+              16,
+              219
+            ],
+            "19": [
+              251,
+              316,
+              232,
+              16
+            ]
+          }
+        }
+      ],
+      "geomHash": 2416912089,
+      "coverage": 1468
+    },
+    {
+      "tile": "fill-bleed-out",
+      "feature": "fillBleed out",
+      "section": "fill",
+      "strokes": [],
+      "fills": [
+        {
+          "layers": {
+            "0": [
+              384,
+              288,
+              176,
+              16,
+              132
+            ],
+            "1": [
+              384,
+              288,
+              176,
+              16
+            ],
+            "2": [
+              392,
+              280,
+              160,
+              16,
+              132
+            ],
+            "3": [
+              392,
+              280,
+              160,
+              16
+            ],
+            "4": [
+              752,
+              520,
+              288,
+              16,
+              256
+            ],
+            "5": [
+              752,
+              520,
+              288,
+              16
+            ],
+            "6": [
+              728,
+              512,
+              272,
+              16,
+              256
+            ],
+            "7": [
+              728,
+              512,
+              272,
+              16
+            ],
+            "8": [
+              1400,
+              976,
+              480,
+              16,
+              500
+            ],
+            "9": [
+              1400,
+              976,
+              480,
+              16
+            ],
+            "10": [
+              1360,
+              936,
+              440,
+              16,
+              500
+            ],
+            "11": [
+              1360,
+              936,
+              440,
+              16
+            ],
+            "12": [
+              1316,
+              1736,
+              800,
+              16,
+              1004
+            ],
+            "13": [
+              1316,
+              1736,
+              800,
+              16
+            ],
+            "14": [
+              1276,
+              1672,
+              720,
+              16,
+              1008
+            ],
+            "15": [
+              1276,
+              1672,
+              720,
+              16
+            ],
+            "16": [
+              1236,
+              1564,
+              1264,
+              16,
+              1992
+            ],
+            "17": [
+              1236,
+              1564,
+              1264,
+              16
+            ],
+            "18": [
+              1200,
+              1488,
+              1104,
+              16,
+              1992
+            ],
+            "19": [
+              1200,
+              1488,
+              1104,
+              16
+            ]
+          }
+        }
+      ],
+      "geomHash": 2235088162,
+      "coverage": 4994
+    },
+    {
+      "tile": "fill-bleed-in",
+      "feature": "fillBleed in",
+      "section": "fill",
+      "strokes": [],
+      "fills": [
+        {
+          "layers": {
+            "0": [
+              384,
+              288,
+              176,
+              16,
+              120
+            ],
+            "1": [
+              384,
+              288,
+              176,
+              16
+            ],
+            "2": [
+              392,
+              280,
+              160,
+              16,
+              120
+            ],
+            "3": [
+              392,
+              280,
+              160,
+              16
+            ],
+            "4": [
+              752,
+              520,
+              288,
+              16,
+              232
+            ],
+            "5": [
+              752,
+              520,
+              288,
+              16
+            ],
+            "6": [
+              728,
+              496,
+              272,
+              16,
+              232
+            ],
+            "7": [
+              728,
+              496,
+              272,
+              16
+            ],
+            "8": [
+              1400,
+              976,
+              480,
+              16,
+              468
+            ],
+            "9": [
+              1400,
+              976,
+              480,
+              16
+            ],
+            "10": [
+              1360,
+              904,
+              440,
+              16,
+              468
+            ],
+            "11": [
+              1360,
+              904,
+              440,
+              16
+            ],
+            "12": [
+              1316,
+              1736,
+              792,
+              16,
+              904
+            ],
+            "13": [
+              1316,
+              1736,
+              792,
+              16
+            ],
+            "14": [
+              1276,
+              1656,
+              712,
+              16,
+              912
+            ],
+            "15": [
+              1276,
+              1656,
+              712,
+              16
+            ],
+            "16": [
+              1236,
+              1564,
+              1256,
+              16,
+              1800
+            ],
+            "17": [
+              1236,
+              1564,
+              1256,
+              16
+            ],
+            "18": [
+              1198,
+              1484,
+              1104,
+              16,
+              1800
+            ],
+            "19": [
+              1198,
+              1484,
+              1104,
+              16
+            ]
+          }
+        }
+      ],
+      "geomHash": 3588585385,
+      "coverage": 1174
+    },
+    {
+      "tile": "fill-texture",
+      "feature": "fillTexture",
+      "section": "fill",
+      "strokes": [],
+      "fills": [
+        {
+          "layers": {
+            "0": [
+              256,
+              376,
+              224,
+              16,
+              176
+            ],
+            "1": [
+              256,
+              376,
+              224,
+              16
+            ],
+            "2": [
+              260,
+              368,
+              208,
+              16,
+              176
+            ],
+            "3": [
+              260,
+              368,
+              208,
+              16
+            ],
+            "4": [
+              248,
+              344,
+              376,
+              16,
+              344
+            ],
+            "5": [
+              248,
+              344,
+              376,
+              16
+            ],
+            "6": [
+              242,
+              328,
+              352,
+              16,
+              344
+            ],
+            "7": [
+              242,
+              328,
+              352,
+              16
+            ],
+            "8": [
+              233,
+              316,
+              320,
+              16,
+              344
+            ],
+            "9": [
+              233,
+              316,
+              320,
+              16
+            ],
+            "10": [
+              226,
+              304,
+              296,
+              16,
+              344
+            ],
+            "11": [
+              226,
+              304,
+              296,
+              16
+            ],
+            "12": [
+              220,
+              290,
+              268,
+              16,
+              344
+            ],
+            "13": [
+              220,
+              290,
+              268,
+              16
+            ],
+            "14": [
+              214,
+              278,
+              244,
+              16,
+              344
+            ],
+            "15": [
+              214,
+              278,
+              244,
+              16
+            ],
+            "16": [
+              208,
+              266,
+              220,
+              16,
+              344
+            ],
+            "17": [
+              208,
+              266,
+              220,
+              16
+            ],
+            "18": [
+              404,
+              252,
+              376,
+              16,
+              344
+            ],
+            "19": [
+              404,
+              252,
+              376,
+              16
+            ]
+          }
+        }
+      ],
+      "geomHash": 2872137939,
+      "coverage": 2003
+    },
+    {
+      "tile": "fill-stroke-border",
+      "feature": "fill + stroke border",
+      "section": "fill",
+      "strokes": [
+        {
+          "steps": 4500,
+          "drawn": 3518
+        }
+      ],
+      "fills": [
+        {
+          "layers": {
+            "0": [
+              304,
+              224,
+              264,
+              16,
+              128
+            ],
+            "1": [
+              304,
+              224,
+              264,
+              16
+            ],
+            "2": [
+              308,
+              216,
+              248,
+              16,
+              140
+            ],
+            "3": [
+              308,
+              216,
+              248,
+              16
+            ],
+            "4": [
+              294,
+              404,
+              236,
+              16,
+              248
+            ],
+            "5": [
+              294,
+              404,
+              236,
+              16
+            ],
+            "6": [
+              286,
+              388,
+              220,
+              16,
+              260
+            ],
+            "7": [
+              286,
+              388,
+              220,
+              16
+            ],
+            "8": [
+              277,
+              374,
+              384,
+              16,
+              248
+            ],
+            "9": [
+              277,
+              374,
+              384,
+              16
+            ],
+            "10": [
+              268,
+              358,
+              348,
+              16,
+              248
+            ],
+            "11": [
+              268,
+              358,
+              348,
+              16
+            ],
+            "12": [
+              262,
+              346,
+              316,
+              16,
+              250
+            ],
+            "13": [
+              262,
+              346,
+              316,
+              16
+            ],
+            "14": [
+              255,
+              328,
+              288,
+              16,
+              248
+            ],
+            "15": [
+              255,
+              328,
+              288,
+              16
+            ],
+            "16": [
+              247,
+              312,
+              260,
+              16,
+              248
+            ],
+            "17": [
+              247,
+              312,
+              260,
+              16
+            ],
+            "18": [
+              239,
+              298,
+              228,
+              16,
+              248
+            ],
+            "19": [
+              239,
+              298,
+              228,
+              16
+            ]
+          }
+        }
+      ],
+      "geomHash": 3265654834,
+      "coverage": 936
+    },
+    {
+      "tile": "wash",
+      "feature": "wash",
+      "section": "fill",
+      "strokes": [],
+      "fills": [],
+      "geomHash": 3265654834,
+      "coverage": 8243
+    },
+    {
+      "tile": "hatch-basic",
+      "feature": "hatch 5/45",
+      "section": "hatch",
+      "strokes": [
+        {
+          "steps": 80,
+          "drawn": 74
+        },
+        {
+          "steps": 205,
+          "drawn": 189
+        },
+        {
+          "steps": 330,
+          "drawn": 304
+        },
+        {
+          "steps": 455,
+          "drawn": 432
+        },
+        {
+          "steps": 580,
+          "drawn": 555
+        },
+        {
+          "steps": 705,
+          "drawn": 671
+        },
+        {
+          "steps": 830,
+          "drawn": 766
+        },
+        {
+          "steps": 955,
+          "drawn": 905
+        },
+        {
+          "steps": 1080,
+          "drawn": 1002
+        },
+        {
+          "steps": 1205,
+          "drawn": 1142
+        },
+        {
+          "steps": 1330,
+          "drawn": 1265
+        },
+        {
+          "steps": 1455,
+          "drawn": 1381
+        },
+        {
+          "steps": 1575,
+          "drawn": 1486
+        },
+        {
+          "steps": 1695,
+          "drawn": 1601
+        },
+        {
+          "steps": 1814,
+          "drawn": 1710
+        },
+        {
+          "steps": 1745,
+          "drawn": 1628
+        },
+        {
+          "steps": 1626,
+          "drawn": 1555
+        },
+        {
+          "steps": 1507,
+          "drawn": 1424
+        },
+        {
+          "steps": 1382,
+          "drawn": 1298
+        },
+        {
+          "steps": 1257,
+          "drawn": 1195
+        },
+        {
+          "steps": 1132,
+          "drawn": 1081
+        },
+        {
+          "steps": 1007,
+          "drawn": 952
+        },
+        {
+          "steps": 882,
+          "drawn": 810
+        },
+        {
+          "steps": 757,
+          "drawn": 710
+        },
+        {
+          "steps": 632,
+          "drawn": 596
+        },
+        {
+          "steps": 507,
+          "drawn": 486
+        },
+        {
+          "steps": 382,
+          "drawn": 363
+        },
+        {
+          "steps": 253,
+          "drawn": 246
+        },
+        {
+          "steps": 121,
+          "drawn": 116
+        }
+      ],
+      "fills": [],
+      "geomHash": 1416962621,
+      "coverage": 2966
+    },
+    {
+      "tile": "hatch-dense",
+      "feature": "hatch 2/0",
+      "section": "hatch",
+      "strokes": [
+        {
+          "steps": 1301,
+          "drawn": 1226
+        },
+        {
+          "steps": 1302,
+          "drawn": 1237
+        },
+        {
+          "steps": 1303,
+          "drawn": 1231
+        },
+        {
+          "steps": 1304,
+          "drawn": 1237
+        },
+        {
+          "steps": 1305,
+          "drawn": 1217
+        },
+        {
+          "steps": 1306,
+          "drawn": 1248
+        },
+        {
+          "steps": 1307,
+          "drawn": 1233
+        },
+        {
+          "steps": 1309,
+          "drawn": 1237
+        },
+        {
+          "steps": 1310,
+          "drawn": 1234
+        },
+        {
+          "steps": 1311,
+          "drawn": 1242
+        },
+        {
+          "steps": 1312,
+          "drawn": 1249
+        },
+        {
+          "steps": 1312,
+          "drawn": 1250
+        },
+        {
+          "steps": 1312,
+          "drawn": 1254
+        },
+        {
+          "steps": 1312,
+          "drawn": 1243
+        },
+        {
+          "steps": 1312,
+          "drawn": 1243
+        },
+        {
+          "steps": 1312,
+          "drawn": 1257
+        },
+        {
+          "steps": 1312,
+          "drawn": 1260
+        },
+        {
+          "steps": 1312,
+          "drawn": 1228
+        },
+        {
+          "steps": 1312,
+          "drawn": 1233
+        },
+        {
+          "steps": 1312,
+          "drawn": 1240
+        },
+        {
+          "steps": 1312,
+          "drawn": 1228
+        },
+        {
+          "steps": 1312,
+          "drawn": 1218
+        },
+        {
+          "steps": 1312,
+          "drawn": 1242
+        },
+        {
+          "steps": 1312,
+          "drawn": 1230
+        },
+        {
+          "steps": 1312,
+          "drawn": 1247
+        },
+        {
+          "steps": 1312,
+          "drawn": 1241
+        },
+        {
+          "steps": 1312,
+          "drawn": 1243
+        },
+        {
+          "steps": 1312,
+          "drawn": 1221
+        },
+        {
+          "steps": 1312,
+          "drawn": 1248
+        },
+        {
+          "steps": 1312,
+          "drawn": 1230
+        },
+        {
+          "steps": 1312,
+          "drawn": 1239
+        },
+        {
+          "steps": 1312,
+          "drawn": 1230
+        },
+        {
+          "steps": 1312,
+          "drawn": 1227
+        },
+        {
+          "steps": 1312,
+          "drawn": 1248
+        },
+        {
+          "steps": 1312,
+          "drawn": 1257
+        },
+        {
+          "steps": 1312,
+          "drawn": 1243
+        },
+        {
+          "steps": 1312,
+          "drawn": 1257
+        },
+        {
+          "steps": 1312,
+          "drawn": 1223
+        },
+        {
+          "steps": 1312,
+          "drawn": 1257
+        },
+        {
+          "steps": 1312,
+          "drawn": 1248
+        },
+        {
+          "steps": 1312,
+          "drawn": 1263
+        },
+        {
+          "steps": 1311,
+          "drawn": 1245
+        },
+        {
+          "steps": 1310,
+          "drawn": 1240
+        },
+        {
+          "steps": 1309,
+          "drawn": 1228
+        },
+        {
+          "steps": 1308,
+          "drawn": 1228
+        },
+        {
+          "steps": 1307,
+          "drawn": 1235
+        },
+        {
+          "steps": 1306,
+          "drawn": 1240
+        },
+        {
+          "steps": 1305,
+          "drawn": 1255
+        },
+        {
+          "steps": 1304,
+          "drawn": 1227
+        },
+        {
+          "steps": 1303,
+          "drawn": 1239
+        },
+        {
+          "steps": 1302,
+          "drawn": 1227
+        },
+        {
+          "steps": 1301,
+          "drawn": 1243
+        }
+      ],
+      "fills": [],
+      "geomHash": 2349301236,
+      "coverage": 5500
+    },
+    {
+      "tile": "hatch-rand",
+      "feature": "hatch rand",
+      "section": "hatch",
+      "strokes": [
+        {
+          "steps": 230,
+          "drawn": 214
+        },
+        {
+          "steps": 135,
+          "drawn": 123
+        },
+        {
+          "steps": 493,
+          "drawn": 467
+        },
+        {
+          "steps": 575,
+          "drawn": 537
+        },
+        {
+          "steps": 898,
+          "drawn": 847
+        },
+        {
+          "steps": 921,
+          "drawn": 869
+        },
+        {
+          "steps": 1264,
+          "drawn": 1191
+        },
+        {
+          "steps": 1389,
+          "drawn": 1336
+        },
+        {
+          "steps": 1504,
+          "drawn": 1409
+        },
+        {
+          "steps": 1496,
+          "drawn": 1411
+        },
+        {
+          "steps": 1401,
+          "drawn": 1342
+        },
+        {
+          "steps": 1536,
+          "drawn": 1459
+        },
+        {
+          "steps": 1526,
+          "drawn": 1445
+        },
+        {
+          "steps": 1483,
+          "drawn": 1407
+        },
+        {
+          "steps": 1458,
+          "drawn": 1366
+        },
+        {
+          "steps": 1350,
+          "drawn": 1267
+        },
+        {
+          "steps": 1228,
+          "drawn": 1177
+        },
+        {
+          "steps": 978,
+          "drawn": 919
+        },
+        {
+          "steps": 982,
+          "drawn": 926
+        },
+        {
+          "steps": 724,
+          "drawn": 681
+        },
+        {
+          "steps": 507,
+          "drawn": 477
+        },
+        {
+          "steps": 397,
+          "drawn": 375
+        },
+        {
+          "steps": 182,
+          "drawn": 172
+        },
+        {
+          "steps": 171,
+          "drawn": 160
+        }
+      ],
+      "fills": [],
+      "geomHash": 2673488932,
+      "coverage": 2157
+    },
+    {
+      "tile": "hatch-continuous",
+      "feature": "hatch continuous",
+      "section": "hatch",
+      "strokes": [
+        {
+          "steps": 360,
+          "drawn": 336
+        },
+        {
+          "steps": 685,
+          "drawn": 631
+        },
+        {
+          "steps": 178,
+          "drawn": 168
+        },
+        {
+          "steps": 894,
+          "drawn": 842
+        },
+        {
+          "steps": 794,
+          "drawn": 740
+        },
+        {
+          "steps": 1005,
+          "drawn": 956
+        },
+        {
+          "steps": 949,
+          "drawn": 885
+        },
+        {
+          "steps": 1108,
+          "drawn": 1047
+        },
+        {
+          "steps": 1058,
+          "drawn": 986
+        },
+        {
+          "steps": 1180,
+          "drawn": 1116
+        },
+        {
+          "steps": 1149,
+          "drawn": 1068
+        },
+        {
+          "steps": 1208,
+          "drawn": 1135
+        },
+        {
+          "steps": 1199,
+          "drawn": 1116
+        },
+        {
+          "steps": 1237,
+          "drawn": 1175
+        },
+        {
+          "steps": 1223,
+          "drawn": 1157
+        },
+        {
+          "steps": 1262,
+          "drawn": 1201
+        },
+        {
+          "steps": 1253,
+          "drawn": 1181
+        },
+        {
+          "steps": 1251,
+          "drawn": 1189
+        },
+        {
+          "steps": 1267,
+          "drawn": 1201
+        },
+        {
+          "steps": 1216,
+          "drawn": 1136
+        },
+        {
+          "steps": 1240,
+          "drawn": 1171
+        },
+        {
+          "steps": 1180,
+          "drawn": 1104
+        },
+        {
+          "steps": 1196,
+          "drawn": 1139
+        },
+        {
+          "steps": 1110,
+          "drawn": 1066
+        },
+        {
+          "steps": 1137,
+          "drawn": 1096
+        },
+        {
+          "steps": 1007,
+          "drawn": 943
+        },
+        {
+          "steps": 1061,
+          "drawn": 1012
+        },
+        {
+          "steps": 889,
+          "drawn": 832
+        },
+        {
+          "steps": 959,
+          "drawn": 905
+        },
+        {
+          "steps": 690,
+          "drawn": 654
+        },
+        {
+          "steps": 784,
+          "drawn": 740
+        },
+        {
+          "steps": 345,
+          "drawn": 327
+        },
+        {
+          "steps": 498,
+          "drawn": 466
+        }
+      ],
+      "fills": [],
+      "geomHash": 31275344,
+      "coverage": 3053
+    },
+    {
+      "tile": "hatch-gradient",
+      "feature": "hatch gradient",
+      "section": "hatch",
+      "strokes": [
+        {
+          "steps": 65,
+          "drawn": 59
+        },
+        {
+          "steps": 195,
+          "drawn": 179
+        },
+        {
+          "steps": 333,
+          "drawn": 314
+        },
+        {
+          "steps": 478,
+          "drawn": 449
+        },
+        {
+          "steps": 627,
+          "drawn": 583
+        },
+        {
+          "steps": 785,
+          "drawn": 743
+        },
+        {
+          "steps": 952,
+          "drawn": 901
+        },
+        {
+          "steps": 1129,
+          "drawn": 1075
+        },
+        {
+          "steps": 1317,
+          "drawn": 1211
+        },
+        {
+          "steps": 1517,
+          "drawn": 1463
+        },
+        {
+          "steps": 1718,
+          "drawn": 1598
+        },
+        {
+          "steps": 1749,
+          "drawn": 1632
+        },
+        {
+          "steps": 1523,
+          "drawn": 1438
+        },
+        {
+          "steps": 1272,
+          "drawn": 1188
+        },
+        {
+          "steps": 1005,
+          "drawn": 932
+        },
+        {
+          "steps": 723,
+          "drawn": 687
+        },
+        {
+          "steps": 423,
+          "drawn": 394
+        },
+        {
+          "steps": 106,
+          "drawn": 101
+        }
+      ],
+      "fills": [],
+      "geomHash": 2571785787,
+      "coverage": 1678
+    },
+    {
+      "tile": "hatch-style",
+      "feature": "hatchStyle marker",
+      "section": "hatch",
+      "strokes": [
+        {
+          "steps": 454,
+          "drawn": 472
+        },
+        {
+          "steps": 1361,
+          "drawn": 1379
+        },
+        {
+          "steps": 2269,
+          "drawn": 2287
+        },
+        {
+          "steps": 3176,
+          "drawn": 3194
+        },
+        {
+          "steps": 4026,
+          "drawn": 4044
+        },
+        {
+          "steps": 4656,
+          "drawn": 4674
+        },
+        {
+          "steps": 4656,
+          "drawn": 4674
+        },
+        {
+          "steps": 4656,
+          "drawn": 4674
+        },
+        {
+          "steps": 4656,
+          "drawn": 4674
+        },
+        {
+          "steps": 4656,
+          "drawn": 4674
+        },
+        {
+          "steps": 4656,
+          "drawn": 4674
+        },
+        {
+          "steps": 4656,
+          "drawn": 4674
+        },
+        {
+          "steps": 4656,
+          "drawn": 4674
+        },
+        {
+          "steps": 4656,
+          "drawn": 4674
+        },
+        {
+          "steps": 4219,
+          "drawn": 4237
+        },
+        {
+          "steps": 3381,
+          "drawn": 3399
+        },
+        {
+          "steps": 2474,
+          "drawn": 2492
+        },
+        {
+          "steps": 1553,
+          "drawn": 1571
+        },
+        {
+          "steps": 627,
+          "drawn": 645
+        }
+      ],
+      "fills": [],
+      "geomHash": 2213529786,
+      "coverage": 1819
+    },
+    {
+      "tile": "hatch-with-fill",
+      "feature": "hatch + fill",
+      "section": "hatch",
+      "strokes": [
+        {
+          "steps": 80,
+          "drawn": 72
+        },
+        {
+          "steps": 239,
+          "drawn": 232
+        },
+        {
+          "steps": 393,
+          "drawn": 371
+        },
+        {
+          "steps": 543,
+          "drawn": 511
+        },
+        {
+          "steps": 693,
+          "drawn": 656
+        },
+        {
+          "steps": 843,
+          "drawn": 796
+        },
+        {
+          "steps": 993,
+          "drawn": 940
+        },
+        {
+          "steps": 1143,
+          "drawn": 1076
+        },
+        {
+          "steps": 1293,
+          "drawn": 1233
+        },
+        {
+          "steps": 1443,
+          "drawn": 1357
+        },
+        {
+          "steps": 1587,
+          "drawn": 1500
+        },
+        {
+          "steps": 1730,
+          "drawn": 1621
+        },
+        {
+          "steps": 1804,
+          "drawn": 1716
+        },
+        {
+          "steps": 1661,
+          "drawn": 1576
+        },
+        {
+          "steps": 1518,
+          "drawn": 1436
+        },
+        {
+          "steps": 1370,
+          "drawn": 1302
+        },
+        {
+          "steps": 1220,
+          "drawn": 1144
+        },
+        {
+          "steps": 1070,
+          "drawn": 1023
+        },
+        {
+          "steps": 920,
+          "drawn": 873
+        },
+        {
+          "steps": 770,
+          "drawn": 735
+        },
+        {
+          "steps": 620,
+          "drawn": 594
+        },
+        {
+          "steps": 470,
+          "drawn": 452
+        },
+        {
+          "steps": 314,
+          "drawn": 296
+        },
+        {
+          "steps": 158,
+          "drawn": 153
+        },
+        {
+          "steps": 2,
+          "drawn": 2
+        }
+      ],
+      "fills": [
+        {
+          "layers": {
+            "0": [
+              320,
+              232,
+              280,
+              16,
+              88
+            ],
+            "1": [
+              320,
+              232,
+              280,
+              16
+            ],
+            "2": [
+              320,
+              224,
+              256,
+              16,
+              92
+            ],
+            "3": [
+              320,
+              224,
+              256,
+              16
+            ],
+            "4": [
+              308,
+              218,
+              236,
+              16,
+              164
+            ],
+            "5": [
+              308,
+              218,
+              236,
+              16
+            ],
+            "6": [
+              302,
+              204,
+              216,
+              16,
+              164
+            ],
+            "7": [
+              302,
+              204,
+              216,
+              16
+            ],
+            "8": [
+              291,
+              396,
+              404,
+              16,
+              320
+            ],
+            "9": [
+              291,
+              396,
+              404,
+              16
+            ],
+            "10": [
+              283,
+              380,
+              372,
+              16,
+              320
+            ],
+            "11": [
+              283,
+              380,
+              372,
+              16
+            ],
+            "12": [
+              275,
+              364,
+              340,
+              16,
+              328
+            ],
+            "13": [
+              275,
+              364,
+              340,
+              16
+            ],
+            "14": [
+              267,
+              346,
+              308,
+              16,
+              324
+            ],
+            "15": [
+              267,
+              346,
+              308,
+              16
+            ],
+            "16": [
+              261,
+              330,
+              272,
+              16,
+              320
+            ],
+            "17": [
+              261,
+              330,
+              272,
+              16
+            ],
+            "18": [
+              251,
+              316,
+              240,
+              16,
+              320
+            ],
+            "19": [
+              251,
+              316,
+              240,
+              16
+            ]
+          }
+        }
+      ],
+      "geomHash": 1538512604,
+      "coverage": 2481
+    },
+    {
+      "tile": "mass",
+      "feature": "mass",
+      "section": "hatch",
+      "strokes": [
+        {
+          "steps": 696,
+          "drawn": 696
+        },
+        {
+          "steps": 712,
+          "drawn": 712
+        },
+        {
+          "steps": 1295,
+          "drawn": 1295
+        },
+        {
+          "steps": 2385,
+          "drawn": 2385
+        },
+        {
+          "steps": 2200,
+          "drawn": 2200
+        },
+        {
+          "steps": 2717,
+          "drawn": 2717
+        },
+        {
+          "steps": 2252,
+          "drawn": 2252
+        },
+        {
+          "steps": 2422,
+          "drawn": 2422
+        },
+        {
+          "steps": 1351,
+          "drawn": 1351
+        },
+        {
+          "steps": 2399,
+          "drawn": 2399
+        },
+        {
+          "steps": 1981,
+          "drawn": 1981
+        },
+        {
+          "steps": 1945,
+          "drawn": 1945
+        },
+        {
+          "steps": 4416,
+          "drawn": 4416
+        },
+        {
+          "steps": 1653,
+          "drawn": 1653
+        },
+        {
+          "steps": 2619,
+          "drawn": 2619
+        },
+        {
+          "steps": 4493,
+          "drawn": 4493
+        },
+        {
+          "steps": 4629,
+          "drawn": 4629
+        },
+        {
+          "steps": 4576,
+          "drawn": 4576
+        },
+        {
+          "steps": 4356,
+          "drawn": 4356
+        },
+        {
+          "steps": 4519,
+          "drawn": 4519
+        },
+        {
+          "steps": 1453,
+          "drawn": 1453
+        },
+        {
+          "steps": 2525,
+          "drawn": 2525
+        },
+        {
+          "steps": 4355,
+          "drawn": 4355
+        },
+        {
+          "steps": 4251,
+          "drawn": 4251
+        },
+        {
+          "steps": 4279,
+          "drawn": 4279
+        },
+        {
+          "steps": 4445,
+          "drawn": 4445
+        },
+        {
+          "steps": 4391,
+          "drawn": 4391
+        },
+        {
+          "steps": 4567,
+          "drawn": 4567
+        },
+        {
+          "steps": 4604,
+          "drawn": 4604
+        },
+        {
+          "steps": 4451,
+          "drawn": 4451
+        },
+        {
+          "steps": 4498,
+          "drawn": 4498
+        },
+        {
+          "steps": 4643,
+          "drawn": 4643
+        },
+        {
+          "steps": 4508,
+          "drawn": 4508
+        },
+        {
+          "steps": 4382,
+          "drawn": 4382
+        },
+        {
+          "steps": 4616,
+          "drawn": 4616
+        },
+        {
+          "steps": 1949,
+          "drawn": 1949
+        },
+        {
+          "steps": 2186,
+          "drawn": 2186
+        },
+        {
+          "steps": 4538,
+          "drawn": 4538
+        },
+        {
+          "steps": 4454,
+          "drawn": 4454
+        },
+        {
+          "steps": 4499,
+          "drawn": 4499
+        },
+        {
+          "steps": 2294,
+          "drawn": 2294
+        },
+        {
+          "steps": 1762,
+          "drawn": 1762
+        },
+        {
+          "steps": 4552,
+          "drawn": 4552
+        },
+        {
+          "steps": 4635,
+          "drawn": 4635
+        },
+        {
+          "steps": 4619,
+          "drawn": 4619
+        },
+        {
+          "steps": 4507,
+          "drawn": 4507
+        },
+        {
+          "steps": 4633,
+          "drawn": 4633
+        },
+        {
+          "steps": 4575,
+          "drawn": 4575
+        },
+        {
+          "steps": 4548,
+          "drawn": 4548
+        },
+        {
+          "steps": 1536,
+          "drawn": 1536
+        },
+        {
+          "steps": 2586,
+          "drawn": 2586
+        },
+        {
+          "steps": 4608,
+          "drawn": 4608
+        },
+        {
+          "steps": 4552,
+          "drawn": 4552
+        },
+        {
+          "steps": 4612,
+          "drawn": 4612
+        },
+        {
+          "steps": 4246,
+          "drawn": 4246
+        },
+        {
+          "steps": 4441,
+          "drawn": 4441
+        },
+        {
+          "steps": 4490,
+          "drawn": 4490
+        },
+        {
+          "steps": 4395,
+          "drawn": 4395
+        },
+        {
+          "steps": 4649,
+          "drawn": 4649
+        },
+        {
+          "steps": 4571,
+          "drawn": 4571
+        },
+        {
+          "steps": 4415,
+          "drawn": 4415
+        },
+        {
+          "steps": 4490,
+          "drawn": 4490
+        },
+        {
+          "steps": 1874,
+          "drawn": 1874
+        },
+        {
+          "steps": 2097,
+          "drawn": 2097
+        },
+        {
+          "steps": 4329,
+          "drawn": 4329
+        },
+        {
+          "steps": 1728,
+          "drawn": 1728
+        },
+        {
+          "steps": 2323,
+          "drawn": 2323
+        },
+        {
+          "steps": 4317,
+          "drawn": 4317
+        },
+        {
+          "steps": 4482,
+          "drawn": 4482
+        },
+        {
+          "steps": 4478,
+          "drawn": 4478
+        },
+        {
+          "steps": 4370,
+          "drawn": 4370
+        },
+        {
+          "steps": 4475,
+          "drawn": 4475
+        },
+        {
+          "steps": 1491,
+          "drawn": 1491
+        },
+        {
+          "steps": 2619,
+          "drawn": 2619
+        },
+        {
+          "steps": 4437,
+          "drawn": 4437
+        },
+        {
+          "steps": 4586,
+          "drawn": 4586
+        },
+        {
+          "steps": 4558,
+          "drawn": 4558
+        },
+        {
+          "steps": 4580,
+          "drawn": 4580
+        },
+        {
+          "steps": 4644,
+          "drawn": 4644
+        },
+        {
+          "steps": 4511,
+          "drawn": 4511
+        },
+        {
+          "steps": 4532,
+          "drawn": 4532
+        },
+        {
+          "steps": 2638,
+          "drawn": 2638
+        },
+        {
+          "steps": 1383,
+          "drawn": 1383
+        },
+        {
+          "steps": 4496,
+          "drawn": 4496
+        },
+        {
+          "steps": 1555,
+          "drawn": 1555
+        },
+        {
+          "steps": 2427,
+          "drawn": 2427
+        },
+        {
+          "steps": 4336,
+          "drawn": 4336
+        },
+        {
+          "steps": 2189,
+          "drawn": 2189
+        },
+        {
+          "steps": 2135,
+          "drawn": 2135
+        },
+        {
+          "steps": 4466,
+          "drawn": 4466
+        },
+        {
+          "steps": 4560,
+          "drawn": 4560
+        },
+        {
+          "steps": 4668,
+          "drawn": 4668
+        },
+        {
+          "steps": 4455,
+          "drawn": 4455
+        },
+        {
+          "steps": 4669,
+          "drawn": 4669
+        },
+        {
+          "steps": 4429,
+          "drawn": 4429
+        },
+        {
+          "steps": 4545,
+          "drawn": 4545
+        },
+        {
+          "steps": 1568,
+          "drawn": 1568
+        },
+        {
+          "steps": 2648,
+          "drawn": 2648
+        },
+        {
+          "steps": 4537,
+          "drawn": 4537
+        },
+        {
+          "steps": 4563,
+          "drawn": 4563
+        },
+        {
+          "steps": 4558,
+          "drawn": 4558
+        },
+        {
+          "steps": 4357,
+          "drawn": 4357
+        },
+        {
+          "steps": 4490,
+          "drawn": 4490
+        },
+        {
+          "steps": 4652,
+          "drawn": 4652
+        },
+        {
+          "steps": 4518,
+          "drawn": 4518
+        },
+        {
+          "steps": 4501,
+          "drawn": 4501
+        },
+        {
+          "steps": 4523,
+          "drawn": 4523
+        },
+        {
+          "steps": 1958,
+          "drawn": 1958
+        },
+        {
+          "steps": 2101,
+          "drawn": 2101
+        },
+        {
+          "steps": 4300,
+          "drawn": 4300
+        },
+        {
+          "steps": 4462,
+          "drawn": 4462
+        },
+        {
+          "steps": 4296,
+          "drawn": 4296
+        },
+        {
+          "steps": 4432,
+          "drawn": 4432
+        },
+        {
+          "steps": 4263,
+          "drawn": 4263
+        },
+        {
+          "steps": 4640,
+          "drawn": 4640
+        },
+        {
+          "steps": 4447,
+          "drawn": 4447
+        },
+        {
+          "steps": 4011,
+          "drawn": 4011
+        },
+        {
+          "steps": 4611,
+          "drawn": 4611
+        },
+        {
+          "steps": 3089,
+          "drawn": 3089
+        },
+        {
+          "steps": 3222,
+          "drawn": 3222
+        },
+        {
+          "steps": 2328,
+          "drawn": 2328
+        },
+        {
+          "steps": 3196,
+          "drawn": 3196
+        },
+        {
+          "steps": 1369,
+          "drawn": 1369
+        },
+        {
+          "steps": 1423,
+          "drawn": 1423
+        },
+        {
+          "steps": 423,
+          "drawn": 423
+        },
+        {
+          "steps": 1323,
+          "drawn": 1323
+        },
+        {
+          "steps": 161,
+          "drawn": 161
+        },
+        {
+          "steps": 383,
+          "drawn": 383
+        },
+        {
+          "steps": 199,
+          "drawn": 199
+        },
+        {
+          "steps": 361,
+          "drawn": 361
+        },
+        {
+          "steps": 1062,
+          "drawn": 1062
+        },
+        {
+          "steps": 638,
+          "drawn": 638
+        },
+        {
+          "steps": 495,
+          "drawn": 495
+        },
+        {
+          "steps": 885,
+          "drawn": 885
+        },
+        {
+          "steps": 1462,
+          "drawn": 1462
+        },
+        {
+          "steps": 1913,
+          "drawn": 1913
+        },
+        {
+          "steps": 1491,
+          "drawn": 1491
+        },
+        {
+          "steps": 2336,
+          "drawn": 2336
+        },
+        {
+          "steps": 2333,
+          "drawn": 2333
+        },
+        {
+          "steps": 2792,
+          "drawn": 2792
+        },
+        {
+          "steps": 2337,
+          "drawn": 2337
+        },
+        {
+          "steps": 3227,
+          "drawn": 3227
+        },
+        {
+          "steps": 3203,
+          "drawn": 3203
+        },
+        {
+          "steps": 3765,
+          "drawn": 3765
+        },
+        {
+          "steps": 3250,
+          "drawn": 3250
+        },
+        {
+          "steps": 4268,
+          "drawn": 4268
+        },
+        {
+          "steps": 4242,
+          "drawn": 4242
+        },
+        {
+          "steps": 4596,
+          "drawn": 4596
+        },
+        {
+          "steps": 4294,
+          "drawn": 4294
+        },
+        {
+          "steps": 2537,
+          "drawn": 2537
+        },
+        {
+          "steps": 1526,
+          "drawn": 1526
+        },
+        {
+          "steps": 4585,
+          "drawn": 4585
+        },
+        {
+          "steps": 4605,
+          "drawn": 4605
+        },
+        {
+          "steps": 4616,
+          "drawn": 4616
+        },
+        {
+          "steps": 2015,
+          "drawn": 2015
+        },
+        {
+          "steps": 1994,
+          "drawn": 1994
+        },
+        {
+          "steps": 4565,
+          "drawn": 4565
+        },
+        {
+          "steps": 4584,
+          "drawn": 4584
+        },
+        {
+          "steps": 4622,
+          "drawn": 4622
+        },
+        {
+          "steps": 4569,
+          "drawn": 4569
+        },
+        {
+          "steps": 4573,
+          "drawn": 4573
+        },
+        {
+          "steps": 4560,
+          "drawn": 4560
+        },
+        {
+          "steps": 4612,
+          "drawn": 4612
+        },
+        {
+          "steps": 4645,
+          "drawn": 4645
+        },
+        {
+          "steps": 4616,
+          "drawn": 4616
+        },
+        {
+          "steps": 2523,
+          "drawn": 2523
+        },
+        {
+          "steps": 1584,
+          "drawn": 1584
+        },
+        {
+          "steps": 4631,
+          "drawn": 4631
+        },
+        {
+          "steps": 4559,
+          "drawn": 4559
+        },
+        {
+          "steps": 4513,
+          "drawn": 4513
+        },
+        {
+          "steps": 4580,
+          "drawn": 4580
+        },
+        {
+          "steps": 4559,
+          "drawn": 4559
+        },
+        {
+          "steps": 4594,
+          "drawn": 4594
+        },
+        {
+          "steps": 4512,
+          "drawn": 4512
+        },
+        {
+          "steps": 4573,
+          "drawn": 4573
+        },
+        {
+          "steps": 4552,
+          "drawn": 4552
+        },
+        {
+          "steps": 4640,
+          "drawn": 4640
+        },
+        {
+          "steps": 4558,
+          "drawn": 4558
+        },
+        {
+          "steps": 4596,
+          "drawn": 4596
+        },
+        {
+          "steps": 4636,
+          "drawn": 4636
+        },
+        {
+          "steps": 4577,
+          "drawn": 4577
+        },
+        {
+          "steps": 4522,
+          "drawn": 4522
+        },
+        {
+          "steps": 4541,
+          "drawn": 4541
+        },
+        {
+          "steps": 4563,
+          "drawn": 4563
+        },
+        {
+          "steps": 4618,
+          "drawn": 4618
+        },
+        {
+          "steps": 4583,
+          "drawn": 4583
+        },
+        {
+          "steps": 1874,
+          "drawn": 1874
+        },
+        {
+          "steps": 2290,
+          "drawn": 2290
+        },
+        {
+          "steps": 4605,
+          "drawn": 4605
+        },
+        {
+          "steps": 2244,
+          "drawn": 2244
+        },
+        {
+          "steps": 1844,
+          "drawn": 1844
+        },
+        {
+          "steps": 4541,
+          "drawn": 4541
+        },
+        {
+          "steps": 1861,
+          "drawn": 1861
+        },
+        {
+          "steps": 2282,
+          "drawn": 2282
+        },
+        {
+          "steps": 4602,
+          "drawn": 4602
+        },
+        {
+          "steps": 4512,
+          "drawn": 4512
+        },
+        {
+          "steps": 4534,
+          "drawn": 4534
+        },
+        {
+          "steps": 2305,
+          "drawn": 2305
+        },
+        {
+          "steps": 1864,
+          "drawn": 1864
+        },
+        {
+          "steps": 4579,
+          "drawn": 4579
+        },
+        {
+          "steps": 4532,
+          "drawn": 4532
+        },
+        {
+          "steps": 4531,
+          "drawn": 4531
+        },
+        {
+          "steps": 1532,
+          "drawn": 1532
+        },
+        {
+          "steps": 2618,
+          "drawn": 2618
+        },
+        {
+          "steps": 4591,
+          "drawn": 4591
+        },
+        {
+          "steps": 1770,
+          "drawn": 1770
+        },
+        {
+          "steps": 2327,
+          "drawn": 2327
+        },
+        {
+          "steps": 4536,
+          "drawn": 4536
+        },
+        {
+          "steps": 1832,
+          "drawn": 1832
+        },
+        {
+          "steps": 2214,
+          "drawn": 2214
+        },
+        {
+          "steps": 4570,
+          "drawn": 4570
+        },
+        {
+          "steps": 1435,
+          "drawn": 1435
+        },
+        {
+          "steps": 2632,
+          "drawn": 2632
+        },
+        {
+          "steps": 4577,
+          "drawn": 4577
+        },
+        {
+          "steps": 1790,
+          "drawn": 1790
+        },
+        {
+          "steps": 2416,
+          "drawn": 2416
+        },
+        {
+          "steps": 4629,
+          "drawn": 4629
+        },
+        {
+          "steps": 1843,
+          "drawn": 1843
+        },
+        {
+          "steps": 2204,
+          "drawn": 2204
+        },
+        {
+          "steps": 4546,
+          "drawn": 4546
+        },
+        {
+          "steps": 4528,
+          "drawn": 4528
+        },
+        {
+          "steps": 4570,
+          "drawn": 4570
+        },
+        {
+          "steps": 2457,
+          "drawn": 2457
+        },
+        {
+          "steps": 1578,
+          "drawn": 1578
+        },
+        {
+          "steps": 4517,
+          "drawn": 4517
+        },
+        {
+          "steps": 4595,
+          "drawn": 4595
+        },
+        {
+          "steps": 4561,
+          "drawn": 4561
+        },
+        {
+          "steps": 4524,
+          "drawn": 4524
+        },
+        {
+          "steps": 4524,
+          "drawn": 4524
+        },
+        {
+          "steps": 4509,
+          "drawn": 4509
+        },
+        {
+          "steps": 4489,
+          "drawn": 4489
+        },
+        {
+          "steps": 1854,
+          "drawn": 1854
+        },
+        {
+          "steps": 2183,
+          "drawn": 2183
+        },
+        {
+          "steps": 4475,
+          "drawn": 4475
+        },
+        {
+          "steps": 1979,
+          "drawn": 1979
+        },
+        {
+          "steps": 2051,
+          "drawn": 2051
+        },
+        {
+          "steps": 4557,
+          "drawn": 4557
+        },
+        {
+          "steps": 2001,
+          "drawn": 2001
+        },
+        {
+          "steps": 2007,
+          "drawn": 2007
+        },
+        {
+          "steps": 4450,
+          "drawn": 4450
+        },
+        {
+          "steps": 4543,
+          "drawn": 4543
+        },
+        {
+          "steps": 4500,
+          "drawn": 4500
+        },
+        {
+          "steps": 4547,
+          "drawn": 4547
+        },
+        {
+          "steps": 4498,
+          "drawn": 4498
+        },
+        {
+          "steps": 4555,
+          "drawn": 4555
+        },
+        {
+          "steps": 4561,
+          "drawn": 4561
+        },
+        {
+          "steps": 2583,
+          "drawn": 2583
+        },
+        {
+          "steps": 1503,
+          "drawn": 1503
+        },
+        {
+          "steps": 4484,
+          "drawn": 4484
+        },
+        {
+          "steps": 3738,
+          "drawn": 3738
+        },
+        {
+          "steps": 3749,
+          "drawn": 3749
+        },
+        {
+          "steps": 2316,
+          "drawn": 2316
+        },
+        {
+          "steps": 2334,
+          "drawn": 2334
+        },
+        {
+          "steps": 1580,
+          "drawn": 1580
+        },
+        {
+          "steps": 370,
+          "drawn": 370
+        },
+        {
+          "steps": 446,
+          "drawn": 446
+        },
+        {
+          "steps": 933,
+          "drawn": 933
+        },
+        {
+          "steps": 231,
+          "drawn": 231
+        },
+        {
+          "steps": 897,
+          "drawn": 897
+        },
+        {
+          "steps": 329,
+          "drawn": 329
+        },
+        {
+          "steps": 1972,
+          "drawn": 1972
+        },
+        {
+          "steps": 2655,
+          "drawn": 2655
+        },
+        {
+          "steps": 3018,
+          "drawn": 3018
+        },
+        {
+          "steps": 3037,
+          "drawn": 3037
+        },
+        {
+          "steps": 3032,
+          "drawn": 3032
+        },
+        {
+          "steps": 1876,
+          "drawn": 1876
+        },
+        {
+          "steps": 2228,
+          "drawn": 2228
+        },
+        {
+          "steps": 4481,
+          "drawn": 4481
+        },
+        {
+          "steps": 4485,
+          "drawn": 4485
+        },
+        {
+          "steps": 2504,
+          "drawn": 2504
+        },
+        {
+          "steps": 1523,
+          "drawn": 1523
+        },
+        {
+          "steps": 4514,
+          "drawn": 4514
+        },
+        {
+          "steps": 4525,
+          "drawn": 4525
+        },
+        {
+          "steps": 4503,
+          "drawn": 4503
+        },
+        {
+          "steps": 4513,
+          "drawn": 4513
+        },
+        {
+          "steps": 4510,
+          "drawn": 4510
+        },
+        {
+          "steps": 4500,
+          "drawn": 4500
+        },
+        {
+          "steps": 4474,
+          "drawn": 4474
+        },
+        {
+          "steps": 4456,
+          "drawn": 4456
+        },
+        {
+          "steps": 4491,
+          "drawn": 4491
+        },
+        {
+          "steps": 1979,
+          "drawn": 1979
+        },
+        {
+          "steps": 2299,
+          "drawn": 2299
+        },
+        {
+          "steps": 4487,
+          "drawn": 4487
+        },
+        {
+          "steps": 4531,
+          "drawn": 4531
+        },
+        {
+          "steps": 4554,
+          "drawn": 4554
+        },
+        {
+          "steps": 2351,
+          "drawn": 2351
+        },
+        {
+          "steps": 1716,
+          "drawn": 1716
+        },
+        {
+          "steps": 4498,
+          "drawn": 4498
+        },
+        {
+          "steps": 2125,
+          "drawn": 2125
+        },
+        {
+          "steps": 1997,
+          "drawn": 1997
+        },
+        {
+          "steps": 4481,
+          "drawn": 4481
+        },
+        {
+          "steps": 2159,
+          "drawn": 2159
+        },
+        {
+          "steps": 2119,
+          "drawn": 2119
+        },
+        {
+          "steps": 4518,
+          "drawn": 4518
+        },
+        {
+          "steps": 1795,
+          "drawn": 1795
+        },
+        {
+          "steps": 2462,
+          "drawn": 2462
+        },
+        {
+          "steps": 4568,
+          "drawn": 4568
+        },
+        {
+          "steps": 2347,
+          "drawn": 2347
+        },
+        {
+          "steps": 1722,
+          "drawn": 1722
+        },
+        {
+          "steps": 4523,
+          "drawn": 4523
+        },
+        {
+          "steps": 4552,
+          "drawn": 4552
+        },
+        {
+          "steps": 4552,
+          "drawn": 4552
+        },
+        {
+          "steps": 4525,
+          "drawn": 4525
+        },
+        {
+          "steps": 4518,
+          "drawn": 4518
+        },
+        {
+          "steps": 4531,
+          "drawn": 4531
+        },
+        {
+          "steps": 4497,
+          "drawn": 4497
+        },
+        {
+          "steps": 2569,
+          "drawn": 2569
+        },
+        {
+          "steps": 1526,
+          "drawn": 1526
+        },
+        {
+          "steps": 4470,
+          "drawn": 4470
+        },
+        {
+          "steps": 4544,
+          "drawn": 4544
+        },
+        {
+          "steps": 4508,
+          "drawn": 4508
+        },
+        {
+          "steps": 4491,
+          "drawn": 4491
+        },
+        {
+          "steps": 4490,
+          "drawn": 4490
+        },
+        {
+          "steps": 4543,
+          "drawn": 4543
+        },
+        {
+          "steps": 4514,
+          "drawn": 4514
+        },
+        {
+          "steps": 2641,
+          "drawn": 2641
+        },
+        {
+          "steps": 1518,
+          "drawn": 1518
+        },
+        {
+          "steps": 4504,
+          "drawn": 4504
+        },
+        {
+          "steps": 4513,
+          "drawn": 4513
+        },
+        {
+          "steps": 4501,
+          "drawn": 4501
+        },
+        {
+          "steps": 4532,
+          "drawn": 4532
+        },
+        {
+          "steps": 4503,
+          "drawn": 4503
+        },
+        {
+          "steps": 4538,
+          "drawn": 4538
+        },
+        {
+          "steps": 4533,
+          "drawn": 4533
+        },
+        {
+          "steps": 1429,
+          "drawn": 1429
+        },
+        {
+          "steps": 2585,
+          "drawn": 2585
+        },
+        {
+          "steps": 4532,
+          "drawn": 4532
+        },
+        {
+          "steps": 4538,
+          "drawn": 4538
+        },
+        {
+          "steps": 4563,
+          "drawn": 4563
+        },
+        {
+          "steps": 4555,
+          "drawn": 4555
+        },
+        {
+          "steps": 4515,
+          "drawn": 4515
+        },
+        {
+          "steps": 4513,
+          "drawn": 4513
+        },
+        {
+          "steps": 4555,
+          "drawn": 4555
+        },
+        {
+          "steps": 2015,
+          "drawn": 2015
+        },
+        {
+          "steps": 2135,
+          "drawn": 2135
+        },
+        {
+          "steps": 4569,
+          "drawn": 4569
+        },
+        {
+          "steps": 4554,
+          "drawn": 4554
+        },
+        {
+          "steps": 4615,
+          "drawn": 4615
+        },
+        {
+          "steps": 4595,
+          "drawn": 4595
+        },
+        {
+          "steps": 4598,
+          "drawn": 4598
+        },
+        {
+          "steps": 4588,
+          "drawn": 4588
+        },
+        {
+          "steps": 4620,
+          "drawn": 4620
+        },
+        {
+          "steps": 2121,
+          "drawn": 2121
+        },
+        {
+          "steps": 2126,
+          "drawn": 2126
+        },
+        {
+          "steps": 4550,
+          "drawn": 4550
+        },
+        {
+          "steps": 2770,
+          "drawn": 2770
+        },
+        {
+          "steps": 1526,
+          "drawn": 1526
+        },
+        {
+          "steps": 4579,
+          "drawn": 4579
+        },
+        {
+          "steps": 4585,
+          "drawn": 4585
+        },
+        {
+          "steps": 4615,
+          "drawn": 4615
+        },
+        {
+          "steps": 4578,
+          "drawn": 4578
+        },
+        {
+          "steps": 4643,
+          "drawn": 4643
+        },
+        {
+          "steps": 4582,
+          "drawn": 4582
+        },
+        {
+          "steps": 4599,
+          "drawn": 4599
+        },
+        {
+          "steps": 4598,
+          "drawn": 4598
+        },
+        {
+          "steps": 4604,
+          "drawn": 4604
+        },
+        {
+          "steps": 2624,
+          "drawn": 2624
+        },
+        {
+          "steps": 1512,
+          "drawn": 1512
+        },
+        {
+          "steps": 4589,
+          "drawn": 4589
+        },
+        {
+          "steps": 4597,
+          "drawn": 4597
+        },
+        {
+          "steps": 4610,
+          "drawn": 4610
+        },
+        {
+          "steps": 4574,
+          "drawn": 4574
+        },
+        {
+          "steps": 4588,
+          "drawn": 4588
+        },
+        {
+          "steps": 4620,
+          "drawn": 4620
+        },
+        {
+          "steps": 4631,
+          "drawn": 4631
+        },
+        {
+          "steps": 2153,
+          "drawn": 2153
+        },
+        {
+          "steps": 2081,
+          "drawn": 2081
+        },
+        {
+          "steps": 4596,
+          "drawn": 4596
+        },
+        {
+          "steps": 4680,
+          "drawn": 4680
+        },
+        {
+          "steps": 4634,
+          "drawn": 4634
+        },
+        {
+          "steps": 4582,
+          "drawn": 4582
+        },
+        {
+          "steps": 4630,
+          "drawn": 4630
+        },
+        {
+          "steps": 4599,
+          "drawn": 4599
+        },
+        {
+          "steps": 4604,
+          "drawn": 4604
+        },
+        {
+          "steps": 4558,
+          "drawn": 4558
+        },
+        {
+          "steps": 4595,
+          "drawn": 4595
+        },
+        {
+          "steps": 4274,
+          "drawn": 4274
+        },
+        {
+          "steps": 4242,
+          "drawn": 4242
+        },
+        {
+          "steps": 3547,
+          "drawn": 3547
+        },
+        {
+          "steps": 4234,
+          "drawn": 4234
+        },
+        {
+          "steps": 2924,
+          "drawn": 2924
+        },
+        {
+          "steps": 2882,
+          "drawn": 2882
+        },
+        {
+          "steps": 702,
+          "drawn": 702
+        },
+        {
+          "steps": 1379,
+          "drawn": 1379
+        },
+        {
+          "steps": 2920,
+          "drawn": 2920
+        },
+        {
+          "steps": 786,
+          "drawn": 786
+        },
+        {
+          "steps": 1699,
+          "drawn": 1699
+        },
+        {
+          "steps": 406,
+          "drawn": 406
+        },
+        {
+          "steps": 429,
+          "drawn": 429
+        },
+        {
+          "steps": 1604,
+          "drawn": 1604
+        },
+        {
+          "steps": 334,
+          "drawn": 334
+        },
+        {
+          "steps": 320,
+          "drawn": 320
+        }
+      ],
+      "fills": [],
+      "geomHash": 4065064289,
+      "coverage": 11625
+    },
+    {
+      "tile": "geo-line",
+      "feature": "line",
+      "section": "geometry",
+      "strokes": [
+        {
+          "steps": 1856,
+          "drawn": 1230
+        }
+      ],
+      "fills": [],
+      "geomHash": 3888775120,
+      "coverage": 242
+    },
+    {
+      "tile": "geo-flowline",
+      "feature": "flowLine",
+      "section": "geometry",
+      "strokes": [
+        {
+          "steps": 1312,
+          "drawn": 842
+        },
+        {
+          "steps": 1312,
+          "drawn": 867
+        }
+      ],
+      "fills": [],
+      "geomHash": 2510724718,
+      "coverage": 340
+    },
+    {
+      "tile": "geo-spline",
+      "feature": "spline",
+      "section": "geometry",
+      "strokes": [
+        {
+          "steps": 2745,
+          "drawn": 2120
+        }
+      ],
+      "fills": [],
+      "geomHash": 546017306,
+      "coverage": 400
+    },
+    {
+      "tile": "geo-polygon",
+      "feature": "polygon",
+      "section": "geometry",
+      "strokes": [
+        {
+          "steps": 1129,
+          "drawn": 830
+        },
+        {
+          "steps": 1141,
+          "drawn": 844
+        },
+        {
+          "steps": 756,
+          "drawn": 562
+        },
+        {
+          "steps": 956,
+          "drawn": 710
+        }
+      ],
+      "fills": [],
+      "geomHash": 3789351032,
+      "coverage": 380
+    },
+    {
+      "tile": "geo-beginshape",
+      "feature": "beginShape curved",
+      "section": "geometry",
+      "strokes": [
+        {
+          "steps": 3405,
+          "drawn": 2518
+        }
+      ],
+      "fills": [],
+      "geomHash": 1659033506,
+      "coverage": 328
+    },
+    {
+      "tile": "geo-beginstroke",
+      "feature": "beginStroke/move",
+      "section": "geometry",
+      "strokes": [
+        {
+          "steps": 1219,
+          "drawn": 628
+        }
+      ],
+      "fills": [],
+      "geomHash": 2605046747,
+      "coverage": 178
+    },
+    {
+      "tile": "geo-rect-circle-arc",
+      "feature": "rect/circle/arc",
+      "section": "geometry",
+      "strokes": [
+        {
+          "steps": 2437,
+          "drawn": 2272
+        },
+        {
+          "steps": 1885,
+          "drawn": 1770
+        },
+        {
+          "steps": 1584,
+          "drawn": 1480
+        }
+      ],
+      "fills": [],
+      "geomHash": 3867809505,
+      "coverage": 568
+    },
+    {
+      "tile": "geo-transform",
+      "feature": "push/rotate/scale",
+      "section": "geometry",
+      "strokes": [
+        {
+          "steps": 4125,
+          "drawn": 2774
+        }
+      ],
+      "fills": [],
+      "geomHash": 3170879214,
+      "coverage": 437
+    },
+    {
+      "tile": "color-multi",
+      "feature": "multi-color",
+      "section": "color",
+      "strokes": [],
+      "fills": [
+        {
+          "layers": {
+            "0": [
+              384,
+              288,
+              176,
+              16,
+              44
+            ],
+            "1": [
+              384,
+              288,
+              176,
+              16
+            ],
+            "2": [
+              392,
+              280,
+              160,
+              16,
+              44
+            ],
+            "3": [
+              392,
+              280,
+              160,
+              16
+            ],
+            "4": [
+              376,
+              260,
+              288,
+              16,
+              80
+            ],
+            "5": [
+              376,
+              260,
+              288,
+              16
+            ],
+            "6": [
+              364,
+              248,
+              272,
+              16,
+              80
+            ],
+            "7": [
+              364,
+              248,
+              272,
+              16
+            ],
+            "8": [
+              350,
+              238,
+              244,
+              16,
+              152
+            ],
+            "9": [
+              350,
+              238,
+              244,
+              16
+            ],
+            "10": [
+              340,
+              228,
+              220,
+              16,
+              152
+            ],
+            "11": [
+              340,
+              228,
+              220,
+              16
+            ],
+            "12": [
+              329,
+              215,
+              396,
+              16,
+              292
+            ],
+            "13": [
+              329,
+              215,
+              396,
+              16
+            ],
+            "14": [
+              319,
+              205,
+              360,
+              16,
+              292
+            ],
+            "15": [
+              319,
+              205,
+              360,
+              16
+            ],
+            "16": [
+              310,
+              390,
+              316,
+              16,
+              292
+            ],
+            "17": [
+              310,
+              390,
+              316,
+              16
+            ],
+            "18": [
+              301,
+              372,
+              280,
+              16,
+              292
+            ],
+            "19": [
+              301,
+              372,
+              280,
+              16
+            ]
+          }
+        },
+        {
+          "layers": {
+            "0": [
+              384,
+              288,
+              176,
+              16,
+              124
+            ],
+            "1": [
+              384,
+              288,
+              176,
+              16
+            ],
+            "2": [
+              392,
+              280,
+              160,
+              16,
+              124
+            ],
+            "3": [
+              392,
+              280,
+              160,
+              16
+            ],
+            "4": [
+              376,
+              260,
+              296,
+              16,
+              244
+            ],
+            "5": [
+              376,
+              260,
+              296,
+              16
+            ],
+            "6": [
+              364,
+              252,
+              272,
+              16,
+              240
+            ],
+            "7": [
+              364,
+              252,
+              272,
+              16
+            ],
+            "8": [
+              350,
+              238,
+              240,
+              16,
+              236
+            ],
+            "9": [
+              350,
+              238,
+              240,
+              16
+            ],
+            "10": [
+              340,
+              228,
+              220,
+              16,
+              236
+            ],
+            "11": [
+              340,
+              228,
+              220,
+              16
+            ],
+            "12": [
+              329,
+              215,
+              392,
+              16,
+              233
+            ],
+            "13": [
+              329,
+              215,
+              392,
+              16
+            ],
+            "14": [
+              319,
+              205,
+              356,
+              16,
+              233
+            ],
+            "15": [
+              319,
+              205,
+              356,
+              16
+            ],
+            "16": [
+              310,
+              390,
+              316,
+              16,
+              233
+            ],
+            "17": [
+              310,
+              390,
+              316,
+              16
+            ],
+            "18": [
+              300,
+              372,
+              280,
+              16,
+              233
+            ],
+            "19": [
+              300,
+              372,
+              280,
+              16
+            ]
+          }
+        },
+        {
+          "layers": {
+            "0": [
+              384,
+              288,
+              176,
+              16,
+              92
+            ],
+            "1": [
+              384,
+              288,
+              176,
+              16
+            ],
+            "2": [
+              392,
+              280,
+              160,
+              16,
+              92
+            ],
+            "3": [
+              392,
+              280,
+              160,
+              16
+            ],
+            "4": [
+              376,
+              260,
+              288,
+              16,
+              176
+            ],
+            "5": [
+              376,
+              260,
+              288,
+              16
+            ],
+            "6": [
+              364,
+              248,
+              272,
+              16,
+              180
+            ],
+            "7": [
+              364,
+              248,
+              272,
+              16
+            ],
+            "8": [
+              350,
+              238,
+              240,
+              16,
+              344
+            ],
+            "9": [
+              350,
+              238,
+              240,
+              16
+            ],
+            "10": [
+              340,
+              228,
+              220,
+              16,
+              344
+            ],
+            "11": [
+              340,
+              228,
+              220,
+              16
+            ],
+            "12": [
+              329,
+              215,
+              396,
+              16,
+              338
+            ],
+            "13": [
+              329,
+              215,
+              396,
+              16
+            ],
+            "14": [
+              319,
+              205,
+              356,
+              16,
+              338
+            ],
+            "15": [
+              319,
+              205,
+              356,
+              16
+            ],
+            "16": [
+              310,
+              390,
+              316,
+              16,
+              338
+            ],
+            "17": [
+              310,
+              390,
+              316,
+              16
+            ],
+            "18": [
+              300,
+              372,
+              280,
+              16,
+              338
+            ],
+            "19": [
+              300,
+              372,
+              280,
+              16
+            ]
+          }
+        }
+      ],
+      "geomHash": 3214158545,
+      "coverage": 2122
+    },
+    {
+      "tile": "color-overdraw",
+      "feature": "heavy overdraw",
+      "section": "color",
+      "strokes": [
+        {
+          "steps": 4386,
+          "drawn": 4404
+        },
+        {
+          "steps": 4386,
+          "drawn": 4404
+        },
+        {
+          "steps": 4386,
+          "drawn": 4404
+        },
+        {
+          "steps": 4386,
+          "drawn": 4404
+        },
+        {
+          "steps": 4386,
+          "drawn": 4404
+        },
+        {
+          "steps": 4386,
+          "drawn": 4404
+        },
+        {
+          "steps": 4386,
+          "drawn": 4404
+        },
+        {
+          "steps": 4386,
+          "drawn": 4404
+        },
+        {
+          "steps": 4386,
+          "drawn": 4404
+        },
+        {
+          "steps": 4386,
+          "drawn": 4404
+        },
+        {
+          "steps": 4386,
+          "drawn": 4404
+        },
+        {
+          "steps": 4386,
+          "drawn": 4404
+        }
+      ],
+      "fills": [],
+      "geomHash": 3463634763,
+      "coverage": 3133
+    },
+    {
+      "tile": "color-darken",
+      "feature": "darken branch",
+      "section": "color",
+      "strokes": [
+        {
+          "steps": 3750,
+          "drawn": 3750
+        },
+        {
+          "steps": 3750,
+          "drawn": 3750
+        },
+        {
+          "steps": 3750,
+          "drawn": 3750
+        },
+        {
+          "steps": 3750,
+          "drawn": 3750
+        },
+        {
+          "steps": 3750,
+          "drawn": 3750
+        },
+        {
+          "steps": 3750,
+          "drawn": 3750
+        },
+        {
+          "steps": 3750,
+          "drawn": 3750
+        },
+        {
+          "steps": 3750,
+          "drawn": 3750
+        }
+      ],
+      "fills": [],
+      "geomHash": 2327349223,
+      "coverage": 3270
+    },
+    {
+      "tile": "color-alpha-low",
+      "feature": "alpha 5",
+      "section": "color",
+      "strokes": [],
+      "fills": [
+        {
+          "layers": {
+            "0": [
+              304,
+              224,
+              264,
+              16,
+              76
+            ],
+            "1": [
+              304,
+              224,
+              264,
+              16
+            ],
+            "2": [
+              308,
+              216,
+              248,
+              16,
+              76
+            ],
+            "3": [
+              308,
+              216,
+              248,
+              16
+            ],
+            "4": [
+              294,
+              404,
+              228,
+              16,
+              144
+            ],
+            "5": [
+              294,
+              404,
+              228,
+              16
+            ],
+            "6": [
+              286,
+              388,
+              208,
+              16,
+              144
+            ],
+            "7": [
+              286,
+              388,
+              208,
+              16
+            ],
+            "8": [
+              276,
+              376,
+              384,
+              16,
+              284
+            ],
+            "9": [
+              276,
+              376,
+              384,
+              16
+            ],
+            "10": [
+              268,
+              360,
+              352,
+              16,
+              284
+            ],
+            "11": [
+              268,
+              360,
+              352,
+              16
+            ],
+            "12": [
+              261,
+              348,
+              316,
+              16,
+              284
+            ],
+            "13": [
+              261,
+              348,
+              316,
+              16
+            ],
+            "14": [
+              253,
+              332,
+              288,
+              16,
+              284
+            ],
+            "15": [
+              253,
+              332,
+              288,
+              16
+            ],
+            "16": [
+              246,
+              314,
+              256,
+              16,
+              284
+            ],
+            "17": [
+              246,
+              314,
+              256,
+              16
+            ],
+            "18": [
+              239,
+              304,
+              228,
+              16,
+              284
+            ],
+            "19": [
+              239,
+              304,
+              228,
+              16
+            ]
+          }
+        }
+      ],
+      "geomHash": 3241960298,
+      "coverage": 0
+    },
+    {
+      "tile": "color-alpha-full",
+      "feature": "alpha 255",
+      "section": "color",
+      "strokes": [],
+      "fills": [
+        {
+          "layers": {
+            "0": [
+              320,
+              232,
+              280,
+              16,
+              220
+            ],
+            "1": [
+              320,
+              232,
+              280,
+              16
+            ],
+            "2": [
+              320,
+              224,
+              256,
+              16,
+              220
+            ],
+            "3": [
+              320,
+              224,
+              256,
+              16
+            ],
+            "4": [
+              308,
+              212,
+              236,
+              16,
+              216
+            ],
+            "5": [
+              308,
+              212,
+              236,
+              16
+            ],
+            "6": [
+              302,
+              204,
+              216,
+              16,
+              216
+            ],
+            "7": [
+              302,
+              204,
+              216,
+              16
+            ],
+            "8": [
+              291,
+              392,
+              400,
+              16,
+              215
+            ],
+            "9": [
+              291,
+              392,
+              400,
+              16
+            ],
+            "10": [
+              282,
+              378,
+              368,
+              16,
+              215
+            ],
+            "11": [
+              282,
+              378,
+              368,
+              16
+            ],
+            "12": [
+              274,
+              362,
+              332,
+              16,
+              215
+            ],
+            "13": [
+              274,
+              362,
+              332,
+              16
+            ],
+            "14": [
+              267,
+              346,
+              300,
+              16,
+              215
+            ],
+            "15": [
+              267,
+              346,
+              300,
+              16
+            ],
+            "16": [
+              260,
+              328,
+              268,
+              16,
+              215
+            ],
+            "17": [
+              260,
+              328,
+              268,
+              16
+            ],
+            "18": [
+              252,
+              314,
+              236,
+              16,
+              215
+            ],
+            "19": [
+              252,
+              314,
+              236,
+              16
+            ]
+          }
+        }
+      ],
+      "geomHash": 2597145519,
+      "coverage": 6458
+    },
+    {
+      "tile": "edge-subpixel",
+      "feature": "sub-pixel weight",
+      "section": "edge",
+      "strokes": [
+        {
+          "steps": 1312,
+          "drawn": 1251
+        },
+        {
+          "steps": 1312,
+          "drawn": 1242
+        },
+        {
+          "steps": 1312,
+          "drawn": 1228
+        },
+        {
+          "steps": 1312,
+          "drawn": 1266
+        },
+        {
+          "steps": 1312,
+          "drawn": 1235
+        },
+        {
+          "steps": 1312,
+          "drawn": 1248
+        }
+      ],
+      "fills": [],
+      "geomHash": 3373408663,
+      "coverage": 636
+    },
+    {
+      "tile": "edge-oversize",
+      "feature": "exits canvas",
+      "section": "edge",
+      "strokes": [
+        {
+          "steps": 4802,
+          "drawn": 3739
+        },
+        {
+          "steps": 4163,
+          "drawn": 3203
+        }
+      ],
+      "fills": [],
+      "geomHash": 1924308542,
+      "coverage": 963
+    },
+    {
+      "tile": "edge-self-intersect",
+      "feature": "self-intersecting fill",
+      "section": "edge",
+      "strokes": [],
+      "fills": [
+        {
+          "layers": {
+            "0": [
+              128,
+              112,
+              72,
+              16,
+              28
+            ],
+            "1": [
+              128,
+              112,
+              72,
+              16
+            ],
+            "2": [
+              144,
+              104,
+              64,
+              16,
+              28
+            ],
+            "3": [
+              144,
+              104,
+              64,
+              16
+            ],
+            "4": [
+              264,
+              184,
+              112,
+              16,
+              44
+            ],
+            "5": [
+              264,
+              184,
+              112,
+              16
+            ],
+            "6": [
+              256,
+              176,
+              104,
+              16,
+              44
+            ],
+            "7": [
+              256,
+              176,
+              104,
+              16
+            ],
+            "8": [
+              240,
+              328,
+              176,
+              16,
+              80
+            ],
+            "9": [
+              240,
+              328,
+              176,
+              16
+            ],
+            "10": [
+              232,
+              312,
+              160,
+              16,
+              80
+            ],
+            "11": [
+              232,
+              312,
+              160,
+              16
+            ],
+            "12": [
+              222,
+              292,
+              272,
+              16,
+              148
+            ],
+            "13": [
+              222,
+              292,
+              272,
+              16
+            ],
+            "14": [
+              216,
+              280,
+              248,
+              16,
+              148
+            ],
+            "15": [
+              216,
+              280,
+              248,
+              16
+            ],
+            "16": [
+              207,
+              262,
+              216,
+              16,
+              284
+            ],
+            "17": [
+              207,
+              262,
+              216,
+              16
+            ],
+            "18": [
+              402,
+              250,
+              376,
+              16,
+              284
+            ],
+            "19": [
+              402,
+              250,
+              376,
+              16
+            ]
+          }
+        }
+      ],
+      "geomHash": 258161481,
+      "coverage": 1504
+    },
+    {
+      "tile": "edge-zero-length",
+      "feature": "zero-length + dot",
+      "section": "edge",
+      "strokes": [
+        {
+          "steps": 39,
+          "drawn": 20
+        }
+      ],
+      "fills": [],
+      "geomHash": 2566825126,
+      "coverage": 4
+    },
+    {
+      "tile": "edge-tiny-shape",
+      "feature": "tiny fill",
+      "section": "edge",
+      "strokes": [],
+      "fills": [
+        {
+          "layers": {
+            "0": [
+              128,
+              112,
+              72,
+              16,
+              48
+            ],
+            "1": [
+              128,
+              112,
+              72,
+              16
+            ],
+            "2": [
+              144,
+              104,
+              64,
+              16,
+              48
+            ],
+            "3": [
+              144,
+              104,
+              64,
+              16
+            ],
+            "4": [
+              264,
+              184,
+              112,
+              16,
+              84
+            ],
+            "5": [
+              264,
+              184,
+              112,
+              16
+            ],
+            "6": [
+              256,
+              176,
+              104,
+              16,
+              84
+            ],
+            "7": [
+              256,
+              176,
+              104,
+              16
+            ],
+            "8": [
+              240,
+              328,
+              176,
+              16,
+              160
+            ],
+            "9": [
+              240,
+              328,
+              176,
+              16
+            ],
+            "10": [
+              232,
+              312,
+              160,
+              16,
+              160
+            ],
+            "11": [
+              232,
+              312,
+              160,
+              16
+            ],
+            "12": [
+              222,
+              292,
+              272,
+              16,
+              308
+            ],
+            "13": [
+              222,
+              292,
+              272,
+              16
+            ],
+            "14": [
+              216,
+              280,
+              248,
+              16,
+              308
+            ],
+            "15": [
+              216,
+              280,
+              248,
+              16
+            ],
+            "16": [
+              207,
+              260,
+              216,
+              16,
+              304
+            ],
+            "17": [
+              207,
+              260,
+              216,
+              16
+            ],
+            "18": [
+              402,
+              248,
+              376,
+              16,
+              304
+            ],
+            "19": [
+              402,
+              248,
+              376,
+              16
+            ]
+          }
+        }
+      ],
+      "geomHash": 4215280713,
+      "coverage": 19
+    },
+    {
+      "tile": "edge-custom-brush",
+      "feature": "custom add()",
+      "section": "edge",
+      "strokes": [
+        {
+          "steps": 1040,
+          "drawn": 1040
+        },
+        {
+          "steps": 942,
+          "drawn": 942
+        }
+      ],
+      "fills": [],
+      "geomHash": 2043629747,
+      "coverage": 329
+    },
+    {
+      "tile": "edge-wiggle",
+      "feature": "wiggle field",
+      "section": "edge",
+      "strokes": [
+        {
+          "steps": 1312,
+          "drawn": 948
+        },
+        {
+          "steps": 1312,
+          "drawn": 1007
+        },
+        {
+          "steps": 1312,
+          "drawn": 988
+        },
+        {
+          "steps": 1312,
+          "drawn": 981
+        }
+      ],
+      "fills": [],
+      "geomHash": 510959639,
+      "coverage": 487
+    }
+  ],
+  "capturedAt": "2026-08-31T05:17:48.476Z"
+}

@@ -21,19 +21,22 @@ import {
 import { drawPolygon, circle } from "./mask.js";
 import {
   constrain,
-  rr,
   map,
-  randInt,
   gaussian,
   rotate,
   cossin,
   toDegreesSigned,
   _onSeed,
+  STREAM,
+  hashU32,
+  rh,
+  nh,
 } from "../core/utils.js";
 import { isFieldReady } from "../core/flowfield.js";
 import { createColor, getAffineMatrix } from "../core/runtime.js";
 import { Polygon } from "../core/polygon.js";
 import { Plot } from "../core/plot.js";
+import { Stats } from "../core/stats.js";
 
 // Internal module imports
 import { initFillComposite } from "./composite.js";
@@ -131,6 +134,20 @@ export function noFill() {
 let _polygon;
 let _bbMinX, _bbMinY, _bbMaxX, _bbMaxY;
 
+// Hash-stream scope counters (W1b). Each createFill() gets a fresh fill id;
+// each randomized FillPoly operation (constructor setup, trim, grow, scatter,
+// erase, fill-level draws) grabs the next op salt. The op ORDER is fixed
+// control flow inside fill(), so (fillId, opId) is reproducible and is what
+// the W2 grow-compute dispatch receives as a uniform.
+let _fillId = 0;
+let _fillOp = 0;
+const nextOpSalt = () => (((_fillId << 10) + _fillOp++) >>> 0);
+
+_onSeed(() => {
+  _fillId = 0;
+  _fillOp = 0;
+});
+
 // Pre-compute gaussians for reuse
 const GAUSSIAN_POOL_SIZE = 512;
 const _gaussians = [[], []]; // [a, b]
@@ -199,6 +216,7 @@ export function createFill(polygon) {
       "No fill color set. Call brush.fill(color) before drawing shapes.",
     );
   }
+  if (Stats.enabled) Stats.beginFill();
   _polygon = polygon;
   _bbMinX = Infinity; _bbMinY = Infinity; _bbMaxX = -Infinity; _bbMaxY = -Infinity;
   for (const [a] of polygon.sides) {
@@ -207,15 +225,18 @@ export function createFill(polygon) {
     if (a.y < _bbMinY) _bbMinY = a.y;
     if (a.y > _bbMaxY) _bbMaxY = a.y;
   }
+  _fillId++;
+  _fillOp = 0;
+  const salt = nextOpSalt();
   const v = [...polygon.vertices];
-  const _wr = rr(0, 75);
+  const _wr = rh(STREAM.FILL_WR, salt, 0, 0, 75);
   const fluid = ~~(v.length * 0.25 * (_wr < 5 ? 1 : _wr < 15 ? 2 : 3));
   const strength = State.fill.bleed_strength;
   const modifiers = v.map(
-    (_, i) => (i > fluid ? 1 : 0.3) * rr(0.85, 1.4) * strength,
+    (_, i) => (i > fluid ? 1 : 0.3) * rh(STREAM.FILL_MOD, salt, i, 0.85, 1.4) * strength,
   );
   const shift = State.fill.angle == null
-    ? randInt(0, v.length)
+    ? ~~rh(STREAM.FILL_SHIFT, salt, 0, 0, v.length)
     : _fillStartIndex(v, State.fill.angle);
   const n = v.length;
   const shifted = new Array(n);
@@ -319,8 +340,9 @@ class FillPoly {
       }
 
       // Randomize center (single calculation)
-      const rx = rr(-0.6, 0.6) * maxX;
-      const ry = rr(-0.6, 0.6) * maxY;
+      const csalt = nextOpSalt();
+      const rx = rh(STREAM.FILL_CENTER_X, csalt, 0, -0.6, 0.6) * maxX;
+      const ry = rh(STREAM.FILL_CENTER_Y, csalt, 0, -0.6, 0.6) * maxY;
       this.midP = { x: center.x + rx, y: center.y + ry };
     } else {
       this.sizeX = sx;
@@ -351,9 +373,11 @@ class FillPoly {
     const evx = eEnd.x - eStart.x, evy = eEnd.y - eStart.y;
     const edgeLen = Math.hypot(evx, evy);
 
+    const salt = nextOpSalt();
+
     // Estimate typical vertex spacing from one random kept vertex pair,
     // then insert at least 0.2× that density along the bridge.
-    const sampleIdx = s >= 2 ? ~~rr(0, s - 1) : (trimEnd < totalN - 1 ? trimEnd : 0);
+    const sampleIdx = s >= 2 ? ~~rh(STREAM.TRIM_SAMPLE, salt, 0, 0, s - 1) : (trimEnd < totalN - 1 ? trimEnd : 0);
     const sa = this.v[sampleIdx], sb = this.v[(sampleIdx + 1) % totalN];
     const typicalSpacing = Math.max(1, Math.hypot(sb.x - sa.x, sb.y - sa.y));
     const nInsert = Math.max(2, Math.ceil(edgeLen / typicalSpacing * 0.05));
@@ -375,9 +399,9 @@ class FillPoly {
     const dirBase = this.dir[trimStart % this.dir.length];
     for (let k = 0; k < nInsert; k++, dst++) {
       const t = (k + 1) / (nInsert + 1);
-      v[dst] = { x: eStart.x + evx * t + rr(-jitterAmt, jitterAmt),
-                 y: eStart.y + evy * t + rr(-jitterAmt, jitterAmt) };
-      m[dst] = rr(0.3, 0.5);
+      v[dst] = { x: eStart.x + evx * t + rh(STREAM.TRIM_JIT_X, salt, k, -jitterAmt, jitterAmt),
+                 y: eStart.y + evy * t + rh(STREAM.TRIM_JIT_Y, salt, k, -jitterAmt, jitterAmt) };
+      m[dst] = rh(STREAM.TRIM_MOD, salt, k, 0.3, 0.5);
       dir[dst] = dirBase;
     }
 
@@ -406,8 +430,9 @@ class FillPoly {
     const mid = this.midP;
     const sides = _polygon.sides;
 
+    const salt = nextOpSalt();
     for (let i = 0; i < keep; i++) {
-      const j = ~~(i * step + rr(0, stepRand)) % L;
+      const j = ~~(i * step + rh(STREAM.SCATTER_PICK, salt, i, 0, stepRand)) % L;
       let p = this.v[j];
       let outside = false;
       // Bounding box reject — vertex outside AABB is definitely outside polygon
@@ -426,8 +451,8 @@ class FillPoly {
       }
       if (outside) {
         p = {
-          x: mid.x + (p.x - mid.x) * rr(0.3, 0.6),
-          y: mid.y + (p.y - mid.y) * rr(0.3, 0.6),
+          x: mid.x + (p.x - mid.x) * rh(STREAM.SCATTER_PULL_X, salt, i, 0.3, 0.6),
+          y: mid.y + (p.y - mid.y) * rh(STREAM.SCATTER_PULL_Y, salt, i, 0.3, 0.6),
         };
       }
       sv.push(p);
@@ -469,28 +494,20 @@ class FillPoly {
     const g2Pool = _gaussians[1],
       g2PoolLen = g2Pool.length;
 
+    const salt = nextOpSalt();
     let idx = 0;
     let insertedIdx = 0;
-    let mod = f === 999 ? rr(0.6, 0.8) : State.fill.bleed_strength;
+    let mod = f === 999 ? rh(STREAM.GROW_MOD999, salt, 0, 0.6, 0.8) : State.fill.bleed_strength;
 
     // Pre-compute GROW_CAP step — if even step (step=2,4,...), all odd-indexed inserted
-    // vertices will be discarded by downsampling. Skip cossin+rotation, preserve RNG sequence.
+    // vertices will be discarded by downsampling. Skip cossin+rotation.
+    // (Counter-based RNG: nothing to consume to keep sequences aligned.)
     const preStep = GROW_CAP && len * 2 > GROW_CAP ? Math.ceil(len * 2 / GROW_CAP) : 1;
     const skipInserted = preStep >= 2 && (preStep & 1) === 0;
 
     if (skipInserted) {
       // Fast path: inserted vertices will be discarded by GROW_CAP step=2.
       // Result is exactly the trimmed polygon — skip all array writes.
-      // Only consume RNG calls to maintain the sequence.
-      for (let i = 0; i < len; i++) {
-        const mi = tr_m[i];
-        if (f < 997) mod = mi;
-        if (mod >= 0.05) {
-          rr(-1, 1);
-          gPool[~~(rr(0, 1) * gPoolLen)]; rr(0.65, 1.35);
-          g2Pool[~~(rr(0, 1) * g2PoolLen)];
-        }
-      }
       return new FillPoly(tr_v, tr_m, this.midP, tr_dir, false, this.sizeX, this.sizeY);
     } else {
     for (let i = 0; i < len; i++) {
@@ -515,7 +532,7 @@ class FillPoly {
         continue;
       }
 
-      const rotDeg = (di ? bleedDirDeg : -bleedDirDeg) + rr(-1, 1) * 5;
+      const rotDeg = (di ? bleedDirDeg : -bleedDirDeg) + rh(STREAM.GROW_ROT, salt, i, -1, 1) * 5;
       const _cs = cossin(rotDeg);
       const c = _cs[0], s = _cs[1];
 
@@ -524,8 +541,9 @@ class FillPoly {
       const dirX = c * sideX + s * sideY;
       const dirY = c * sideY - s * sideX;
 
-      const d = gPool[~~(rr(0, 1) * gPoolLen)] * rr(0.65, 1.35) * mod;
-      const nextMod = mi + g2Pool[~~(rr(0, 1) * g2PoolLen)];
+      const d = gPool[hashU32(STREAM.GROW_DIST_POOL, salt, i) % gPoolLen] *
+        rh(STREAM.GROW_DIST_SCALE, salt, i, 0.65, 1.35) * mod;
+      const nextMod = mi + g2Pool[hashU32(STREAM.GROW_MOD_POOL, salt, i) % g2PoolLen];
 
       newMods[idx] = mi;
       newDirs[idx] = di;
@@ -608,7 +626,7 @@ class FillPoly {
 
     const fillMatrix = Mix.ctx.getTransform();
     const size = Math.max(this.sizeX, this.sizeY);
-    const darker = rr(0.15, 0.7);
+    const darker = rh(STREAM.FILL_DARKER, nextOpSalt(), 0, 0.15, 0.7);
     let pol = this.grow();
     const sparse = this.scatter(0.1).grow().scatter(0.75).flipDirs();
     let pols;
@@ -648,6 +666,7 @@ class FillPoly {
     }
 
     Mix.ctx.restore();
+    if (Stats.enabled) Stats.endFill();
   }
 
   /**
@@ -655,6 +674,10 @@ class FillPoly {
    * @param {number} i - The layer index.
    */
   layer(i, size, int, matrix = null) {
+    if (Stats.enabled) {
+      Stats.recordLayer(i, this.v.length);
+      for (let k = 0; k < this.v.length; k++) Stats.hashNums(this.v[k].x, this.v[k].y);
+    }
     Mix.ctx.lineWidth = map(i, 0, 24, size / 25, size / 30, true) * State.fill.border_strength;
 
     Mix.ctx.fillStyle = "rgb(255 0 0 / " + int + "%)";
@@ -672,7 +695,8 @@ class FillPoly {
   erase(texture, intensity) {
     Mix.ctx.save();
 
-    const numCircles = ~~(rr(80, 110) * map(texture, 0, 1, 2, 3.5));
+    const salt = nextOpSalt();
+    const numCircles = ~~(rh(STREAM.ERASE_COUNT, salt, 0, 80, 110) * map(texture, 0, 1, 2, 3.5));
     const halfSizeX = this.sizeX / 1.3;
     const halfSizeY = this.sizeY / 1.3;
     const minSize =
@@ -689,9 +713,10 @@ class FillPoly {
     Mix.ctx.lineWidth = 0;
 
     for (let i = 0; i < numCircles; i++) {
-      const x = midX + gaussian(0, halfSizeX);
-      const y = midY + gaussian(0, halfSizeY);
-      const radius = rr(minSizeFactor, maxSizeFactor);
+      const x = midX + nh(STREAM.ERASE_X, salt, i, 0, halfSizeX);
+      const y = midY + nh(STREAM.ERASE_Y, salt, i, 0, halfSizeY);
+      const radius = rh(STREAM.ERASE_R, salt, i, minSizeFactor, maxSizeFactor);
+      if (Stats.enabled) Stats.hashNums(x, y, radius);
 
       Mix.ctx.beginPath();
       circle(x, y, radius);

@@ -15,15 +15,17 @@ vi.mock("../../src/core/target.js", () => ({
 }));
 
 vi.mock("../../src/core/utils.js", () => ({
-  rr: () => 0,
+  STREAM: new Proxy({}, { get: () => 0 }),
+  hashU32: () => 0,
+  hash01: () => 0,
+  rh: () => 0,
+  nh: () => 0,
   map: (value, start1, stop1, start2, stop2) =>
     start2 + ((value - start1) / (stop1 - start1 || 1)) * (stop2 - start2),
   dist: () => 0,
-  randInt: () => 0,
   calcAngle: () => 0,
   toDegrees: (v) => v,
   gaussian: () => 0,
-  rArray: () => 0,
   noise: () => 0,
   _onSeed: () => {},
 }));

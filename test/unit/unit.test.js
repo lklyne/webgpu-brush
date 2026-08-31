@@ -77,8 +77,9 @@ import {
   sin,
   rotate,
   intersectLines,
-  rr,
-  randInt,
+  rh,
+  hashU32,
+  STREAM,
   seed,
   weightedRand,
   toDegreesSigned,
@@ -268,13 +269,13 @@ describe("intersectLines()", () => {
   });
 });
 
-// ---- rr() and randInt() — seeded RNG ----
-describe("rr() — seeded random", () => {
+// ---- rh() / hashU32() — counter-based hash RNG (W1b) ----
+describe("rh() — counter-based hash random", () => {
   beforeAll(() => seed(42));
 
   it("returns a number in [min, max)", () => {
     for (let i = 0; i < 50; i++) {
-      const v = rr(5, 10);
+      const v = rh(STREAM.STROKE_SETUP, 7, i, 5, 10);
       expect(v).toBeGreaterThanOrEqual(5);
       expect(v).toBeLessThan(10);
     }
@@ -282,31 +283,30 @@ describe("rr() — seeded random", () => {
 
   it("default range is [0, 1)", () => {
     for (let i = 0; i < 50; i++) {
-      const v = rr();
+      const v = rh(STREAM.GROW_ROT, 3, i);
       expect(v).toBeGreaterThanOrEqual(0);
       expect(v).toBeLessThan(1);
     }
   });
 
-  it("produces consistent values with same seed", () => {
+  it("is a pure function of (seed, streamId, salt, index)", () => {
     seed(1234);
-    const a = rr(0, 100);
+    const a = rh(STREAM.FILL_WR, 5, 9, 0, 100);
+    rh(STREAM.FILL_WR, 1, 1); // interleaved draws must not affect anything
+    const b = rh(STREAM.FILL_WR, 5, 9, 0, 100);
+    expect(a).toBe(b);
     seed(1234);
-    const b = rr(0, 100);
-    expect(a).toBeCloseTo(b);
+    expect(rh(STREAM.FILL_WR, 5, 9, 0, 100)).toBe(a);
   });
-});
 
-describe("randInt()", () => {
-  beforeAll(() => seed(42));
-
-  it("returns integers in range", () => {
-    for (let i = 0; i < 100; i++) {
-      const v = randInt(0, 10);
-      expect(Number.isInteger(v)).toBe(true);
-      expect(v).toBeGreaterThanOrEqual(0);
-      expect(v).toBeLessThan(10);
-    }
+  it("changes with seed, streamId, salt and index", () => {
+    seed(1);
+    const base = hashU32(STREAM.FILL_WR, 5, 9);
+    expect(hashU32(STREAM.FILL_MOD, 5, 9)).not.toBe(base);
+    expect(hashU32(STREAM.FILL_WR, 6, 9)).not.toBe(base);
+    expect(hashU32(STREAM.FILL_WR, 5, 10)).not.toBe(base);
+    seed(2);
+    expect(hashU32(STREAM.FILL_WR, 5, 9)).not.toBe(base);
   });
 });
 

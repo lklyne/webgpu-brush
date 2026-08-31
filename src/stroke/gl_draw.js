@@ -20,6 +20,7 @@ import {
   resetDirectShaderTracking,
 } from "../core/renderer_runtime.js";
 import { getAffineMatrix } from "../core/runtime.js";
+import { Stats } from "../core/stats.js";
 import vertSrc from "./shader.vert";
 import fragSrc from "./shader.frag";
 import imgVertSrc from "./image.vert";
@@ -293,6 +294,10 @@ export function isReady() {
  * the current runtime transform so that brush.rotate() and brush.scale() work correctly.
  */
 export function circle(x, y, diameter, alpha) {
+  if (Stats.enabled) {
+    Stats.countStamp();
+    Stats.hashNums(x, y, diameter, alpha);
+  }
   // Grow buffer if needed
   if (circleCount >= bufferCapacity) {
     bufferCapacity *= 2;
@@ -343,6 +348,10 @@ export function circle(x, y, diameter, alpha) {
  * @param {number} [extraPadding=0] - Conservative extra padding in user units.
  */
 export function stampImage(x, y, size, angle, alpha, extraPadding = 0) {
+  if (Stats.enabled) {
+    Stats.countStamp();
+    Stats.hashNums(x, y, size, angle, alpha);
+  }
   if (imgCount >= imgCapacity) {
     imgCapacity *= 2;
     const next = new Float32Array(imgCapacity * IMG_FLOATS);

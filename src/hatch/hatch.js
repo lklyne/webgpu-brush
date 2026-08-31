@@ -1,5 +1,5 @@
 import { State } from "../core/color.js";
-import { toDegreesSigned, map, rr } from "../core/utils.js";
+import { toDegreesSigned, map, rh, STREAM, _onSeed } from "../core/utils.js";
 import { Polygon } from "../core/polygon.js";
 import { Plot } from "../core/plot.js";
 import { BrushState, BrushSetState, set, line } from "../stroke/stroke.js";
@@ -19,6 +19,12 @@ State.hatch = {
   options: {},
   hBrush: false,
 };
+
+// Hash-stream scope counter (W1b): one id per getHatchLines() invocation.
+let _hatchId = 0;
+_onSeed(() => {
+  _hatchId = 0;
+});
 
 /**
  * Returns a shallow snapshot of the current hatch modifier state.
@@ -276,15 +282,17 @@ export function getHatchLines(polygons) {
   const { dist, options, segs } = getActiveHatchConfig(polygons);
   const r = options.rand || 0;
   const lines = [];
+  _hatchId++;
+  const salt = _hatchId;
 
   for (let j = 0; j < segs.length; j++) {
     const s = segs[j];
     let x1 = s.x1, y1 = s.y1, x2 = s.x2, y2 = s.y2;
     if (r) {
-      x1 += 2 * r * dist * rr(-1, 1);
-      y1 += 2 * r * dist * rr(-1, 1);
-      x2 += 2 * r * dist * rr(-1, 1);
-      y2 += 2 * r * dist * rr(-1, 1);
+      x1 += 2 * r * dist * rh(STREAM.HATCH_JIT_X1, salt, j, -1, 1);
+      y1 += 2 * r * dist * rh(STREAM.HATCH_JIT_Y1, salt, j, -1, 1);
+      x2 += 2 * r * dist * rh(STREAM.HATCH_JIT_X2, salt, j, -1, 1);
+      y2 += 2 * r * dist * rh(STREAM.HATCH_JIT_Y2, salt, j, -1, 1);
     }
     const reverse = options.continuous && j % 2 === 1;
     const line = reverse
@@ -334,8 +342,8 @@ function renderHatchSegments(polygons, drawSegment) {
  * @param {Polygon|Polygon[]} polygons
  */
 export function createHatch(polygons) {
-  renderHatchSegments(polygons, (x1, y1, x2, y2) => {
-    if (State.hatch.hBrush) set(State.hatch.hBrush.brush, State.hatch.hBrush.color, State.hatch.hBrush.weight * rr(0.9,1.1));
+  renderHatchSegments(polygons, (x1, y1, x2, y2, j) => {
+    if (State.hatch.hBrush) set(State.hatch.hBrush.brush, State.hatch.hBrush.color, State.hatch.hBrush.weight * rh(STREAM.HATCH_WEIGHT, _hatchId, j, 0.9, 1.1));
     line(x1, y1, x2, y2);
   });
 }

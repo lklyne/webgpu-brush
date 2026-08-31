@@ -1,0 +1,545 @@
+{
+  "source": "upstream p5.brush@2.2.2 (pre-change RNG), seeds parity-0..3, coverage threshold 12",
+  "tiles": {
+    "brush-pen": {
+      "min": 443,
+      "max": 454,
+      "samples": [
+        443,
+        447,
+        450,
+        454
+      ]
+    },
+    "brush-rotring": {
+      "min": 441,
+      "max": 449,
+      "samples": [
+        446,
+        449,
+        447,
+        441
+      ]
+    },
+    "brush-2B": {
+      "min": 622,
+      "max": 639,
+      "samples": [
+        630,
+        629,
+        622,
+        639
+      ]
+    },
+    "brush-HB": {
+      "min": 566,
+      "max": 584,
+      "samples": [
+        566,
+        576,
+        584,
+        574
+      ]
+    },
+    "brush-2H": {
+      "min": 548,
+      "max": 559,
+      "samples": [
+        549,
+        548,
+        558,
+        559
+      ]
+    },
+    "brush-cpencil": {
+      "min": 481,
+      "max": 493,
+      "samples": [
+        490,
+        486,
+        493,
+        481
+      ]
+    },
+    "brush-pastel": {
+      "min": 2266,
+      "max": 2311,
+      "samples": [
+        2266,
+        2271,
+        2279,
+        2311
+      ]
+    },
+    "brush-crayon": {
+      "min": 1214,
+      "max": 1249,
+      "samples": [
+        1249,
+        1222,
+        1214,
+        1223
+      ]
+    },
+    "brush-charcoal": {
+      "min": 1150,
+      "max": 1228,
+      "samples": [
+        1160,
+        1150,
+        1228,
+        1152
+      ]
+    },
+    "brush-spray": {
+      "min": 3840,
+      "max": 3984,
+      "samples": [
+        3964,
+        3984,
+        3840,
+        3896
+      ]
+    },
+    "brush-marker": {
+      "min": 245,
+      "max": 287,
+      "samples": [
+        264,
+        256,
+        287,
+        245
+      ]
+    },
+    "brush-parity-custom": {
+      "min": 464,
+      "max": 472,
+      "samples": [
+        470,
+        465,
+        464,
+        472
+      ]
+    },
+    "brush-parity-image": {
+      "min": 2194,
+      "max": 2488,
+      "samples": [
+        2488,
+        2289,
+        2279,
+        2194
+      ]
+    },
+    "field-hand": {
+      "min": 891,
+      "max": 1082,
+      "samples": [
+        1082,
+        891,
+        960,
+        997
+      ]
+    },
+    "field-curved": {
+      "min": 751,
+      "max": 933,
+      "samples": [
+        751,
+        896,
+        842,
+        933
+      ]
+    },
+    "field-zigzag": {
+      "min": 881,
+      "max": 936,
+      "samples": [
+        912,
+        927,
+        936,
+        881
+      ]
+    },
+    "field-waves": {
+      "min": 910,
+      "max": 936,
+      "samples": [
+        936,
+        934,
+        925,
+        910
+      ]
+    },
+    "field-seabed": {
+      "min": 902,
+      "max": 944,
+      "samples": [
+        926,
+        909,
+        902,
+        944
+      ]
+    },
+    "field-spiral": {
+      "min": 163,
+      "max": 897,
+      "samples": [
+        499,
+        897,
+        163,
+        204
+      ]
+    },
+    "field-columns": {
+      "min": 745,
+      "max": 924,
+      "samples": [
+        745,
+        921,
+        924,
+        845
+      ]
+    },
+    "fill-basic": {
+      "min": 34,
+      "max": 1466,
+      "samples": [
+        1466,
+        1108,
+        34,
+        449
+      ]
+    },
+    "fill-bleed-out": {
+      "min": 1360,
+      "max": 4994,
+      "samples": [
+        4994,
+        1360,
+        4154,
+        3721
+      ]
+    },
+    "fill-bleed-in": {
+      "min": 504,
+      "max": 1725,
+      "samples": [
+        1174,
+        1725,
+        504,
+        845
+      ]
+    },
+    "fill-texture": {
+      "min": 599,
+      "max": 2003,
+      "samples": [
+        2003,
+        943,
+        599,
+        1033
+      ]
+    },
+    "fill-stroke-border": {
+      "min": 708,
+      "max": 2256,
+      "samples": [
+        936,
+        2256,
+        1788,
+        708
+      ]
+    },
+    "wash": {
+      "min": 8221,
+      "max": 8243,
+      "samples": [
+        8243,
+        8227,
+        8229,
+        8221
+      ]
+    },
+    "hatch-basic": {
+      "min": 2946,
+      "max": 2979,
+      "samples": [
+        2966,
+        2978,
+        2946,
+        2979
+      ]
+    },
+    "hatch-dense": {
+      "min": 5500,
+      "max": 5505,
+      "samples": [
+        5500,
+        5501,
+        5503,
+        5505
+      ]
+    },
+    "hatch-rand": {
+      "min": 2157,
+      "max": 2383,
+      "samples": [
+        2157,
+        2315,
+        2383,
+        2213
+      ]
+    },
+    "hatch-continuous": {
+      "min": 3022,
+      "max": 3063,
+      "samples": [
+        3053,
+        3063,
+        3022,
+        3036
+      ]
+    },
+    "hatch-gradient": {
+      "min": 1674,
+      "max": 1681,
+      "samples": [
+        1678,
+        1674,
+        1676,
+        1681
+      ]
+    },
+    "hatch-style": {
+      "min": 1810,
+      "max": 1877,
+      "samples": [
+        1819,
+        1812,
+        1877,
+        1810
+      ]
+    },
+    "hatch-with-fill": {
+      "min": 2481,
+      "max": 2954,
+      "samples": [
+        2481,
+        2954,
+        2737,
+        2630
+      ]
+    },
+    "mass": {
+      "min": 11625,
+      "max": 11947,
+      "samples": [
+        11625,
+        11789,
+        11720,
+        11947
+      ]
+    },
+    "geo-line": {
+      "min": 242,
+      "max": 259,
+      "samples": [
+        242,
+        247,
+        259,
+        247
+      ]
+    },
+    "geo-flowline": {
+      "min": 334,
+      "max": 343,
+      "samples": [
+        340,
+        343,
+        334,
+        335
+      ]
+    },
+    "geo-spline": {
+      "min": 392,
+      "max": 405,
+      "samples": [
+        400,
+        392,
+        397,
+        405
+      ]
+    },
+    "geo-polygon": {
+      "min": 378,
+      "max": 386,
+      "samples": [
+        380,
+        386,
+        384,
+        378
+      ]
+    },
+    "geo-beginshape": {
+      "min": 328,
+      "max": 336,
+      "samples": [
+        328,
+        333,
+        336,
+        333
+      ]
+    },
+    "geo-beginstroke": {
+      "min": 178,
+      "max": 180,
+      "samples": [
+        178,
+        180,
+        178,
+        179
+      ]
+    },
+    "geo-rect-circle-arc": {
+      "min": 553,
+      "max": 568,
+      "samples": [
+        568,
+        558,
+        562,
+        553
+      ]
+    },
+    "geo-transform": {
+      "min": 420,
+      "max": 437,
+      "samples": [
+        437,
+        420,
+        427,
+        421
+      ]
+    },
+    "color-multi": {
+      "min": 1737,
+      "max": 2122,
+      "samples": [
+        2122,
+        1737,
+        1821,
+        1963
+      ]
+    },
+    "color-overdraw": {
+      "min": 3105,
+      "max": 3167,
+      "samples": [
+        3133,
+        3167,
+        3105,
+        3159
+      ]
+    },
+    "color-darken": {
+      "min": 3247,
+      "max": 3270,
+      "samples": [
+        3270,
+        3252,
+        3247,
+        3264
+      ]
+    },
+    "color-alpha-low": {
+      "min": 0,
+      "max": 0,
+      "samples": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    "color-alpha-full": {
+      "min": 5058,
+      "max": 6547,
+      "samples": [
+        6458,
+        6547,
+        6490,
+        5058
+      ]
+    },
+    "edge-subpixel": {
+      "min": 636,
+      "max": 636,
+      "samples": [
+        636,
+        636,
+        636,
+        636
+      ]
+    },
+    "edge-oversize": {
+      "min": 940,
+      "max": 963,
+      "samples": [
+        963,
+        944,
+        940,
+        950
+      ]
+    },
+    "edge-self-intersect": {
+      "min": 1504,
+      "max": 2458,
+      "samples": [
+        1504,
+        2458,
+        2101,
+        2181
+      ]
+    },
+    "edge-zero-length": {
+      "min": 4,
+      "max": 5,
+      "samples": [
+        4,
+        4,
+        5,
+        4
+      ]
+    },
+    "edge-tiny-shape": {
+      "min": 13,
+      "max": 21,
+      "samples": [
+        19,
+        15,
+        21,
+        13
+      ]
+    },
+    "edge-custom-brush": {
+      "min": 324,
+      "max": 331,
+      "samples": [
+        329,
+        326,
+        331,
+        324
+      ]
+    },
+    "edge-wiggle": {
+      "min": 479,
+      "max": 502,
+      "samples": [
+        487,
+        479,
+        486,
+        502
+      ]
+    }
+  }
+}

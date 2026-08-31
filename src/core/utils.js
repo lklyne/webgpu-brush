@@ -55,6 +55,142 @@ function _makePRNG(seed) {
 let rng = _makePRNG(Math.random());
 let rng2 = _makePRNG(Math.random() + ':2');
 
+// ---------------------------------------------------------------------------
+// Counter-based hash RNG (W1b) — replaces the sequential rr() stream.
+//
+// Internal geometry randomness no longer draws from an implicit sequential
+// stream: every draw is hash(seed, streamId, salt, index), so any consumer
+// (including the W2+ GPU compute shaders) can reproduce any single value
+// from its coordinates alone, in any order, in parallel.
+//
+// Construction: multiply-xor input combiner + the lowbias32 finalizer
+// (Chris Wellons, "Prospecting for Hash Functions", 2018 — bias 0.107).
+// Cost is 5 imul + 6 xor/shift per draw, stateless — on par with one
+// Mulberry32 step and trivially portable to WGSL (u32 ops only).
+// Chosen over PCG: no 64-bit state/multiplies to emulate in either JS or
+// WGSL; over wang_hash: fewer rounds for measurably lower bias.
+//
+// This intentionally breaks same-seed reproduction of upstream p5.brush
+// sketches (settled plan decision). Run-to-run reproducibility per seed is
+// preserved: seed() resets _seedU32 and every module stream counter (via
+// _onSeed).
+// ---------------------------------------------------------------------------
+
+/**
+ * Stream identifiers — one per randomness purpose. W2 compute shaders must
+ * reproduce these ids verbatim; never renumber, only append.
+ */
+export const STREAM = {
+  // stroke: per-stroke setup (salt = strokeSalt, index = fixed slot 0..6)
+  STROKE_SETUP: 1,
+  // stroke: per-stroke alpha noise gaussian (salt = strokeSalt, index = 0)
+  STROKE_ALPHA_NOISE: 2,
+  // spray tip (salt = strokeSalt|phase, index = stamp i; dots (i<<12)+j)
+  SPRAY_GAUSS: 3,
+  SPRAY_SW: 4,
+  SPRAY_DOT_R: 5,
+  SPRAY_DOT_X: 6,
+  SPRAY_DOT_Y: 7,
+  // marker tip (salt = strokeSalt|phase, index = stamp i)
+  MARKER_VIB_X: 8,
+  MARKER_VIB_Y: 9,
+  MARKER_ALPHA: 10,
+  // image/custom tip (salt = strokeSalt|phase, index = stamp i)
+  TIP_VIB_X: 11,
+  TIP_VIB_Y: 12,
+  TIP_ROT: 13,
+  TIP_ALPHA: 14,
+  // default tip (salt = strokeSalt|phase, index = stamp i)
+  DEFAULT_GATE: 15,
+  DEFAULT_SCATTER: 16,
+  DEFAULT_PERP: 17,
+  DEFAULT_ALONG: 18,
+  DEFAULT_SIZE: 19,
+  DEFAULT_ALPHA: 20,
+  // fill setup (salt = fillSalt of op 0, index = vertex i or slot)
+  FILL_WR: 21,
+  FILL_MOD: 22,
+  FILL_SHIFT: 23,
+  FILL_CENTER_X: 24,
+  FILL_CENTER_Y: 25,
+  FILL_DARKER: 26,
+  // FillPoly.grow (salt = fillSalt per op, index = vertex i)
+  GROW_MOD999: 27,
+  GROW_ROT: 28,
+  GROW_DIST_POOL: 29,
+  GROW_DIST_SCALE: 30,
+  GROW_MOD_POOL: 31,
+  // FillPoly.trim (salt = fillSalt per op, index = bridge vertex k)
+  TRIM_SAMPLE: 32,
+  TRIM_JIT_X: 33,
+  TRIM_JIT_Y: 34,
+  TRIM_MOD: 35,
+  // FillPoly.scatter (salt = fillSalt per op, index = kept vertex i)
+  SCATTER_PICK: 36,
+  SCATTER_PULL_X: 37,
+  SCATTER_PULL_Y: 38,
+  // FillPoly.erase (salt = fillSalt per op, index = circle i)
+  ERASE_COUNT: 39,
+  ERASE_X: 40,
+  ERASE_Y: 41,
+  ERASE_R: 42,
+  // hatch (salt = hatchId, index = segment j)
+  HATCH_JIT_X1: 43,
+  HATCH_JIT_Y1: 44,
+  HATCH_JIT_X2: 45,
+  HATCH_JIT_Y2: 46,
+  HATCH_WEIGHT: 47,
+};
+
+/** Global seed word for the hash streams; reset by seed(). */
+let _seedU32 = _hashSeed(Math.random());
+
+/**
+ * Counter-based hash: (seed, streamId, salt, index) → uint32.
+ * @param {number} streamId - STREAM.* purpose id.
+ * @param {number} salt - Per-scope word (strokeSalt / fillSalt / hatchId).
+ * @param {number} index - Loop counter at the call site.
+ * @returns {number} uint32
+ */
+export const hashU32 = (streamId, salt, index) => {
+  let h =
+    (_seedU32 ^
+      Math.imul(streamId, 0x9e3779b1) ^
+      Math.imul(salt, 0x85ebca77) ^
+      Math.imul(index, 0xc2b2ae3d)) |
+    0;
+  h = Math.imul(h ^ (h >>> 16), 0x21f0aaad);
+  h = Math.imul(h ^ (h >>> 15), 0x735a2d97);
+  return (h ^ (h >>> 15)) >>> 0;
+};
+
+/**
+ * Counter-based uniform float in [0,1).
+ */
+export const hash01 = (streamId, salt, index) =>
+  hashU32(streamId, salt, index) * 2.3283064365386963e-10;
+
+/**
+ * Counter-based uniform float in [min, max). The rr() replacement.
+ * @param {number} streamId - STREAM.* purpose id.
+ * @param {number} salt - Per-scope word.
+ * @param {number} index - Loop counter at the call site.
+ * @param {number} [min=0]
+ * @param {number} [max=1]
+ */
+export const rh = (streamId, salt, index, min = 0, max = 1) =>
+  min + hash01(streamId, salt, index) * (max - min);
+
+/**
+ * Counter-based gaussian N(mean, stdev²) via Box-Muller on two hash draws
+ * (index*2, index*2+1).
+ */
+export const nh = (streamId, salt, index, mean = 0, stdev = 1) => {
+  const u = 1 - hash01(streamId, salt, index * 2);
+  const v = hash01(streamId, salt, index * 2 + 1);
+  return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v) * stdev + mean;
+};
+
 const _seedCallbacks = [];
 
 /**
@@ -72,6 +208,7 @@ export const _onSeed = (cb) => _seedCallbacks.push(cb);
 export const seed = (s) => {
   rng = _makePRNG(s);
   rng2 = _makePRNG(`${s}:2`);
+  _seedU32 = _hashSeed(s);
   _gaussCached = false; // reset cached gaussian on reseed
   for (const callback of _seedCallbacks) {
     callback();
@@ -94,14 +231,6 @@ export const noiseSeed = (s) => {
   noise = createNoise2D(_makePRNG(s));
   noise2 = createNoise2D(_makePRNG(`${s}:2`));
 };
-
-/**
- * Returns a random float in [min, max).
- * @param {number} [min=0]
- * @param {number} [max=1]
- * @returns {number}
- */
-export const rr = (e = 0, r = 1) => e + rng() * (r - e);
 
 /**
  * Generates a random number or picks a random element from an array.
@@ -128,12 +257,11 @@ export const rr2 = (e = 0, r = 1) => e + rng2() * (r - e);
 export const rArray = (array) => array[~~(rng() * array.length)];
 
 /**
- * Returns a random integer in [min, max).
+ * Returns a random integer in [min, max) from the user-facing stream.
  * @param {number} min
  * @param {number} max
  * @returns {number}
  */
-export const randInt = (e, r) => ~~rr(e, r);
 export const randInt2 = (e, r) => ~~rr2(e, r);
 
 /**

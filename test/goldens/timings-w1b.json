@@ -1,0 +1,86 @@
+{
+  "generatedAt": "2026-08-31T05:30:17.900Z",
+  "runs": 3,
+  "results": [
+    {
+      "scenario": "visual_suite",
+      "runs": 3,
+      "totalMs": 23326,
+      "drawMs": 23275,
+      "renderMs": 3,
+      "parseMs": 52
+    },
+    {
+      "scenario": "hatch_test",
+      "runs": 3,
+      "totalMs": 107.1,
+      "drawMs": null,
+      "renderMs": null,
+      "parseMs": null
+    },
+    {
+      "scenario": "fill_angle_test",
+      "runs": 3,
+      "totalMs": 145,
+      "drawMs": 128,
+      "renderMs": 2,
+      "parseMs": 16
+    },
+    {
+      "scenario": "angle_mode_test",
+      "runs": 3,
+      "totalMs": 63.4,
+      "drawMs": null,
+      "renderMs": null,
+      "parseMs": null
+    },
+    {
+      "scenario": "wash_test",
+      "runs": 3,
+      "totalMs": 53.6,
+      "drawMs": null,
+      "renderMs": null,
+      "parseMs": null
+    },
+    {
+      "scenario": "transform_test",
+      "runs": 3,
+      "totalMs": 69.6,
+      "drawMs": null,
+      "renderMs": null,
+      "parseMs": null
+    },
+    {
+      "scenario": "pushpop_test",
+      "runs": 3,
+      "totalMs": 67.2,
+      "drawMs": null,
+      "renderMs": null,
+      "parseMs": null
+    },
+    {
+      "scenario": "pastel_hatching_test",
+      "runs": 3,
+      "totalMs": 143.1,
+      "drawMs": null,
+      "renderMs": null,
+      "parseMs": null
+    },
+    {
+      "scenario": "field_explorer",
+      "runs": 3,
+      "totalMs": 56.2,
+      "drawMs": null,
+      "renderMs": null,
+      "parseMs": null
+    },
+    {
+      "scenario": "fill_circle_explorer",
+      "runs": 3,
+      "totalMs": 1121.4,
+      "drawMs": null,
+      "renderMs": null,
+      "parseMs": null
+    }
+  ]
+}
