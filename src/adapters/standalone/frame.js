@@ -61,14 +61,15 @@ export function clear(...args) {
   isCanvasReady();
   resetCompositeState();
 
-  const gl = Renderer.drawingContext;
   const color =
     args.length === 0
       ? [1, 1, 1, 0]
       : [...createColor(...args)._array.slice(0, 3), 1];
 
-  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-  gl.disable(gl.SCISSOR_TEST);
-  gl.clearColor(color[0], color[1], color[2], color[3]);
-  gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+  Renderer.host.clearPainting({
+    r: color[0],
+    g: color[1],
+    b: color[2],
+    a: color[3],
+  });
 }

@@ -1,17 +1,24 @@
 // =============================================================================
-// Adapter: Standalone Target Hooks
+// Adapter: Standalone Target Hooks (WebGPU, W3)
+//
+// The standalone target is now WebGPU-backed. brush.load()/createCanvas()
+// synchronously create the renderer and START async device acquisition;
+// callers must `await brush.ready()` before drawing (the WebGPU device
+// request has no synchronous form — recorded as a divergence in FORK.md).
 // =============================================================================
 
 import {
   setTargetRuntime,
   setTargetState,
 } from "../../core/target.js";
+import { createGpuHost } from "./gpu.js";
 
 let activeTarget = null;
 let isLoaded = false;
 let activeDensity = 1;
 let activeWidth = 0;
 let activeHeight = 0;
+let activeRenderer = null;
 
 function isCanvasTarget(target) {
   return (
@@ -31,22 +38,16 @@ function isSupportedTarget(target) {
   return isCanvasTarget(target) || isOffscreenCanvasTarget(target);
 }
 
-function getTargetContext(target) {
-  return (
-    target.getContext("webgl2", { premultipliedAlpha: true, preserveDrawingBuffer: true }) ??
-    target.getContext("webgl2", { preserveDrawingBuffer: true })
-  );
-}
-
 function createRenderer(target, width, height, density) {
-  const drawingContext = getTargetContext(target);
-  if (!drawingContext) {
-    throw new Error("brush.load(target) requires a canvas with a WebGL2 context.");
-  }
+  const host = createGpuHost(target, width, height, density);
 
   return {
     canvas: target,
-    drawingContext,
+    host,
+    // No WebGL context. Shared core code stores bookkeeping fields on the
+    // renderer (shaderProgram, blendSourceFramebuffer, glMask, mask) and
+    // adapter hooks read `renderer.host` for GPU access.
+    drawingContext: null,
     width,
     height,
     pixelDensity: () => density,
@@ -59,14 +60,59 @@ function applyLoadedTarget(target, width, height, density) {
   activeHeight = height;
   activeDensity = density;
 
-  const renderer = createRenderer(target, width, height, density);
+  activeRenderer = createRenderer(target, width, height, density);
   setTargetState({
-    Renderer: renderer,
+    Renderer: activeRenderer,
     Cwidth: width,
     Cheight: height,
     Density: density,
   });
   isLoaded = true;
+}
+
+/**
+ * Resolves when the active target's WebGPU device is initialized and
+ * drawing may begin. Callable any time after load()/createCanvas().
+ * @returns {Promise<void>}
+ */
+export async function ready() {
+  if (!activeRenderer) {
+    throw new Error("brush.ready(): no target loaded — call brush.load()/createCanvas() first.");
+  }
+  await activeRenderer.host.ready;
+  // Warm up the GPU stroke walker so synchronous drawing right after
+  // ready() can route eligible strokes to strokewalk-compute.
+  const { initWalkRouter } = await import("../../stroke/gl_draw.js");
+  await initWalkRouter(activeRenderer.host);
+}
+
+/**
+ * OUT-OF-BAND readback of the painting texture as RGBA pixels (gotcha #9:
+ * never called from any frame path — this is an explicit async API for
+ * inspection, export, and the parity harness, which cannot drawImage()
+ * a WebGPU canvas in every headless configuration).
+ *
+ * @returns {Promise<{width: number, height: number, pixels: Uint8ClampedArray}>}
+ */
+export async function readPixels() {
+  if (!activeRenderer) {
+    throw new Error("brush.readPixels(): no target loaded.");
+  }
+  const host = activeRenderer.host;
+  await host.ready;
+  host.requireReady();
+  const { readTexture } = await import("../../webgpu/readback.js");
+  const raw = await readTexture(host.gpu, host.painting);
+  const pixels = new Uint8ClampedArray(raw.data ?? raw);
+  // Swizzle BGRA → RGBA when the preferred canvas format is bgra8unorm.
+  if (host.gpu.format === "bgra8unorm") {
+    for (let i = 0; i < pixels.length; i += 4) {
+      const b = pixels[i];
+      pixels[i] = pixels[i + 2];
+      pixels[i + 2] = b;
+    }
+  }
+  return { width: host.painting.width, height: host.painting.height, pixels };
 }
 
 /**
@@ -129,8 +175,6 @@ export function createCanvas(width, height, options = {}) {
 /**
  * Refreshes the standalone target density.
  *
- * Standalone targets currently use a fixed density of 1.
- *
  * @returns {number}
  */
 export function syncDensity() {
@@ -161,7 +205,11 @@ export function activateInstance() {}
 export function deactivateInstance() {}
 
 /**
- * Standalone build does not yet support framebuffer targets.
+ * Standalone build does not support framebuffer targets — matches upstream
+ * (adapters/standalone returned null pre-port; the plan's open question is
+ * resolved by keeping this unimplemented: no scenario or tile ever draws
+ * into a p5.Framebuffer in the standalone build, and the composite's
+ * u_targetIsFramebuffer branch therefore never triggers here).
  *
  * @returns {null}
  */
@@ -171,8 +219,6 @@ export function getActiveFramebuffer() {
 
 /**
  * Returns whether the given target behaves like a framebuffer target.
- *
- * Standalone targets currently only accept canvases and offscreen canvases.
  *
  * @returns {boolean}
  */

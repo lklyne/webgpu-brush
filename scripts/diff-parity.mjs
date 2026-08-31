@@ -67,6 +67,11 @@ const SEED = opt("seed", "parity-0");
 const LEFT = opt("left", "/node_modules/p5.brush/dist/brush.esm.js");
 const RIGHT = opt("right", "/dist/brush.esm.js");
 const BASELINE = flag("baseline");
+// W3: --goldens <url path dir> — right pane vs frozen golden PNGs (the
+// integration gate); implies WebGPU-capable launch flags. --webgpu alone
+// switches launch flags without the goldens comparison.
+const GOLDENS = opt("goldens", null);
+const WEBGPU = flag("webgpu") || GOLDENS !== null;
 const DIFF_GAIN = 8;
 
 // ---------------------------------------------------------------------------
@@ -167,17 +172,25 @@ try {
 
   browser = await chromium.launch({
     executablePath: findExecutable(),
-    // swiftshader: both panes on one deterministic software GL rasterizer.
-    // disable-accelerated-2d-canvas: GPU-rasterized canvas2d (the fill-mask
-    // path) varies by ±1 LSB run-to-run with Chromium's render batching;
-    // software canvas2d is exactly reproducible. Without this flag the
-    // self-test reads worst ~0.2 RMSE on fill tiles instead of 0.
-    args: [
-      "--use-angle=swiftshader",
-      "--enable-unsafe-swiftshader",
-      "--disable-accelerated-2d-canvas",
-      "--disable-features=SkiaGraphite,CanvasOopRasterization,AcceleratedCanvas2d",
-    ],
+    // Two launch profiles:
+    // - default (upstream WebGL2 both panes): swiftshader — one
+    //   deterministic software GL rasterizer; software canvas2d.
+    // - WebGPU (the fork's adapter): software WebGPU does not exist on
+    //   this machine, so real GPU via Metal ANGLE (same flags as the W1a+
+    //   oracles).
+    args: WEBGPU
+      ? [
+          "--enable-unsafe-webgpu",
+          "--use-angle=metal",
+          "--enable-features=WebGPU",
+          "--disable-accelerated-2d-canvas",
+        ]
+      : [
+          "--use-angle=swiftshader",
+          "--enable-unsafe-swiftshader",
+          "--disable-accelerated-2d-canvas",
+          "--disable-features=SkiaGraphite,CanvasOopRasterization,AcceleratedCanvas2d",
+        ],
   });
 
   const page = await browser.newPage();
@@ -188,6 +201,8 @@ try {
   });
 
   const params = new URLSearchParams({ seed: SEED, left: LEFT, right: RIGHT });
+  if (GOLDENS) params.set("goldens", GOLDENS);
+  if (flag("cpuwalk")) params.set("cpuwalk", "1");
   await page.goto(`${baseUrl}/test/parity/parity.html?${params}`, {
     waitUntil: "load",
     timeout: 60_000,
@@ -209,7 +224,14 @@ try {
     regime: REGIME,
     rmse: Number(t.rmse.toFixed(4)),
     verdict:
-      REGIME === "character" ? "character" : t.rmse <= TOLERANCE ? "pass" : "fail",
+      // In goldens mode RMSE is measured against the frozen goldens, so it
+      // gates even in the character regime (the plan's "character-regime
+      // tiles are compared against the hash-rng goldens").
+      REGIME === "character" && !GOLDENS
+        ? "character"
+        : t.rmse <= TOLERANCE
+          ? "pass"
+          : "fail",
   }));
 
   const failing = tiles.filter((t) => t.verdict === "fail");
@@ -229,9 +251,13 @@ try {
     }
   }
 
-  // Baseline freeze
+  // Baseline freeze (--freeze-goldens redirects into test/goldens/tiles —
+  // W3 regenerated the goldens from the frozen W1b dist under the Metal
+  // environment; see FORK.md "Goldens re-baselined").
   if (BASELINE) {
-    const baseDir = join(PARITY_DIR, "baseline");
+    const baseDir = flag("freeze-goldens")
+      ? join(REPO_ROOT, "test", "goldens", "tiles")
+      : join(PARITY_DIR, "baseline");
     await rm(baseDir, { recursive: true, force: true });
     await mkdir(baseDir, { recursive: true });
     for (let i = 0; i < results.tiles.length; i++) {
@@ -264,6 +290,7 @@ try {
     regime: REGIME,
     tolerance: TOLERANCE,
     seed: SEED,
+    goldens: GOLDENS,
     left: LEFT,
     right: RIGHT,
     summary: {
@@ -290,7 +317,7 @@ try {
     console.error(`page errors:\n${pageErrors.map((e) => `  ${e}`).join("\n")}`);
     exitCode = 1;
   }
-  if (REGIME === "parity" && failing.length > 0) exitCode = 1;
+  if ((REGIME === "parity" || GOLDENS) && failing.length > 0) exitCode = 1;
 } catch (err) {
   console.error(err);
   exitCode = 1;

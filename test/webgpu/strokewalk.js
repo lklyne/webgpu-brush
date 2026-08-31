@@ -24,6 +24,7 @@
 
 import { initDevice } from "/src/webgpu/device.js";
 import { readBuffer } from "/src/webgpu/readback.js";
+import { PREFIX_SCAN_WGSL } from "/src/webgpu/wgsl/prefix-scan.wgsl.js";
 import {
   createStrokeWalker,
   createDescriptorBuilder,
@@ -163,6 +164,7 @@ function buildGaussPool(seed, trig) {
       id: "strokewalk-cpu",
     });
     void canvas;
+    if (brush.ready) await brush.ready(); // W3: WebGPU device init is async
     brush.angleMode("degrees");
     brush.clear("#f6f1e8");
 
@@ -316,7 +318,7 @@ function buildGaussPool(seed, trig) {
       const scramble = makeHashU32(0x5ca17e57);
       const counts = new Uint32Array(n);
       for (let i = 0; i < n; i++) counts[i] = i % 13 === 0 ? 0 : scramble(1, 0, i) % 5000;
-      const scanSrc = await (await fetch("/src/webgpu/wgsl/prefix-scan.wgsl")).text();
+      const scanSrc = PREFIX_SCAN_WGSL; // W3: bundled .wgsl.js
       const pipeline = gpu.device.createComputePipeline({
         layout: "auto",
         compute: { module: gpu.device.createShaderModule({ code: scanSrc }), entryPoint: "scanExclusive" },

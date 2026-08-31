@@ -24,6 +24,7 @@ import { initDevice } from "../../src/webgpu/device.js";
 import { createPipelineCache, createUniformRing, uploadTexture } from "../../src/webgpu/pipeline.js";
 import { readTexture } from "../../src/webgpu/readback.js";
 import { packBlendUniforms, spectralMix } from "../../src/webgpu/spectral.js";
+import { SPECTRAL_WGSL } from "../../src/webgpu/wgsl/spectral.wgsl.js";
 
 const statusEl = document.getElementById("status");
 const canvasesEl = document.getElementById("canvases");
@@ -272,11 +273,11 @@ try {
     ? { vendor: adapter.info.vendor, architecture: adapter.info.architecture }
     : null;
 
-  const [wgsl, fragSrc, vertSrc] = await Promise.all([
-    fetch("../../src/webgpu/wgsl/spectral.wgsl").then((r) => r.text()),
+  const [fragSrc, vertSrc] = await Promise.all([
     fetch("../../src/core/gl/shader.frag").then((r) => r.text()),
     fetch("../../src/core/gl/shader.vert").then((r) => r.text()),
   ]);
+  const wgsl = SPECTRAL_WGSL; // W3: bundled .wgsl.js is the canonical source
 
   const renderGlsl = makeGlslRenderer(vertSrc, fragSrc);
   const gpu = await initDevice({});

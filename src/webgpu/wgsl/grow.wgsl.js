@@ -1,3 +1,6 @@
+// W3: canonical WGSL source, unified to the .wgsl.js string-export convention
+// (was grow.wgsl, fetched at runtime pre-W3). Bundled by rollup like any module.
+export const GROW_WGSL = /* wgsl */ `
 // =============================================================================
 // grow.wgsl — FillPoly.grow() on the GPU (W2 grow-compute)
 //
@@ -7,7 +10,7 @@
 // verbatim below). The CPU implementation stays untouched and is the oracle.
 //
 // NOT COMPILABLE STANDALONE: src/webgpu/grow.js prepends a generated prelude
-// of `const STREAM_*: u32 = ...;` taken from STREAM in src/core/utils.js, so
+// of \`const STREAM_*: u32 = ...;\` taken from STREAM in src/core/utils.js, so
 // the stream ids cannot drift from the canonical map. See buildGrowPrelude().
 //
 // Two dispatches per grow() call (one "layer" step):
@@ -23,12 +26,12 @@
 //     no dispatchIndirect and no readback anywhere (plan gotcha #9).
 //
 // Exact-integer parity machinery (why this file is longer than the JS):
-//   - trim's `~~((1 - f) * totalN)` multiplies an f64 by a GPU-resident
+//   - trim's \`~~((1 - f) * totalN)\` multiplies an f64 by a GPU-resident
 //     integer. The fill() schedule (f = 1 - 0.0125*i, ...) makes the exact
 //     product land on integers, where f32 truncates differently than f64
 //     (e.g. f = 0.975, N = 40: f64 → 1, f32 → 0). f64FloorMulN() emulates
 //     the f64 multiply bit-exactly (96-bit limbs + round-to-nearest-even).
-//   - `Math.ceil(idx / GROW_CAP)` has the same integer attractor (GROW_CAP
+//   - \`Math.ceil(idx / GROW_CAP)\` has the same integer attractor (GROW_CAP
 //     multiples of 2024). capStep() looks up a JS-precomputed table of the
 //     largest idx per step value, built with the very JS expression it
 //     replaces — exact by construction.
@@ -77,7 +80,7 @@ struct Uniforms {
   bleed: f32,      // State.fill.bleed_strength
   bleedDirDeg: f32,// -90 for direction "out", +90 otherwise (fill.js grow)
   growCap: f32,    // GROW_CAP (informational; exact path uses the table)
-  floorCap: u32,   // Math.floor(GROW_CAP) — exact `idx > GROW_CAP` gate
+  floorCap: u32,   // Math.floor(GROW_CAP) — exact \`idx > GROW_CAP\` gate
   gMantHi: u32,    // f64 decomposition of (1 - f): value = mant * 2^-gShift
   gMantLo: u32,    //   mant = gMantHi * 2^32 + gMantLo  (<= 2^53)
   gShift: u32,     //   0 sentinel → (1-f) <= 0 → nTrim = 0
@@ -197,7 +200,7 @@ fn writeDst(o: u32, v: vec2f, m: f32, d: u32) {
 // Exact f64 floor((1-f) * N) — see header. mant = gMantHi:gMantLo (<= 2^53),
 // N <= 2^16, so the product fits 96 bits (3 u32 limbs). Replicates IEEE-754
 // round-to-nearest-even at 53 significant bits, then floors — bit-identical
-// to JS `~~((1 - f) * totalN)` for the domain used here (g in (0, 1], N > 0).
+// to JS \`~~((1 - f) * totalN)\` for the domain used here (g in (0, 1], N > 0).
 // ---------------------------------------------------------------------------
 
 fn mulWide(a: u32, b: u32) -> vec2u { // (lo, hi) — WGSL has no mul_hi
@@ -272,7 +275,7 @@ fn f64FloorMulN(n: u32) -> u32 {
 // T[s] = largest integer idx whose JS expression yields <= s. Exact by
 // construction (grow.js builds it with the replaced expression itself).
 fn capStep(idx: u32) -> u32 {
-  if (idx <= U.floorCap) { return 1u; } // JS: `len * 2 > GROW_CAP` gate
+  if (idx <= U.floorCap) { return 1u; } // JS: \`len * 2 > GROW_CAP\` gate
   for (var s = 1u; s <= STEP_TABLE_LEN; s = s + 1u) {
     if (idx <= bitcast<u32>(cst[STEP_TABLE_BASE + (s - 1u)])) { return s; }
   }
@@ -514,3 +517,5 @@ fn intSelfTest(@builtin(global_invocation_id) gid: vec3u) {
   dst[HDR_WORDS + k] = f64FloorMulN(k);
   dst[HDR_WORDS + U.cap + k] = capStep(k);
 }
+`;
+export default GROW_WGSL;

@@ -260,11 +260,14 @@ try {
   const baseUrl = `http://127.0.0.1:${server.address().port}`;
   browser = await chromium.launch({
     executablePath: findExecutable(),
+    // W3: the fork requires WebGPU (no software WebGPU here) — Metal ANGLE.
+    // Geometry capture (geomHash) is GPU-independent; the flags only need
+    // to let the adapter initialize.
     args: [
-      "--use-angle=swiftshader",
-      "--enable-unsafe-swiftshader",
+      "--enable-unsafe-webgpu",
+      "--use-angle=metal",
+      "--enable-features=WebGPU",
       "--disable-accelerated-2d-canvas",
-      "--disable-features=SkiaGraphite,CanvasOopRasterization,AcceleratedCanvas2d",
     ],
   });
   const page = await browser.newPage();

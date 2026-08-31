@@ -47,7 +47,8 @@
 //     and it fails loudly if the hash construction ever changes.
 // =============================================================================
 
-import { STREAM, hashU32, cos as utilCos, sin as utilSin } from "../core/utils.js";
+import { STREAM, hashU32, _getSeedU32, cos as utilCos, sin as utilSin } from "../core/utils.js";
+import { GROW_WGSL } from "./wgsl/grow.wgsl.js";
 
 // --------------------------------------------------------------------------
 // Poly buffer layout (bytes) — keep in sync with grow.wgsl header.
@@ -114,12 +115,13 @@ export function buildGrowPrelude() {
   );
 }
 
-/** Fetches wgsl/grow.wgsl (relative to this module) and prepends the prelude. */
+/**
+ * Full grow WGSL: prelude + the bundled source (W3 unified the raw .wgsl
+ * fetch to a .wgsl.js string export so rollup bundles it).
+ * Kept async for API compatibility with W2 callers.
+ */
 export async function fetchGrowWgsl() {
-  const url = new URL("./wgsl/grow.wgsl", import.meta.url);
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`grow-compute: failed to fetch ${url}: ${res.status}`);
-  return buildGrowPrelude() + (await res.text());
+  return buildGrowPrelude() + GROW_WGSL;
 }
 
 // --------------------------------------------------------------------------
@@ -155,24 +157,27 @@ function lowbias32(x) {
 }
 
 /**
- * Recovers the module-private _seedU32 from core/utils.js via the public
- * hashU32. Call after every brush-level seed() change.
+ * The library's hash-stream seed word. W3: utils.js now exports it
+ * directly (_getSeedU32); the finalizer inversion below survives purely as
+ * a cross-check that the hash construction and the export stay in
+ * agreement — it fails loudly if either changes.
  * @returns {number} u32
  */
 export function deriveSeedU32() {
+  const direct = _getSeedU32();
   const out = hashU32(0, 0, 0);
   let h = unxorshift(out, 15);
   h = Math.imul(h, INV_735A2D97) >>> 0;
   h = unxorshift(h, 15);
   h = Math.imul(h, INV_21F0AAAD) >>> 0;
   h = unxorshift(h, 16);
-  if (lowbias32(h) !== out) {
+  if (lowbias32(h) !== out || (h >>> 0) !== direct) {
     throw new Error(
       "grow-compute: hash construction in core/utils.js no longer matches " +
         "the lowbias32 finalizer this module was built against",
     );
   }
-  return h >>> 0;
+  return direct;
 }
 
 // --------------------------------------------------------------------------

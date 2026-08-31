@@ -78,14 +78,34 @@ fn cornerFor(vi : u32) -> vec2f {
   // GL clamps gl_PointSize to a minimum of 1.0 (ALIASED_POINT_SIZE_RANGE
   // floor), so upstream's sub-pixel discs — pen/rotring/2H weights are
   // 0.15–0.3 px — still rasterize as 1px point sprites. A 0.3px quad would
-  // mostly miss every fragment center instead. Replicate the clamp; like
-  // GL, the disc fills the clamped footprint (local spans the clamped
-  // quad). The 511 upper clamp is NOT replicated — quads are simply
-  // correct above it.
+  // mostly miss every fragment center instead. Replicate the clamp; the
+  // 511 upper clamp is NOT replicated — quads are simply correct above it.
+  //
+  // W3: for the CLAMPED case the quad is additionally SNAPPED to the one
+  // pixel GL point rasterization covers (fragment centers inside the 1px
+  // square centered on pos → the single pixel with index ceil(pos - 1)).
+  // An unsnapped ±0.5 quad spreads coverage over up to 4 pixels, which
+  // reads as visibly bolder thin strokes than the point-sprite goldens.
   let h = max(halfSize, 0.5);
+  var quadPos : vec2f;
+  var local : vec2f;
+  if (halfSize < 0.5) {
+    // Pixel whose center lies in [pos-0.5, pos+0.5) — GL point
+    // rasterization — with a tiny tie epsilon: ANGLE-on-Metal resolves
+    // exact-boundary centers (integer device coords, common for
+    // axis-aligned strokes) to the LOWER pixel, observed against the
+    // W1b-dist reference render. Only positions within 0.005 px of a
+    // boundary are affected.
+    let px = ceil(pos - 1.005);
+    quadPos = px + vec2f(f32(vi & 1u), f32(vi >> 1u)); // spans [px, px+1]
+    local = (quadPos - pos) / h;
+  } else {
+    quadPos = pos + corner * h;
+    local = corner;
+  }
   var out : VSOut;
-  out.clip = vec4f((pos + corner * h) * u.proj.xy + u.proj.zw, 0.0, 1.0);
-  out.local = corner;
+  out.clip = vec4f(quadPos * u.proj.xy + u.proj.zw, 0.0, 1.0);
+  out.local = local;
   out.alpha = alpha;
   return out;
 }

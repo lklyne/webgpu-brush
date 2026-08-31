@@ -1,3 +1,6 @@
+// W3: canonical WGSL source, unified to the .wgsl.js string-export convention
+// (was spectral.wgsl, fetched at runtime pre-W3). Bundled by rollup like any module.
+export const SPECTRAL_WGSL = /* wgsl */ `
 // =============================================================================
 // spectral.wgsl (W2 spectral-wgsl)
 //
@@ -7,14 +10,14 @@
 //
 // Differences from the GLSL, all deliberate:
 //
-// - Reflectance hoist: `spectral_mix_precomputed(bg, r2, lum2, t)` is the
+// - Reflectance hoist: \`spectral_mix_precomputed(bg, r2, lum2, t)\` is the
 //   primary entry. R2 + luminance2 for the blend color are computed ONCE
 //   on the CPU when the color changes (src/webgpu/spectral.js →
 //   packBlendUniforms) and passed in the uniform block, halving the
-//   per-pixel 38-band work. The full path (`spectral_mix_full`) survives
+//   per-pixel 38-band work. The full path (\`spectral_mix_full\`) survives
 //   only for the u_isBrush && maskColor.a > DARKEN_THRESHOLD darken
 //   branch, where the pigment is perturbed per-pixel.
-// - Gotcha #2: the GLSL calls dFdx/dFdy inside `if (!u_isBrush)`, *after*
+// - Gotcha #2: the GLSL calls dFdx/dFdy inside \`if (!u_isBrush)\`, *after*
 //   a non-uniform early return on maskColor.a — WGSL rejects derivatives
 //   (and textureSample) in non-uniform control flow. The whole blur-edge
 //   loop is hoisted above every branch; WGSL spells them dpdx/dpdy.
@@ -22,7 +25,7 @@
 //   the negative bases that occur here (1-R is negative for near-white
 //   reflectances > 1). GLSL drivers strength-reduce pow(x,2.0); WGSL/Metal
 //   must not be trusted to.
-// - GLSL's unused `scaledAlpha` local (shader.frag:228, dead code) is
+// - GLSL's unused \`scaledAlpha\` local (shader.frag:228, dead code) is
 //   dropped.
 // - The two constant tables between the GENERATED markers are transcribed
 //   programmatically from shader.frag by scripts/spectral-gen-tables.mjs
@@ -308,7 +311,11 @@ struct BlendUniforms {
   lum2: f32,
   isBrush: u32,
   targetIsFramebuffer: u32,
-  _pad0: u32,
+  // W3: UV-flip flags — bit 0 flips source V, bit 1 flips mask V.
+  // 0 = image convention everywhere (row 0 = top), which is what the
+  // WebGPU adapter uses for every texture; the GL-emulating flips the
+  // verbatim port carried are opt-in for oracle/parity use.
+  flags: u32,
   color: vec4f,
 };
 
@@ -335,13 +342,13 @@ struct VSOut {
 
 @fragment fn fs(in: VSOut) -> @location(0) vec4f {
   let uv = 0.5 * in.p + 0.5;
-  let sourceUV = vec2f(uv.x, 1.0 - uv.y);
-  let maskUV = select(uv, vec2f(uv.x, 1.0 - uv.y), u.targetIsFramebuffer != 0u);
+  let sourceUV = select(uv, vec2f(uv.x, 1.0 - uv.y), (u.flags & 1u) != 0u);
+  let maskUV = select(uv, vec2f(uv.x, 1.0 - uv.y), (u.flags & 2u) != 0u);
 
   let source = textureSample(u_source, u_sampler, sourceUV);
   let maskColor = textureSample(u_mask, u_sampler, maskUV);
 
-  // Gotcha #2: the GLSL runs this loop inside `if (!u_isBrush)` and after
+  // Gotcha #2: the GLSL runs this loop inside \`if (!u_isBrush)\` and after
   // the maskColor.a early-out. Both the neighbor textureSamples and the
   // dpdx/dpdy require uniform control flow in WGSL, so the whole loop is
   // hoisted above every branch and its result consumed conditionally.
@@ -381,3 +388,5 @@ struct VSOut {
 
   return vec4f(spectral_mix_precomputed(bgColor, u.r2, u.lum2, mixIntensity), 1.0);
 }
+`;
+export default SPECTRAL_WGSL;

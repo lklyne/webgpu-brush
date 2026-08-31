@@ -1,3 +1,6 @@
+// W3: canonical WGSL source, unified to the .wgsl.js string-export convention
+// (was prefix-scan.wgsl, fetched at runtime pre-W3). Bundled by rollup like any module.
+export const PREFIX_SCAN_WGSL = /* wgsl */ `
 // =============================================================================
 // Exclusive prefix scan over a u32 array (W2 strokewalk-compute; designed for
 // reuse by W4a's per-step restructure and grow-compute style consumers).
@@ -56,3 +59,22 @@ fn scanExclusive(@builtin(local_invocation_id) lid3: vec3u) {
   }
   if (lid == 0u) { dst[params.n] = carry; }
 }
+
+// ---------------------------------------------------------------------------
+// W3: drawIndirect args from the scan total — {vertexCount 4 (triangle-strip
+// quad), instanceCount = dst[n] = total stamps, firstVertex 0, firstInstance
+// 0}. Lets the walker's stamp rasterization draw without any readback
+// (gotcha #9): the instance count never touches the CPU.
+// ---------------------------------------------------------------------------
+
+@group(0) @binding(3) var<storage, read_write> indirectArgs: array<u32>;
+
+@compute @workgroup_size(1)
+fn writeIndirect() {
+  indirectArgs[0] = 4u;
+  indirectArgs[1] = dst[params.n];
+  indirectArgs[2] = 0u;
+  indirectArgs[3] = 0u;
+}
+`;
+export default PREFIX_SCAN_WGSL;

@@ -28,6 +28,7 @@ brush.createCanvas(CANVAS_W, CANVAS_H, {
   parent: "#canvas-host",
   pixelDensity,
 });
+if (brush.ready) await brush.ready(); // W3: WebGPU device init is async
 
 // Label overlay (2D canvas stacked above brush canvas via CSS grid-area)
 const labelCanvas = document.createElement("canvas");

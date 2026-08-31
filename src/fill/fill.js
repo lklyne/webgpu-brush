@@ -18,7 +18,6 @@ import {
   Mix,
   State,
 } from "../core/color.js";
-import { drawPolygon, circle } from "./mask.js";
 import {
   constrain,
   map,
@@ -607,24 +606,18 @@ class FillPoly {
     if (switchingToFill) Mix.justChanged = true;
     Mix.blend(color);
 
+    // W3: the fill matrix is a plain object handed to the GPU fill
+    // surface (was ctx.setTransform + ctx.getTransform round trip).
     const m = getAffineMatrix();
-    Mix.ctx.save();
-    Mix.ctx.setTransform(
-      Density * m.a,
-      Density * m.b,
-      Density * m.c,
-      Density * m.d,
-      Density * (m.x + Cwidth / 2),
-      Density * (m.y + Cheight / 2),
-    );
-
-    const fillColorBase = `rgb(255 0 0 / `;
-    Mix.ctx.strokeStyle = fillColorBase + (State.fill.border_strength * 0.010) + ")";
-    Mix.ctx.lineCap = "round";
-
+    const fillMatrix = {
+      a: Density * m.a,
+      b: Density * m.b,
+      c: Density * m.c,
+      d: Density * m.d,
+      e: Density * (m.x + Cwidth / 2),
+      f: Density * (m.y + Cheight / 2),
+    };
     GROW_CAP = GROW_MAX_VERTS * Math.max(0.2, 2 * State.fill.bleed_strength);
-
-    const fillMatrix = Mix.ctx.getTransform();
     const size = Math.max(this.sizeX, this.sizeY);
     const darker = rh(STREAM.FILL_DARKER, nextOpSalt(), 0, 0.15, 0.7);
     let pol = this.grow();
@@ -659,13 +652,12 @@ class FillPoly {
 
       if (i % 8 === 0 || i === numLayers - 1) {
         if (texture !== 0) {
-          pol.erase(texture * 3, intensity);
+          pol.erase(texture * 3, intensity, fillMatrix);
         }
         Mix.blend(color, true);
       }
     }
 
-    Mix.ctx.restore();
     if (Stats.enabled) Stats.endFill();
   }
 
@@ -673,18 +665,17 @@ class FillPoly {
    * Draws a layer of the fill polygon with stroke and fill.
    * @param {number} i - The layer index.
    */
-  layer(i, size, int, matrix = null) {
+  layer(i, size, int, matrix) {
     if (Stats.enabled) {
       Stats.recordLayer(i, this.v.length);
       for (let k = 0; k < this.v.length; k++) Stats.hashNums(this.v[k].x, this.v[k].y);
     }
-    Mix.ctx.lineWidth = map(i, 0, 24, size / 25, size / 30, true) * State.fill.border_strength;
-
-    Mix.ctx.fillStyle = "rgb(255 0 0 / " + int + "%)";
-
-    drawPolygon(this.v, matrix);
-    Mix.ctx.fill();
-    Mix.ctx.stroke();
+    const lineWidth =
+      map(i, 0, 24, size / 25, size / 30, true) * State.fill.border_strength;
+    // canvas2d "rgb(255 0 0 / int%)": percentage alpha, clamped to 100%.
+    const fillAlpha = Math.min(100, Math.max(0, int)) / 100;
+    const borderAlpha = State.fill.border_strength * 0.010;
+    Mix.ctx.layer(this.v, matrix, fillAlpha, lineWidth, borderAlpha);
   }
 
   /**
@@ -692,9 +683,7 @@ class FillPoly {
    * @param {number} texture - Texture strength factor.
    * @param {number} intensity - Intensity value for size scaling.
    */
-  erase(texture, intensity) {
-    Mix.ctx.save();
-
+  erase(texture, intensity, matrix) {
     const salt = nextOpSalt();
     const numCircles = ~~(rh(STREAM.ERASE_COUNT, salt, 0, 80, 110) * map(texture, 0, 1, 2, 3.5));
     const halfSizeX = this.sizeX / 1.3;
@@ -705,30 +694,47 @@ class FillPoly {
     const maxSizeFactor = 0.45 * minSize;
     const { x: midX, y: midY } = this.midP;
 
-    Mix.ctx.globalCompositeOperation = "destination-out";
-
     const alpha =
       ((5 - map(intensity, 80, 100, 0.3, 0.7, true)) * texture) / 255;
-    Mix.ctx.fillStyle = `rgb(255 0 0 / ${alpha})`;
-    Mix.ctx.lineWidth = 0;
 
+    // Same draws/skips as the canvas2d path: every circle consumes its RNG
+    // draws, but circles at i % 5 == 0 were never filled (their path was
+    // discarded by the next beginPath) — they are not queued.
+    const circles = [];
     for (let i = 0; i < numCircles; i++) {
       const x = midX + nh(STREAM.ERASE_X, salt, i, 0, halfSizeX);
       const y = midY + nh(STREAM.ERASE_Y, salt, i, 0, halfSizeY);
       const radius = rh(STREAM.ERASE_R, salt, i, minSizeFactor, maxSizeFactor);
       if (Stats.enabled) Stats.hashNums(x, y, radius);
-
-      Mix.ctx.beginPath();
-      circle(x, y, radius);
-      if (i % 5 !== 0) {
-        Mix.ctx.fill();
-      }
+      if (i % 5 !== 0) circles.push(x, y, radius);
     }
-
-    Mix.ctx.globalCompositeOperation = "source-over";
-    Mix.ctx.restore();
+    Mix.ctx.erase(circles, matrix, alpha);
   }
 }
+
+// ---------------------------------------------------------------------------
+// Test-only exports (W3). grow-cpu-ref.js currently rebuilds FillPoly by
+// extracting trim()/grow() source text; this export lets the oracle move
+// to the real class. setScope wires the module-level randomness scope the
+// methods read (fill id / op counter / GROW_CAP / gaussian pools).
+// Not public API.
+// ---------------------------------------------------------------------------
+
+export const _test = {
+  get FillPoly() {
+    return FillPoly;
+  },
+  setScope({ fillId, op, growCap, gaussians } = {}) {
+    if (fillId !== undefined) _fillId = fillId;
+    if (op !== undefined) _fillOp = op;
+    if (growCap !== undefined) GROW_CAP = growCap;
+    if (gaussians !== undefined) {
+      _gaussians[0] = [...gaussians[0]];
+      _gaussians[1] = [...gaussians[1]];
+    }
+  },
+  getOp: () => _fillOp,
+};
 
 // ---------------------------------------------------------------------------
 // Extend Polygon and Plot Prototypes for Fill

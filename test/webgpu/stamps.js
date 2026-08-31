@@ -419,6 +419,7 @@ async function testBrushSmoke(results, gpu, cache) {
 
   const host = document.getElementById("brush-host");
   brush.createCanvas(SMOKE, SMOKE, { parent: host, pixelDensity: 1, id: "smoke" });
+  if (brush.ready) await brush.ready(); // W3: WebGPU device init is async
   await registerCustomBrush(brush); // adds parity-custom + parity-image (async tip load)
   brush.clear("#ffffff");
 

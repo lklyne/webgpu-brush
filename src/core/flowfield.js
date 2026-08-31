@@ -326,6 +326,44 @@ export function refreshField(t = 0) {
   }
   const currentField = list.get(State.field.current);
   currentField.field = generateField(currentField, t);
+  _fieldEpoch++;
+}
+
+// ---------------------------------------------------------------------------
+// W3: GPU-walk field snapshot. The stroke router uploads the active field
+// to the strokewalk compute shader; the epoch lets it re-upload only when
+// the field actually changed (activation, refresh, regeneration).
+// ---------------------------------------------------------------------------
+
+let _fieldEpoch = 0;
+
+/**
+ * Flattened snapshot of the active flow field for GPU upload (col-major,
+ * c * numRows + r — the layout strokewalk-compute expects), or null when
+ * no field is active. Internal API for the W3 stroke router.
+ */
+export function _fieldSnapshot() {
+  if (!State.field.isActive || !State.field.current) return null;
+  const entry = list.get(State.field.current);
+  if (!entry?.field) return null;
+  const f = entry.field;
+  const data = new Float32Array(num_columns * num_rows);
+  for (let c = 0; c < num_columns; c++) data.set(f[c], c * num_rows);
+  return {
+    data,
+    numColumns: num_columns,
+    numRows: num_rows,
+    resolution,
+    leftX: left_x,
+    topY: top_y,
+    epoch: _fieldEpoch,
+    name: State.field.current,
+  };
+}
+
+/** Current field epoch — bumps whenever any field content may have changed. */
+export function _fieldEpochNow() {
+  return _fieldEpoch;
 }
 
 /**
@@ -357,6 +395,7 @@ export function field(a) {
   State.field.current = a;
   const entry = list.get(a);
   if (!entry.field) entry.field = generateField(entry, 0);
+  _fieldEpoch++;
 }
 
 /**

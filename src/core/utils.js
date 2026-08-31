@@ -146,6 +146,15 @@ export const STREAM = {
 let _seedU32 = _hashSeed(Math.random());
 
 /**
+ * The current hash-stream seed word (W3 export). GPU compute components
+ * (grow-compute, strokewalk-compute) hand this to their shaders so WGSL
+ * hashU32 reproduces the CPU streams bit-exactly. Test/internal use —
+ * grow.js previously recovered it by inverting the lowbias32 finalizer.
+ * @returns {number} uint32
+ */
+export const _getSeedU32 = () => _seedU32;
+
+/**
  * Counter-based hash: (seed, streamId, salt, index) → uint32.
  * @param {number} streamId - STREAM.* purpose id.
  * @param {number} salt - Per-scope word (strokeSalt / fillSalt / hatchId).

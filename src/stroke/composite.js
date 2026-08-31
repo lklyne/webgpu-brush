@@ -1,5 +1,6 @@
 import * as Color from "../core/color.js";
 import { createFramebuffer } from "../core/compositor_runtime.js";
+import { flushWalkBatch } from "./gl_draw.js";
 
 let isStrokeCompositeRegistered = false;
 const DIRTY_BRUSH_PADDING = 2;
@@ -122,6 +123,9 @@ export function getStrokeCompositeRect(
  * @returns {object} Stroke mask framebuffer.
  */
 export function getStrokeShaderMask(_Renderer, mask) {
+  // W3: any GPU-walked strokes still pending must land in the mask before
+  // the composite samples it.
+  flushWalkBatch();
   return mask;
 }
 

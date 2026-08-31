@@ -35,6 +35,10 @@ const query = new URLSearchParams(window.location.search);
 const LEFT_URL = query.get("left") ?? "/node_modules/p5.brush/dist/brush.esm.js";
 const RIGHT_URL = query.get("right") ?? "/dist/brush.esm.js";
 const SEED = query.get("seed") ?? "parity-0";
+// W3: ?goldens=/test/goldens/tiles renders ONLY the right pane and fills
+// the left pane from the frozen golden PNGs — the < 3.0/255 integration
+// gate compares the WebGPU adapter against test/goldens/, not upstream.
+const GOLDENS = query.get("goldens");
 const SCALE = Number(query.get("scale") ?? 0.8);
 const BG = query.get("bg") ?? "#f6f1e8";
 
@@ -63,6 +67,9 @@ async function renderGrid(brush, parent) {
     pixelDensity: 1,
     id: `parity-${parent.id}`,
   });
+  // W3: the WebGPU fork initializes its device asynchronously.
+  if (brush.ready) await brush.ready();
+  if (query.get("cpuwalk") === "1") brush.useCpuGeometry?.(true);
 
   brush.angleMode("degrees");
   if (!initialized.has(brush)) {
@@ -104,7 +111,45 @@ async function renderGrid(brush, parent) {
   });
 
   brush.render();
-  return { canvas, tiles };
+  return { canvas, tiles, brush };
+}
+
+/**
+ * Snapshot a pane. The WebGPU fork exposes readPixels() (out-of-band
+ * readback of the painting texture) because canvas2d drawImage() of a
+ * WebGPU canvas is blank in some headless configurations; WebGL upstream
+ * uses the drawImage path.
+ */
+async function snapshotPane(pane) {
+  if (pane.brush.readPixels) {
+    const { width, height, pixels } = await pane.brush.readPixels();
+    return new ImageData(pixels, width, height);
+  }
+  return snapshot(pane.canvas);
+}
+
+/** Builds a left-pane ImageData from the frozen golden tile PNGs. */
+async function goldenSnapshot(tiles) {
+  const c = document.createElement("canvas");
+  c.width = CANVAS_W;
+  c.height = CANVAS_H;
+  const ctx = c.getContext("2d", { willReadFrequently: true });
+  await Promise.all(
+    tiles.map(
+      (t, i) =>
+        new Promise((resolve, reject) => {
+          const img = new Image();
+          img.onload = () => {
+            const { x, y } = tileOrigin(i);
+            ctx.drawImage(img, x, y);
+            resolve();
+          };
+          img.onerror = () => reject(new Error(`missing golden: ${t.id}`));
+          img.src = `${GOLDENS}/${t.id}.png`;
+        }),
+    ),
+  );
+  return ctx.getImageData(0, 0, CANVAS_W, CANVAS_H);
 }
 
 /** Snapshot a WebGL canvas into ImageData while its drawing buffer is valid. */
@@ -191,15 +236,20 @@ window.__parityDiff = (i, gain = 8) => {
   const status = document.getElementById("status");
   try {
     // Sequential on purpose — see header comment.
-    const modLeft = await import(LEFT_URL);
-    const left = await renderGrid(modLeft, document.getElementById("left-host"));
-    pixLeft = snapshot(left.canvas);
-
     const modRight = await import(RIGHT_URL);
     const right = await renderGrid(modRight, document.getElementById("right-host"));
-    pixRight = snapshot(right.canvas);
+    pixRight = await snapshotPane(right);
+    tileList = right.tiles;
 
-    tileList = left.tiles;
+    if (GOLDENS) {
+      pixLeft = await goldenSnapshot(right.tiles);
+      document.getElementById("left-caption").textContent = `left: goldens ${GOLDENS}`;
+    } else {
+      const modLeft = await import(LEFT_URL);
+      const left = await renderGrid(modLeft, document.getElementById("left-host"));
+      pixLeft = await snapshotPane(left);
+      tileList = left.tiles;
+    }
     const scores = tileList.map((t, i) => {
       const { x, y } = tileOrigin(i);
       return {

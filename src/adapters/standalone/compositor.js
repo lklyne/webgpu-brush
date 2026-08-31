@@ -1,146 +1,65 @@
 // =============================================================================
-// Adapter: Standalone Compositor Hooks
+// Adapter: Standalone Compositor Hooks (WebGPU, W3)
+//
+// The six compositor hooks, implemented on the WebGPU host:
+//
+//   clearTarget                — clear a framebuffer duck / fill-mask wrapper
+//   ensureBlendShaderProgram   — spectral composite pipeline handle
+//   ensureBlendSourceFramebuffer — persistent blend-source texture
+//   createFramebuffer          — GPUTexture wrapped in upstream's duck type
+//   runBlendShaderPass         — fullscreen spectral pass, scissored
+//   blitSourceToFramebuffer    — copyTextureToTexture of the dirty rect only
+//                                (gotcha #3: painting stays in one texture)
+//
+// create2DCanvas/get2DContext stay in core/compositor_runtime.js — they
+// still back brush-tip rasterization (a CPU data-prep path, not rendering).
 // =============================================================================
 
-import { createProgram } from "../../core/gl/utils.js";
-import {
-  setCompositorRuntime,
-  blitDefaultFramebufferSource,
-} from "../../core/compositor_runtime.js";
+import { setCompositorRuntime } from "../../core/compositor_runtime.js";
+
+function requireHost(renderer) {
+  const host = renderer?.host;
+  if (!host) {
+    throw new Error("brush-gpu: renderer has no WebGPU host — was a target loaded?");
+  }
+  host.requireReady();
+  return host;
+}
 
 function clearTarget(renderer, target, isFramebufferTarget) {
   if (!target) return;
+  const host = requireHost(renderer);
 
   if (isFramebufferTarget(target)) {
-    const gl = renderer.drawingContext;
-    const previousFramebuffer = gl.getParameter(gl.FRAMEBUFFER_BINDING);
-    const previousViewport = gl.getParameter(gl.VIEWPORT);
-    gl.bindFramebuffer(gl.FRAMEBUFFER, target.framebuffer);
-    gl.viewport(0, 0, target.width * target.density, target.height * target.density);
-    gl.clearColor(0, 0, 0, 0);
-    gl.clear(gl.COLOR_BUFFER_BIT);
-    gl.bindFramebuffer(gl.FRAMEBUFFER, previousFramebuffer);
-    gl.viewport(
-      previousViewport[0],
-      previousViewport[1],
-      previousViewport[2],
-      previousViewport[3],
-    );
+    host.clearFramebuffer(target);
     return;
   }
-
-  const ctx = target.drawingContext;
-  ctx.save();
-  ctx.setTransform(1, 0, 0, 1, 0, 0);
-  ctx.clearRect(0, 0, target.width, target.height);
-  ctx.restore();
+  // Fill-mask wrapper (fill/composite.js) — clears through its recorder so
+  // ordering with queued fill passes is preserved.
+  if (typeof target.__clearFillMask === "function") {
+    target.__clearFillMask();
+    return;
+  }
+  throw new Error("brush-gpu: clearTarget received an unknown target type.");
 }
 
-function makeShader(gl, vertSrc, fragSrc) {
-  const program = createProgram(gl, vertSrc, fragSrc);
-  const uniformCache = new Map();
-
-  // Persistent VAO for fullscreen-triangle draws (avoids create/delete per pass)
-  const quadVao = gl.createVertexArray();
-
-  const getUniformLocation = (name) => {
-    if (!uniformCache.has(name)) {
-      uniformCache.set(name, gl.getUniformLocation(program, name));
-    }
-    return uniformCache.get(name);
-  };
-
-  // Pre-cache sampler and color uniform locations (called every blend pass)
-  const loc_source = gl.getUniformLocation(program, "u_source");
-  const loc_mask = gl.getUniformLocation(program, "u_mask");
-  const loc_color = gl.getUniformLocation(program, "u_color");
-
-  return {
-    program,
-    quadVao,
-    loc_source,
-    loc_mask,
-    loc_color,
-    setUniform(name, value) {
-      const location = getUniformLocation(name);
-      if (!location) return;
-      if (typeof value === "boolean") {
-        gl.uniform1i(location, value ? 1 : 0);
-        return;
-      }
-      if (typeof value === "number") {
-        gl.uniform1f(location, value);
-        return;
-      }
-      if (Array.isArray(value)) {
-        if (value.length === 3) gl.uniform3f(location, value[0], value[1], value[2]);
-        else if (value.length === 4) gl.uniform4f(location, value[0], value[1], value[2], value[3]);
-        return;
-      }
-    },
-  };
-}
-
-function ensureBlendShaderProgram(renderer, vertSrc, fragSrc) {
-  renderer.shaderProgram ??= makeShader(renderer.drawingContext, vertSrc, fragSrc);
+/**
+ * The GLSL sources arrive from shared core code (shader.vert/shader.frag
+ * imports); the WebGPU adapter ignores them — the composite runs the WGSL
+ * port (spectral.wgsl.js) with the CPU-hoisted reflectance uniforms.
+ */
+function ensureBlendShaderProgram(renderer, _vertSrc, _fragSrc) {
+  renderer.shaderProgram ??= { __webgpuSpectral: true };
   return renderer.shaderProgram;
 }
 
-function createFramebufferTexture(gl, width, height) {
-  const texture = gl.createTexture();
-  gl.bindTexture(gl.TEXTURE_2D, texture);
-  gl.texImage2D(
-    gl.TEXTURE_2D,
-    0,
-    gl.RGBA,
-    width,
-    height,
-    0,
-    gl.RGBA,
-    gl.UNSIGNED_BYTE,
-    null,
-  );
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-  gl.bindTexture(gl.TEXTURE_2D, null);
-  return texture;
-}
-
 function createFramebuffer(renderer, options) {
-  const gl = renderer.drawingContext;
-  const density = options.density ?? 1;
-  const framebuffer = gl.createFramebuffer();
-  const width = Math.max(1, options.width);
-  const height = Math.max(1, options.height);
-  const pixelWidth = Math.max(1, Math.round(width * density));
-  const pixelHeight = Math.max(1, Math.round(height * density));
-  const colorTexture = createFramebufferTexture(gl, pixelWidth, pixelHeight);
-
-  gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
-  gl.framebufferTexture2D(
-    gl.FRAMEBUFFER,
-    gl.COLOR_ATTACHMENT0,
-    gl.TEXTURE_2D,
-    colorTexture,
-    0,
+  const host = requireHost(renderer);
+  return host.createFramebufferTexture(
+    options.width,
+    options.height,
+    options.density ?? 1,
   );
-  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-
-  return {
-    __brushFramebuffer: true,
-    framebuffer,
-    colorTexture,
-    width,
-    height,
-    density,
-    pixelDensity: () => density,
-    remove() {
-      gl.deleteFramebuffer(framebuffer);
-      gl.deleteTexture(colorTexture);
-    },
-  };
 }
 
 function ensureBlendSourceFramebuffer(
@@ -151,72 +70,51 @@ function ensureBlendSourceFramebuffer(
   density,
 ) {
   currentFramebuffer?.remove?.();
-  return createFramebuffer(renderer, {
-    width,
-    height,
-    density,
-    antialias: false,
-    depth: false,
-    stencil: false,
-  });
+  const host = requireHost(renderer);
+  return host.createFramebufferTexture(width, height, density, "blend-source");
+}
+
+function blitSourceToFramebuffer({
+  renderer,
+  sourceTarget,
+  sourceFramebuffer,
+  dirtyRect,
+}) {
+  const host = requireHost(renderer);
+  // Standalone: sourceTarget is the renderer itself (painting texture);
+  // a framebuffer duck would be a framebuffer target (p5-only today).
+  const fromTexture = sourceTarget?.__brushFramebuffer
+    ? sourceTarget.colorTexture
+    : host.painting;
+  host.copyToBlendSource(sourceFramebuffer, fromTexture, dirtyRect ?? null);
+  return sourceFramebuffer;
 }
 
 function runBlendShaderPass({
   renderer,
-  shader,
   source,
   mask,
   color,
   isBrushMask,
   dirtyRect,
   targetIsFramebuffer,
-  withScissor,
 }) {
-  const gl = renderer.drawingContext;
-  const hadDepthTest = gl.isEnabled(gl.DEPTH_TEST);
-  const previousFramebuffer = gl.getParameter(gl.FRAMEBUFFER_BINDING);
-  const previousProgram = gl.getParameter(gl.CURRENT_PROGRAM);
-  const previousVao = gl.getParameter(gl.VERTEX_ARRAY_BINDING);
-
-  gl.bindVertexArray(shader.quadVao);
-  gl.useProgram(shader.program);
-  gl.disable(gl.DEPTH_TEST);
-  gl.enable(gl.BLEND);
-  gl.blendEquation(gl.FUNC_ADD);
-  gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
-
-  gl.activeTexture(gl.TEXTURE0);
-  gl.bindTexture(gl.TEXTURE_2D, source.colorTexture);
-  gl.uniform1i(shader.loc_source, 0);
-
-  gl.activeTexture(gl.TEXTURE1);
-  gl.bindTexture(gl.TEXTURE_2D, mask.colorTexture);
-  gl.uniform1i(shader.loc_mask, 1);
-
-  shader.setUniform("u_targetIsFramebuffer", targetIsFramebuffer);
-  shader.setUniform("u_isBrush", isBrushMask);
-  gl.uniform3f(shader.loc_color, color[0], color[1], color[2]);
-
-  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-  withScissor(
-    gl,
-    dirtyRect,
-    () => {
-      gl.drawArrays(gl.TRIANGLES, 0, 3);
-    },
-    !targetIsFramebuffer,
-  );
-
-  gl.bindTexture(gl.TEXTURE_2D, null);
-  gl.activeTexture(gl.TEXTURE0);
-  gl.bindVertexArray(previousVao);
-  gl.useProgram(previousProgram);
-  gl.bindFramebuffer(gl.FRAMEBUFFER, previousFramebuffer);
-  if (hadDepthTest) gl.enable(gl.DEPTH_TEST);
-}
-
-function blitSourceToFramebuffer(args) {
-  return blitDefaultFramebufferSource(args);
+  const host = requireHost(renderer);
+  if (targetIsFramebuffer) {
+    // getActiveFramebuffer() returns null in the standalone build (matches
+    // upstream — see target.js); the framebuffer-target composite path is
+    // p5-adapter-only and deliberately unimplemented here.
+    throw new Error("brush-gpu standalone: framebuffer targets are not supported.");
+  }
+  const maskView = mask.view ?? mask.colorTexture?.createView();
+  host.runComposite({
+    source,
+    maskView,
+    color,
+    isBrush: isBrushMask,
+    rect: dirtyRect ?? null,
+    targetFramebuffer: null,
+  });
 }
 
 export function initStandaloneCompositorRuntime() {

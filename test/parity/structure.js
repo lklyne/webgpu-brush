@@ -63,6 +63,7 @@ function parseHexColor(hex) {
       pixelDensity: 1,
       id: "structure-canvas",
     });
+    if (brush.ready) await brush.ready(); // W3: WebGPU device init is async
     brush.angleMode("degrees");
     await registerCustomBrush(brush);
     brush.scaleBrushes(SCALE);

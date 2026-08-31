@@ -31,6 +31,8 @@
 // =============================================================================
 
 import { readBuffer } from "./readback.js";
+import { STROKEWALK_WGSL } from "./wgsl/strokewalk.wgsl.js";
+import { PREFIX_SCAN_WGSL } from "./wgsl/prefix-scan.wgsl.js";
 
 // ---------------------------------------------------------------------------
 // Hash RNG — JS mirror of src/core/utils.js (kept private there; W3 should
@@ -387,7 +389,22 @@ export function createDescriptorBuilder({ seedU32, width, height }) {
     nextStrokeId = 1;
   }
 
-  return { build, reset };
+  /**
+   * W3: pressure-cache chain sync for mixed CPU/GPU routing. The chain is
+   * upstream's cross-stroke leak (stroke.js `current.pressureCount` /
+   * `current.cachedPressure`); when strokes alternate between the CPU walk
+   * and the GPU walk, the router copies the chain in before build() and
+   * back out after, so both paths see the exact upstream sequence.
+   */
+  function getChain() {
+    return { pc: chainPc, cached: chainCached };
+  }
+  function setChain(chain) {
+    chainPc = chain.pc;
+    chainCached = chain.cached;
+  }
+
+  return { build, reset, getChain, setChain };
 }
 
 /** Pack built descriptors into the GPU layout (STROKE_WORDS words each). */
@@ -441,13 +458,6 @@ export function packDescriptors(descs) {
 
 const WG = 64;
 
-async function fetchWgsl(name) {
-  const url = new URL(`./wgsl/${name}`, import.meta.url);
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`strokewalk: failed to fetch ${url}: ${res.status}`);
-  return res.text();
-}
-
 /**
  * @param {import('./device.js').GpuContext} gpu
  * @param {{wgsl?: {walk?: string, scan?: string}}} [opts] inline WGSL sources
@@ -455,8 +465,8 @@ async function fetchWgsl(name) {
  */
 export function createStrokeWalker(gpu, opts = {}) {
   const { device } = gpu;
-  let countPipeline, walkPipeline, scanPipeline;
-  let countLayout, walkLayout, scanLayout;
+  let countPipeline, walkPipeline, scanPipeline, indirectPipeline;
+  let countLayout, walkLayout, scanLayout, indirectLayout;
   let ready = null;
 
   // Environment buffers (setEnvironment)
@@ -468,10 +478,9 @@ export function createStrokeWalker(gpu, opts = {}) {
   function ensureReady() {
     if (!ready) {
       ready = (async () => {
-        const [walkSrc, scanSrc] = await Promise.all([
-          opts.wgsl?.walk ?? fetchWgsl("strokewalk.wgsl"),
-          opts.wgsl?.scan ?? fetchWgsl("prefix-scan.wgsl"),
-        ]);
+        // W3: WGSL is bundled (.wgsl.js string exports) — no runtime fetch.
+        const walkSrc = opts.wgsl?.walk ?? STROKEWALK_WGSL;
+        const scanSrc = opts.wgsl?.scan ?? PREFIX_SCAN_WGSL;
         const walkModule = device.createShaderModule({
           label: "strokewalk",
           code: walkSrc,
@@ -495,10 +504,16 @@ export function createStrokeWalker(gpu, opts = {}) {
           layout: "auto",
           compute: { module: scanModule, entryPoint: "scanExclusive" },
         });
+        indirectPipeline = device.createComputePipeline({
+          label: "strokewalk-indirect",
+          layout: "auto",
+          compute: { module: scanModule, entryPoint: "writeIndirect" },
+        });
         // getBindGroupLayout returns a fresh wrapper per call — hold them.
         countLayout = countPipeline.getBindGroupLayout(0);
         walkLayout = walkPipeline.getBindGroupLayout(0);
         scanLayout = scanPipeline.getBindGroupLayout(0);
+        indirectLayout = indirectPipeline.getBindGroupLayout(0);
       })();
     }
     return ready;
@@ -606,6 +621,13 @@ export function createStrokeWalker(gpu, opts = {}) {
       size: capacity * 16,
       usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
     });
+    // W3: drawIndirect args written GPU-side by the writeIndirect pass —
+    // {4, totalStamps, 0, 0}; the raster pass never reads the total back.
+    const indirectBuf = gpu.createBuffer({
+      label: "strokewalk-indirect",
+      size: 16,
+      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.INDIRECT,
+    });
     const scanParamsBuf = gpu.createBuffer({
       label: "strokewalk-scan-params",
       size: 16,
@@ -631,6 +653,15 @@ export function createStrokeWalker(gpu, opts = {}) {
         { binding: 2, resource: { buffer: offsetsBuf } },
       ],
     });
+    const indirectBG = device.createBindGroup({
+      label: "strokewalk-indirect-bg",
+      layout: indirectLayout,
+      entries: [
+        { binding: 0, resource: { buffer: scanParamsBuf } },
+        { binding: 2, resource: { buffer: offsetsBuf } },
+        { binding: 3, resource: { buffer: indirectBuf } },
+      ],
+    });
     const walkBG = device.createBindGroup({
       label: "strokewalk-walk-bg",
       layout: walkLayout,
@@ -653,6 +684,9 @@ export function createStrokeWalker(gpu, opts = {}) {
     pass.setPipeline(scanPipeline);
     pass.setBindGroup(0, scanBG);
     pass.dispatchWorkgroups(1);
+    pass.setPipeline(indirectPipeline);
+    pass.setBindGroup(0, indirectBG);
+    pass.dispatchWorkgroups(1);
     pass.setPipeline(walkPipeline);
     pass.setBindGroup(0, walkBG);
     pass.dispatchWorkgroups(Math.ceil(n / WG));
@@ -663,6 +697,7 @@ export function createStrokeWalker(gpu, opts = {}) {
       stampsBuffer: stampsBuf,
       offsetsBuffer: offsetsBuf,
       countsBuffer: countsBuf,
+      indirectBuffer: indirectBuf,
       strokeCount: n,
       capacity,
       destroy() {
@@ -672,6 +707,7 @@ export function createStrokeWalker(gpu, opts = {}) {
         strokesBuf.destroy();
         envBuf.destroy();
         scanParamsBuf.destroy();
+        indirectBuf.destroy();
       },
     };
   }

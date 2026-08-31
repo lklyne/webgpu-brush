@@ -4,9 +4,11 @@
 
 export * from "./adapters/standalone/runtime.js";
 export * from "./adapters/standalone/frame.js";
-export { createCanvas } from "./adapters/standalone/target.js";
+export { createCanvas, ready, readPixels } from "./adapters/standalone/target.js";
 export * from "./index.shared.js";
 export { random, noise } from "./core/utils.js";
+// W3/W4b: force the retained CPU geometry path (GPU walk off).
+export { _setUseCpuWalk as useCpuGeometry } from "./stroke/gl_draw.js";
 
 import { initStandaloneTargetRuntime } from "./adapters/standalone/target.js";
 import { initStandaloneRendererRuntime } from "./adapters/standalone/renderer.js";

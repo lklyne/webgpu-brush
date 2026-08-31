@@ -134,7 +134,11 @@ try {
   const baseUrl = `http://127.0.0.1:${server.address().port}`;
   browser = await chromium.launch({
     executablePath: findExecutable(),
-    args: ["--use-angle=swiftshader", "--enable-unsafe-swiftshader"],
+    // W3: the fork renders through WebGPU — no software WebGPU exists on
+    // this machine, so scenarios run on the real GPU via Metal ANGLE.
+    // (Timings are therefore NOT comparable to the W0/W1b swiftshader
+    // tables; see FORK.md.)
+    args: ["--enable-unsafe-webgpu", "--use-angle=metal", "--enable-features=WebGPU"],
   });
 
   const results = [];
@@ -142,6 +146,10 @@ try {
     const runs = [];
     for (let i = 0; i < RUNS; i++) {
       const page = await browser.newPage();
+      page.on("pageerror", (err) => console.error(`[${name}] pageerror:`, err.message));
+      page.on("console", (msg) => {
+        if (msg.type() === "error") console.error(`[${name}] console.error:`, msg.text());
+      });
       const timing = new Promise((res) => {
         page.on("console", (msg) => {
           const t = msg.text();

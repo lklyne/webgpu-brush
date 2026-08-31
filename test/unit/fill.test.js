@@ -1,24 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { blend, currentAngleMode, drawPolygon, mockCtx, mockState } = vi.hoisted(() => ({
+// W3: Mix.ctx is the GPU fill surface (fill/composite.js), not a
+// CanvasRenderingContext2D — mock its recorder API instead.
+const { blend, currentAngleMode, mockCtx, mockState } = vi.hoisted(() => ({
   blend: vi.fn(),
   currentAngleMode: { value: "degrees" },
-  drawPolygon: vi.fn(),
   mockCtx: {
-    beginPath: vi.fn(),
-    fill: vi.fn(),
-    restore: vi.fn(),
-    save: vi.fn(),
-    setTransform: vi.fn(),
-    stroke: vi.fn(),
-    getTransform: vi.fn(() => ({
-      a: 1, b: 0, c: 0, d: 1, e: 0, f: 0,
-    })),
-    fillStyle: "",
-    globalCompositeOperation: "source-over",
-    lineCap: "round",
-    lineWidth: 0,
-    strokeStyle: "",
+    layer: vi.fn(),
+    erase: vi.fn(),
+    washPolygon: vi.fn(),
+    clear: vi.fn(),
+    flush: vi.fn(),
   },
   mockState: {},
 }));
@@ -45,11 +37,6 @@ vi.mock("../../src/core/target.js", () => ({
   Cwidth: 800,
   Cheight: 600,
   Density: 1,
-}));
-
-vi.mock("../../src/fill/mask.js", () => ({
-  circle: vi.fn(),
-  drawPolygon,
 }));
 
 vi.mock("../../src/core/flowfield.js", () => ({
@@ -134,14 +121,9 @@ describe("createFill()", () => {
     currentAngleMode.value = "degrees";
 
     blend.mockClear();
-    drawPolygon.mockClear();
-    mockCtx.beginPath.mockClear();
-    mockCtx.fill.mockClear();
-    mockCtx.restore.mockClear();
-    mockCtx.save.mockClear();
-    mockCtx.setTransform.mockClear();
-    mockCtx.stroke.mockClear();
-    mockCtx.globalCompositeOperation = "source-over";
+    mockCtx.layer.mockClear();
+    mockCtx.erase.mockClear();
+    mockCtx.washPolygon.mockClear();
   });
 
   // ---- existing test ----
@@ -198,13 +180,12 @@ describe("createFill()", () => {
     expect(() => createFill(makeDodecagon())).not.toThrow();
   });
 
-  it("invokes ctx.save() and ctx.restore() once each per fill pass", () => {
+  it("records layer passes on the fill surface per fill pass", () => {
     seed(12345);
     fill("#ff0000", 100);
     createFill(makeHexagon());
-    expect(mockCtx.save).toHaveBeenCalled();
-    expect(mockCtx.restore).toHaveBeenCalled();
-    expect(mockCtx.save.mock.calls.length).toBe(mockCtx.restore.mock.calls.length);
+    expect(mockCtx.layer).toHaveBeenCalled();
+    expect(mockCtx.erase).toHaveBeenCalled();
   });
 
   it("calls blend at least once per fill pass (watercolor layering)", () => {
@@ -223,7 +204,7 @@ describe("createFill()", () => {
       { x: 90, y: 0 },
       { x: 50, y: -30 },
     ]));
-    expect(drawPolygon.mock.calls[0][0][0].x).toBe(10);
+    expect(mockCtx.layer.mock.calls[0][0][0].x).toBe(10);
   });
 
   it("captures fillBleed angle using the current angle mode at call time", () => {
@@ -237,7 +218,7 @@ describe("createFill()", () => {
       { x: 90, y: 0 },
       { x: 50, y: -30 },
     ]));
-    expect(drawPolygon.mock.calls[0][0][0].x).toBe(90);
+    expect(mockCtx.layer.mock.calls[0][0][0].x).toBe(90);
   });
 
   it("noFill() disables the fill so createFill throws afterward", () => {

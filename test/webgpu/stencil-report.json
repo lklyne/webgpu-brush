@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-31T14:09:09.597Z",
+  "generatedAt": "2026-08-31T15:00:03.303Z",
   "adapter": {
     "vendor": "apple",
     "architecture": "metal-3"
@@ -146,8 +146,8 @@
     "erases": 4,
     "vertexFloatsWritten": 559638,
     "pipelines": 4,
-    "encodeSubmitMsMedian": 4.1,
-    "gpuWaitMsMedian": 10.8,
+    "encodeSubmitMsMedian": 4.3,
+    "gpuWaitMsMedian": 9.8,
     "runs": 7,
     "note": "encode+submit is CPU JS; gpuWait is submit->onSubmittedWorkDone. Per plan, no batching applied — W4a's problem."
   },

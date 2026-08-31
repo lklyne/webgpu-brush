@@ -1,116 +1,210 @@
-import * as Color from "../core/color.js";
-import {
-  createFramebuffer,
-  create2DCanvas,
-} from "../core/compositor_runtime.js";
+// =============================================================================
+// Fill compositor (WebGPU, W3)
+//
+// The canvas2d fill-mask path is GONE: no CPU mask canvas, no
+// FillMaskUploadCanvas, no texSubImage2D staging. Fills draw through the
+// W2 stencil-fill renderer (webgpu/fill.js) into an MSAA mask target whose
+// resolve texture the spectral composite samples directly.
+//
+// `Mix.ctx` is no longer a CanvasRenderingContext2D. It is the FILL
+// SURFACE created here: an explicit recorder API (layer / wash / erase /
+// flush) consumed by fill/fill.js and fill/wash.js. Geometry arrives in
+// user space plus the fill matrix; the surface transforms to device
+// pixels, queues stencil-fill passes on a pending command encoder, and
+// tracks dirty rects. The encoder is submitted (flushed) right before the
+// composite samples the mask.
+// =============================================================================
 
-// Small staging canvas used to upload only the dirty fill sub-rect into the
-// framebuffer-backed mask mirror consumed by the blend shader.
-let FillMaskUploadCanvas = null;
+import * as Color from "../core/color.js";
+
 let isFillCompositeRegistered = false;
 const DIRTY_FILL_PADDING = 4;
 
-// =============================================================================
-// Section: Helpers
-// =============================================================================
-/**
- * Returns whether the CPU-side 2D fill mask must be recreated.
- *
- * @param {object} Renderer - Active host renderer.
- * @param {number} maskWidth - Mask width in physical pixels.
- * @param {number} maskHeight - Mask height in physical pixels.
- * @returns {boolean} True when the 2D fill mask needs reallocation.
- */
-function needsFillMaskCanvas(Renderer, maskWidth, maskHeight) {
-  return (
-    !Renderer.mask ||
-    Renderer.mask.width !== maskWidth ||
-    Renderer.mask.height !== maskHeight
-  );
-}
+/** Clamp helper matching canvas2d alpha parsing. */
+const clamp01 = (v) => Math.max(0, Math.min(1, v));
 
 /**
- * Returns whether the framebuffer-backed fill mask mirror must be recreated.
- *
- * @param {object} Renderer - Active host renderer.
- * @param {number} Cwidth - Target width in sketch units.
- * @param {number} Cheight - Target height in sketch units.
- * @param {number} Density - Active pixel density.
- * @returns {boolean} True when the fill mask framebuffer needs reallocation.
+ * Creates the fill surface bound to a renderer's WebGPU host.
+ * @param {object} Renderer active renderer (host attached)
+ * @param {object} mask the fill-mask wrapper (dirty-rect bookkeeping)
  */
-function needsFillMaskFramebuffer(Renderer, Cwidth, Cheight, Density) {
-  return (
-    !Renderer.fillMaskFramebuffer ||
-    Renderer.fillMaskFramebuffer.width !== Cwidth ||
-    Renderer.fillMaskFramebuffer.height !== Cheight ||
-    (typeof Renderer.fillMaskFramebuffer.pixelDensity === "function" &&
-      Renderer.fillMaskFramebuffer.pixelDensity() !== Density)
-  );
+function createFillSurface(Renderer, mask) {
+  const host = Renderer.host;
+  const SS = host.fillSS ?? 1; // supersampling factor of the fill target
+  let encoder = null;
+
+  function enc() {
+    if (!encoder) {
+      encoder = host.gpu.device.createCommandEncoder({ label: "fill-batch" });
+    }
+    return encoder;
+  }
+
+  /**
+   * Transforms {x,y} vertices by a 2D matrix into a flat device-px array
+   * and accumulates bounds.
+   */
+  function transformVerts(verts, m, bounds) {
+    const n = verts.length;
+    const flat = new Float32Array(n * 2);
+    for (let i = 0; i < n; i++) {
+      const v = verts[i];
+      const tx = m.a * v.x + m.c * v.y + m.e;
+      const ty = m.b * v.x + m.d * v.y + m.f;
+      flat[i * 2] = tx;
+      flat[i * 2 + 1] = ty;
+      if (tx < bounds.minX) bounds.minX = tx;
+      if (ty < bounds.minY) bounds.minY = ty;
+      if (tx > bounds.maxX) bounds.maxX = tx;
+      if (ty > bounds.maxY) bounds.maxY = ty;
+    }
+    return flat;
+  }
+
+  const matrixScale = (m) =>
+    Math.max(Math.hypot(m.a, m.b), Math.hypot(m.c, m.d));
+
+  /** Matrix scaled up to the supersampled fill-target space. */
+  const scaledMatrix = (m) =>
+    SS === 1
+      ? m
+      : { a: m.a * SS, b: m.b * SS, c: m.c * SS, d: m.d * SS, e: m.e * SS, f: m.f * SS };
+
+  const surface = {
+    /**
+     * One FillPoly.layer(): canvas2d fill() + stroke() on the polygon path.
+     * @param {Array<{x,y}>} verts user-space vertices
+     * @param {{a,b,c,d,e,f}} matrix fill matrix (density-scaled)
+     * @param {number} fillAlpha 0..1
+     * @param {number} lineWidth user units (0 disables the border)
+     * @param {number} strokeAlpha 0..1
+     */
+    layer(verts, matrix, fillAlpha, lineWidth, strokeAlpha) {
+      if (verts.length < 3) return;
+      const bounds = { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity };
+      // The fill target is supersampled: draw geometry at SS x device px.
+      const flat = transformVerts(verts, scaledMatrix(matrix), bounds);
+      const lwDevice = lineWidth * matrixScale(matrix);
+      host.fillR.layer(
+        enc(),
+        flat,
+        { r: 1, g: 0, b: 0, a: clamp01(fillAlpha) },
+        lwDevice * SS,
+        { r: 1, g: 0, b: 0, a: clamp01(strokeAlpha) },
+      );
+      // Same padding rule as the old mask.js: stroke half-width + 1.
+      // Dirty rects are tracked in FINAL device px.
+      const pad = 1 + lwDevice / 2;
+      Color.Mix.markDirtyRect(mask, {
+        minX: bounds.minX / SS - pad,
+        minY: bounds.minY / SS - pad,
+        maxX: bounds.maxX / SS + pad,
+        maxY: bounds.maxY / SS + pad,
+      });
+    },
+
+    /**
+     * FillPoly.erase(): destination-out discs.
+     * @param {number[]} circles flat [x, y, diameter] triples, user space
+     * @param {{a..f}} matrix
+     * @param {number} alpha 0..1 erase strength
+     */
+    erase(circles, matrix, alpha) {
+      const n = circles.length / 3;
+      if (n === 0 || alpha <= 0) return;
+      const m = scaledMatrix(matrix);
+      const s = matrixScale(m);
+      const flat = new Float32Array(n * 3);
+      for (let i = 0; i < n; i++) {
+        const x = circles[i * 3];
+        const y = circles[i * 3 + 1];
+        const d = circles[i * 3 + 2];
+        flat[i * 3] = m.a * x + m.c * y + m.e;
+        flat[i * 3 + 1] = m.b * x + m.d * y + m.f;
+        flat[i * 3 + 2] = (d / 2) * s;
+      }
+      // Upstream's canvas2d erase never fed dirty-rect tracking; keep that
+      // (erase only removes alpha inside already-dirty polygon bounds).
+      host.fillR.erase(enc(), flat, clamp01(alpha));
+    },
+
+    /**
+     * wash(): a plain nonzero-winding fill, no border.
+     */
+    washPolygon(verts, matrix, alpha) {
+      surface.layer(verts, matrix, alpha, 0, 0);
+    },
+
+    /** Queue a clear of the fill mask target (keeps pass ordering). */
+    clear() {
+      host.fillR.clear(enc());
+    },
+
+    /** Submit all pending fill passes. Call before sampling the mask. */
+    flush() {
+      if (!encoder) return;
+      host.gpu.device.queue.submit([encoder.finish()]);
+      encoder = null;
+      host.fillR.finish();
+    },
+  };
+
+  return surface;
 }
 
-// =============================================================================
-// Section: Resource Management
-// =============================================================================
 /**
  * Ensures fill compositing resources exist for the active renderer.
- *
- * Fill draws first into a CPU-side 2D mask canvas. That mask is later uploaded,
- * dirty-rect by dirty-rect, into a framebuffer-backed mirror used by the final
- * blend shader pass.
- *
- * @param {object} Renderer - Active host renderer.
- * @param {number} Cwidth - Target width in sketch units.
- * @param {number} Cheight - Target height in sketch units.
- * @param {number} Density - Active pixel density.
- * @param {Function} clearTarget - Shared low-level clear helper from core.
- * @returns {{mask: object, ctx: CanvasRenderingContext2D}} Fill mask resources.
+ * Returns { mask, ctx } — mask carries dirty-rect bookkeeping and exposes
+ * the resolve texture; ctx is the fill surface (see header).
  */
 export function ensureFillCompositeResources(
   Renderer,
   Cwidth,
   Cheight,
   Density,
-  clearTarget,
+  _clearTarget,
 ) {
+  const host = Renderer.host;
+  host.requireReady();
   const maskWidth = Math.max(1, Math.round(Cwidth * Density));
   const maskHeight = Math.max(1, Math.round(Cheight * Density));
+  const SS = host.fillSS ?? 1;
+  host.fillR.ensureTarget(maskWidth * SS, maskHeight * SS);
+  host.ensureFillMask();
 
-  if (needsFillMaskCanvas(Renderer, maskWidth, maskHeight)) {
-    Renderer.mask = create2DCanvas(maskWidth, maskHeight);
+  if (
+    !Renderer.mask ||
+    Renderer.mask.width !== maskWidth ||
+    Renderer.mask.height !== maskHeight
+  ) {
+    const mask = {
+      __fillMask: true,
+      width: maskWidth,
+      height: maskHeight,
+      dirtyRect: null,
+      isDrawn: false,
+      get colorTexture() {
+        return Renderer.host.ensureFillMask().texture;
+      },
+      get view() {
+        return Renderer.host.ensureFillMask().view;
+      },
+      __clearFillMask() {
+        Renderer.mask.surface.clear();
+      },
+    };
+    mask.surface = createFillSurface(Renderer, mask);
+    Renderer.mask = mask;
   }
 
-  if (needsFillMaskFramebuffer(Renderer, Cwidth, Cheight, Density)) {
-    if (Renderer.fillMaskFramebuffer?.remove) {
-      Renderer.fillMaskFramebuffer.remove();
-    }
-    Renderer.fillMaskFramebuffer = createFramebuffer(Renderer, {
-      width: Cwidth,
-      height: Cheight,
-      density: Density,
-      antialias: false,
-      depth: false,
-      stencil: false,
-    });
-    clearTarget(Renderer.fillMaskFramebuffer);
-  }
-
-  Renderer.mask.dirtyRect ??= null;
-  Renderer.mask.isDrawn ??= false;
-  Renderer.mask.drawingContext.imageSmoothingEnabled = false;
   return {
     mask: Renderer.mask,
-    ctx: Renderer.mask.drawingContext,
+    ctx: Renderer.mask.surface,
   };
 }
 
-// =============================================================================
-// Section: Mask Lifecycle
-// =============================================================================
 /**
  * Clears the current fill mask and resets its bookkeeping flags.
- *
- * @param {object|null} target - Fill mask canvas or framebuffer mirror.
- * @param {Function} clearTarget - Shared low-level clear helper from core.
  */
 export function clearFillMask(target, clearTarget) {
   if (!target) return;
@@ -119,19 +213,8 @@ export function clearFillMask(target, clearTarget) {
   target.dirtyRect = null;
 }
 
-// =============================================================================
-// Section: Composite Bounds
-// =============================================================================
 /**
- * Returns the fill dirty rect to composite into the main target. Fill bounds are
- * taken directly from the accumulated 2D mask dirty area plus a small padding.
- *
- * @param {object|null} target - Fill mask canvas.
- * @param {Function} _getActiveFramebuffer - Unused for fill masks.
- * @param {Function} getFullDirtyRect - Returns the full-target dirty rect.
- * @param {Function} expandDirtyRect - Expands a rect by a constant padding.
- * @param {Function} normalizeDirtyRect - Clamps a rect to target bounds.
- * @returns {{minX:number,minY:number,maxX:number,maxY:number}|null} Composite rect.
+ * Returns the fill dirty rect to composite into the main target.
  */
 export function getFillCompositeRect(
   target,
@@ -147,73 +230,24 @@ export function getFillCompositeRect(
   );
 }
 
-// =============================================================================
-// Section: Upload
-// =============================================================================
 /**
- * Uploads only the dirty portion of the CPU-side 2D fill mask into the
- * framebuffer-backed fill mask mirror used by the shader compositor.
- *
- * @param {object} Renderer - Active host renderer.
- * @param {object} mask - CPU-side 2D fill mask canvas.
- * @param {{minX:number,minY:number,maxX:number,maxY:number}|null} dirtyRect - Dirty rect to upload.
- * @param {Function} normalizeDirtyRect - Clamps a rect to target bounds.
- * @param {Function} getFullDirtyRect - Returns the full-target dirty rect.
- * @param {Function} clearTarget - Shared low-level clear helper from core.
- * @returns {object} Framebuffer-backed fill mask mirror.
+ * Flushes pending fill passes and returns the mask resource the composite
+ * binds as u_mask (the single-sample resolve texture).
  */
 export function getFillShaderMask(
   Renderer,
   mask,
-  dirtyRect,
-  getFullDirtyRect,
-  clearTarget,
+  _dirtyRect,
+  _getFullDirtyRect,
+  _clearTarget,
 ) {
-  const target = Renderer.fillMaskFramebuffer;
-  const gl = Renderer.drawingContext;
-  const uploadRect = dirtyRect ?? getFullDirtyRect();
-  const uploadWidth = uploadRect.maxX - uploadRect.minX;
-  const uploadHeight = uploadRect.maxY - uploadRect.minY;
-
-  if (
-    !FillMaskUploadCanvas ||
-    FillMaskUploadCanvas.width !== uploadWidth ||
-    FillMaskUploadCanvas.height !== uploadHeight
-  ) {
-    FillMaskUploadCanvas = create2DCanvas(uploadWidth, uploadHeight);
-  }
-
-  const uploadContext = FillMaskUploadCanvas.drawingContext;
-  uploadContext.clearRect(0, 0, uploadWidth, uploadHeight);
-  uploadContext.drawImage(
-    mask,
-    uploadRect.minX,
-    uploadRect.minY,
-    uploadWidth,
-    uploadHeight,
-    0,
-    0,
-    uploadWidth,
-    uploadHeight,
-  );
-
-  clearTarget(target);
-  gl.bindTexture(gl.TEXTURE_2D, target.colorTexture);
-  gl.texSubImage2D(
-    gl.TEXTURE_2D,
-    0,
-    uploadRect.minX,
-    uploadRect.minY,
-    gl.RGBA,
-    gl.UNSIGNED_BYTE,
-    FillMaskUploadCanvas,
-  );
-  return target;
+  mask.surface.flush();
+  // Box-downsample the supersampled fill target into the mask texture the
+  // composite samples (also runs at SS = 1; it is then a plain copy pass).
+  Renderer.host.downsampleFillMask();
+  return mask;
 }
 
-// =============================================================================
-// Section: Registration
-// =============================================================================
 /**
  * Registers the fill compositor with the shared color/composite core.
  * Safe to call multiple times.

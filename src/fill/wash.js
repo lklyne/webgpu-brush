@@ -11,7 +11,6 @@
 
 import { Cwidth, Cheight, Density, isCanvasReady } from "../core/target.js";
 import { Mix, State } from "../core/color.js";
-import { drawPolygon } from "./mask.js";
 import { Polygon } from "../core/polygon.js";
 import { Plot } from "../core/plot.js";
 import { createColor, getAffineMatrix } from "../core/runtime.js";
@@ -71,33 +70,21 @@ function drawWashPolygon(polygon) {
   // Our drawing will go to the mask and composite on the next draw call.
   Mix.blend(State.wash.color);
 
-  // Get the user's affine transform matrix
+  // Same density-scaled centering matrix as fill()
   const m = getAffineMatrix();
-  
-  // Apply transform with Density and centering (exactly like fill does)
-  Mix.ctx.save();
-  Mix.ctx.setTransform(
-    Density * m.a,
-    Density * m.b,
-    Density * m.c,
-    Density * m.d,
-    Density * (m.x + Cwidth / 2),
-    Density * (m.y + Cheight / 2),
-  );
-  
-  // Draw the polygon path to the 2D canvas mask
-  // This will update dirty rects automatically
-  drawPolygon(polygon.vertices);
-  
-  // Set up fill and stroke with wash color (exactly like fill does)
+  const matrix = {
+    a: Density * m.a,
+    b: Density * m.b,
+    c: Density * m.c,
+    d: Density * m.d,
+    e: Density * (m.x + Cwidth / 2),
+    f: Density * (m.y + Cheight / 2),
+  };
+
+  // W3: one nonzero-winding fill pass on the GPU fill surface (dirty rects
+  // are tracked by the surface).
   const alpha = State.wash.opacity / 255;
-  const washColorBase = `rgb(255 0 0 / `;
-  Mix.ctx.fillStyle = washColorBase + alpha + ")";
-  
-  Mix.ctx.fill();
-  
-  // Restore the context transform
-  Mix.ctx.restore();
+  Mix.ctx.washPolygon(polygon.vertices, matrix, alpha);
 }
 
 // =============================================================================

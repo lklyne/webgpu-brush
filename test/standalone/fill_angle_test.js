@@ -26,6 +26,7 @@ brush.createCanvas(CANVAS_W, CANVAS_H, {
   parent: "#canvas-host",
   pixelDensity,
 });
+if (brush.ready) await brush.ready(); // W3: WebGPU device init is async
 
 const labelCanvas = document.createElement("canvas");
 labelCanvas.id = "label-canvas";

@@ -1,3 +1,6 @@
+// W3: canonical WGSL source, unified to the .wgsl.js string-export convention
+// (was strokewalk.wgsl, fetched at runtime pre-W3). Bundled by rollup like any module.
+export const STROKEWALK_WGSL = /* wgsl */ `
 // =============================================================================
 // strokewalk-compute (W2) — the flow-field walk on the GPU.
 //
@@ -415,3 +418,5 @@ fn walkStrokes(@builtin(global_invocation_id) gid: vec3u) {
     }
   }
 }
+`;
+export default STROKEWALK_WGSL;

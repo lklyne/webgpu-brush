@@ -13,6 +13,25 @@ the left pane.
 
 ## Divergences from upstream
 
+0. **W3 — WebGPU renderer.** The standalone build renders through pure
+   WebGPU (no WebGL anywhere in the standalone path). Three API-visible
+   consequences:
+   - **`await brush.ready()` is required** after
+     `createCanvas()`/`load()`, before the first drawing call. WebGPU
+     device acquisition has no synchronous form; drawing before ready
+     throws with a message pointing at `ready()`. Every harness/scenario
+     in this repo awaits it (a `brush.ready` guard keeps them working
+     against upstream, which has no such export).
+   - **`brush.readPixels()`** (async, out-of-band) reads the painting
+     texture back as RGBA — the supported way to capture output
+     (canvas2d `drawImage()` of a WebGPU canvas is blank in some
+     headless configurations; the parity harness uses `readPixels`).
+   - **`brush.useCpuGeometry(bool)`** forces the retained CPU stroke
+     walk (early W4b surface; the CPU path is a first-class producer).
+   The p5 adapter (`adapters/p5/`) still references the old GL stroke
+   path and is **broken at runtime** — per plan it is out of scope,
+   untouched and untested; it still builds.
+
 1. **W1b — counter-based hash RNG.** `rr()` (the internal sequential
    geometry stream) is gone; every internal random draw is
    `hash(seed, streamId, salt, index)`. **Upstream sketch reproduction is
@@ -259,6 +278,199 @@ boolean check per hooked call when disabled). Hooks in `gl_draw.js`
 `test/parity/structure.html` + `structure.js` (also runs coverage-only
 against uninstrumented modules, e.g. upstream).
 
+## W3 — WebGPU adapter and integration
+
+### Hook implementation (the contract, and nowhere else)
+
+- **`core/compositor_runtime.js`** (6, via `setCompositorRuntime`, in
+  `adapters/standalone/compositor.js` on the host in
+  `adapters/standalone/gpu.js`):
+  - `createFramebuffer` → `GPUTexture` wrapped in upstream's exact duck
+    type (`__brushFramebuffer`, `framebuffer` (the texture — truthy
+    handle slot), `colorTexture`, `view`, `width`, `height`, `density`,
+    `pixelDensity()`, `remove()`).
+  - `ensureBlendSourceFramebuffer` → persistent blend-source texture.
+  - `blitSourceToFramebuffer` → `copyTextureToTexture` of the **dirty
+    rect only** from the persistent painting texture (gotcha #3: the
+    swapchain is never sampled; "current" is always the one painting
+    texture — no ping-pong, dirty rects stay valid). Present =
+    `copyTextureToTexture(painting → getCurrentTexture())` appended to
+    each composite encoder (canvas usage gained COPY_DST in device.js).
+  - `runBlendShaderPass` → fullscreen triangle with the W2 spectral WGSL
+    (`packBlendUniforms` reflectance hoist), `setScissorRect` to the
+    dirty rect, blend (one, one-minus-src-alpha).
+  - `ensureBlendShaderProgram` → returns a marker object; the GLSL
+    sources shared core still imports are ignored.
+  - `clearTarget` → render-pass clear (framebuffer ducks) or the fill
+    surface's ordered clear (fill mask).
+- **`core/renderer_runtime.js`** (3): all three are **no-ops** in the
+  WebGPU adapter — every render pass carries complete state. The hooks
+  and their `gl_draw.js` call sites (including
+  `resetDirectShaderTracking`) are kept: they are host-contract points
+  the p5 adapter still implements meaningfully.
+- **`core/target.js`** (8): `load` / `syncDensity` / `isCanvasReady` /
+  `instance` / `activateInstance` / `deactivateInstance` (no-ops, as
+  upstream standalone) / `isFramebufferTarget` (duck check).
+  **`getActiveFramebuffer` returns `null` — the plan's open question is
+  resolved by matching upstream**: the standalone build has no
+  framebuffer targets, nothing in the scenarios or tiles ever needed
+  one, and the adapter's composite throws loudly if the branch is ever
+  reached.
+- **`stroke/gl_draw.js` replaced outright** (no second backend). Kept:
+  matrix snapshotting per stroke, flat-Float32Array queue packing with
+  reallocate-only-when-exceeded growth (now inside `webgpu/stamps.js`),
+  device-pixel dirty-rect accumulation, and the renderer-runtime hook
+  call sites. Circles/image tips queue into the W2 stamp renderer
+  (device px, alpha 0..1) and flush per stroke into `Renderer.glMask`.
+- **Fill-mask canvas2d path deleted.** `fill/mask.js` is gone;
+  `Mix.ctx` is now the **fill surface** (`fill/composite.js`): an
+  explicit recorder (`layer` / `erase` / `washPolygon` / `clear` /
+  `flush`) that transforms user-space geometry to device pixels and
+  queues W2 stencil-fill passes on a pending encoder, flushed just
+  before each composite samples the mask. `fill/fill.js` and
+  `fill/wash.js` consume it; no `FillMaskUploadCanvas`, no
+  `texSubImage2D`, no `Renderer.mask` canvas.
+
+### Texture / orientation model
+
+Everything is **image convention** (row 0 = top, y down): stamps render
+with `flipY: true`, stencil-fill is natively y-down, the spectral
+composite runs with UV-flip flags 0 (the GL-emulating flips the verbatim
+port carried are now opt-in bits in `BlendUniforms.flags`). Scissor rects
+are top-left device pixels end to end — no flips anywhere.
+
+### GPU/CPU stroke routing split (strokewalk-compute)
+
+`stroke/stroke.js` routes per stroke, by capability:
+
+| GPU walk (strokewalk-compute) | Retained CPU walk |
+|---|---|
+| `line()` / `flowLine()` strokes | `plot()` strokes (splines, polygons, `beginStroke`, rect/circle/arc) |
+| default / marker / spray tips | image and custom tips |
+| gaussian or array-control-point pressure | function-curve custom pressure |
+| pure-translation transform | rotated/scaled transforms |
+| — | `Stats.enabled` capture runs, `useCpuGeometry(true)` |
+
+The router (`tryGpuWalk`) replicates `saveState()`'s environment side
+effects (lazy gaussian-pool fill order, `_strokeId` sequencing, blend
+bookkeeping) and syncs the cross-stroke pressure-cache chain (upstream's
+markerTip leak) through the descriptor builder, so CPU- and GPU-walked
+strokes interleave without diverging from the all-CPU sequence.
+Descriptors batch per (translation, stroke color); batches flush before
+every CPU stamp flush, before every composite (via
+`getStrokeShaderMask`), and before any walker environment change — stamp
+order stays draw order (gotcha #10). Rasterization pulls stamps straight
+from the walk's storage buffer via `drawIndirect` args written GPU-side
+by a new `writeIndirect` entry in prefix-scan (no readback; `mapAsync`
+appears only in `webgpu/readback.js`, verified by grep). The walker is
+warmed up inside `brush.ready()` so fully-synchronous sketches route
+from the first stroke.
+
+**grow-compute is NOT in the default frame path.** Fills run CPU
+`grow()` → GPU stencil raster. Reason: `FillPoly.fill()` interleaves
+`scatter()` (and the erase/darker op-salt draws) with grow chains, and
+`scatter()` needs actual vertices — GPU-resident grow would force a
+mid-fill readback (gotcha #9) or a scatter compute port. The W3 enabling
+refactors landed (`_getSeedU32` exported from utils.js and cross-checked
+in grow.js; `fill.js` `_test` export with `FillPoly` + scope hooks), the
+grow oracle stays green, and moving scatter GPU-side is W4a/W4b work.
+`test/webgpu/grow-cpu-ref.js` still uses source-text extraction (it
+fails loudly on drift); switching it to the `_test` export is follow-up.
+
+### WGSL convention unified
+
+All shaders are `.wgsl.js` string exports (bundled by rollup, no runtime
+fetch): `spectral.wgsl.js`, `grow.wgsl.js`, `strokewalk.wgsl.js`,
+`prefix-scan.wgsl.js` join `stamp.wgsl.js`, `fill.wgsl.js`, plus new
+`walkraster.wgsl.js`. The raw `.wgsl` files are deleted; oracles import
+the modules.
+
+### Point-sprite emulation (clamped discs)
+
+GL clamps `gl_PointSize` to ≥ 1 and rasterizes the sprite into the pixel
+whose center falls in the unit square — a ±0.5 quad instead spreads
+coverage over up to 4 pixels and reads visibly bolder on sub-pixel-weight
+strokes. `vs_disc` (and the walk rasterizer) now snap clamped discs to
+the GL-covered pixel, with a 0.005 px tie epsilon matching
+ANGLE-on-Metal's observed boundary behavior at exact-integer centers.
+Verified: stamps oracle disc-grid vs real GL = 0.0022 RMSE.
+
+### Fill mask precision
+
+`rgba16float` fill mask (removes this side's 8-bit rounding drift across
+~90 layers per fill — see stencil oracle `full-fill-replay-16f`) plus 2×
+supersampling over MSAA 4 with an exact box downsample before
+compositing (the 4 MSAA sample positions are fixed, so per-layer edge
+coverage rounding accumulates systematically otherwise). Supersampling
+drops to 1× automatically when 2× would exceed
+`maxTextureDimension2D` (the device now requests the adapter's real
+limits — visual_suite is 2800×11400 device px).
+
+### Goldens re-baselined (plan-sanctioned)
+
+The W1b goldens were frozen under **swiftshader** GL. The WebGPU adapter
+can only run on the **real GPU** (no software WebGPU on this machine),
+and swiftshader's point-sprite rasterization differs measurably from
+real GL — the stamps oracle proves the WGSL discs match Metal GL at
+0.0022 RMSE while the same tiles diffed 4–9 against swiftshader
+goldens. Per the plan ("worst case the goldens are regenerated and
+downstream diffs re-baselined"), the goldens were re-frozen from the
+**unchanged W1b dist** (built from commit `001b1a3`, committed at
+`test/goldens/ref-dist/brush.esm.js`) under the Metal environment:
+`node scripts/diff-parity.mjs --left /test/goldens/ref-dist/brush.esm.js
+--webgpu --baseline --freeze-goldens`. Same hash-RNG geometry
+(`assert-structure` geomHash `3878505443`, byte-identical to the W1b
+value), faithful rasterizer. `test/parity/baseline/` (W0 upstream
+reference) is untouched.
+
+### Integration gate (frozen goldens, < 3.0/255)
+
+`node scripts/diff-parity.mjs --goldens /test/goldens/tiles --regime
+character --tolerance 3.0` — 54 tiles, **52 pass**, mean RMSE 1.28,
+bit-identical across repeated runs (run-to-run reproducibility holds).
+Hatching, `mass()`, `wash()`, and every fill tile pass. Two documented
+residuals:
+
+- `edge-subpixel` **3.75**: six strokes at weight 0.05 whose y sits at
+  exact integer device coordinates — the pathological tie case for point
+  rasterization. The golden shows sparse partial-alpha spill onto the
+  adjacent row at scattered x positions (ANGLE's boundary resolution
+  under sub-0.01 px jitter); we resolve ties one way. Lines land on the
+  same row at the same saturation; character intact.
+- `edge-self-intersect` **4.80**: layered self-intersecting fill whose
+  bowtie wings read slightly denser than the canvas2d-derived golden.
+  Per-layer stencil rasterization is oracle-exact (selfx +
+  overlap-counts-once tests); the divergence is accumulation-level
+  between two different rasterizers over ~90 crisscrossing layers.
+  Same shape, same wash structure, slightly darker wings.
+
+### W2 oracle regression suite
+
+All five rerun green after W3: `oracle-spectral` (diff 0),
+`oracle-stamps` (disc-grid 0.0022, image-grid 0, brush-smoke all
+brushes, pipeline-count stable), `oracle-stencil` (12/12),
+`oracle-grow` (8/8, op-counter sync intact), `oracle-strokewalk`
+(hash battery, scan, walk parity, determinism). The stamps/strokewalk
+pages gained the `await brush.ready()` the async adapter requires.
+
+### Environment note for W4a
+
+`scripts/profile-baseline.mjs` and `scripts/assert-structure.mjs` now
+launch with `--enable-unsafe-webgpu --use-angle=metal` — the W0/W1b
+swiftshader environment cannot run the fork at all. **The ≥10×/≥5×
+targets can no longer be evaluated as ratios against the swiftshader
+tables**; W4a must re-baseline upstream-vs-fork on Metal (the
+`ref-dist` + `--webgpu` machinery does exactly this). Indicative
+first-frame numbers on Metal (median-of-1, not a baseline):
+visual_suite 5026 ms total / 4990 ms draw JS (fills are still CPU
+`grow()` — the dominant cost, W4a's target), hatch_test 58 ms,
+pastel_hatching 162 ms, fill_circle_explorer 56 ms. Batching levers
+already in place for W4a: stamp flushes are per stroke
+(internal-submit); composites submit 3 encoders each (blit / fill
+flush / composite); fill passes are unbatched per layer (~185 passes
+per fill, measured by the stencil oracle); walker batches break on
+color/translation changes.
+
 ## Parity tooling
 
 - `test/parity/parity.html` + `parity.js` + `tiles.js` — split-screen
@@ -270,6 +482,12 @@ against uninstrumented modules, e.g. upstream).
   amplified diff PNGs to `test/parity/diffs/` for failing tiles,
   `--baseline` freezes reference PNGs + `baseline.json`,
   `--regime parity|character` selects verdict criteria.
+  W3 flags: `--goldens <url dir>` (right pane vs frozen golden PNGs —
+  the integration gate; RMSE gates even in the character regime),
+  `--webgpu` (Metal launch flags), `--cpuwalk` (force the CPU stroke
+  walk), `--freeze-goldens` (redirect `--baseline` into
+  `test/goldens/tiles`). The right pane snapshots via
+  `brush.readPixels()` when available.
 - `scripts/profile-baseline.mjs` — the timing tables above.
 - `scripts/assert-structure.mjs` — structural capture/compare/identity
   (W1b gate; see header comment for the calibrated rules).

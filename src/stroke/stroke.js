@@ -50,6 +50,8 @@ import {
   stampImage,
   invalidateTexEntry,
   snapshotMatrix,
+  walkEligible,
+  queueWalkStroke,
 } from "./gl_draw.js";
 
 initStrokeComposite(); // Register the stroke composite system for offscreen mask rendering and compositing.
@@ -161,6 +163,10 @@ export function normalizePressure(p) {
       type: "custom",
       min_max: [min, max],
       variation: { ...DEFAULT_CUSTOM_PRESSURE_VARIATION },
+      // W3: raw control points ride along so the GPU walk's descriptor
+      // builder can evaluate array pressures without calling into JS.
+      // Function-curve customs (no points) stay on the CPU walk.
+      points: [s, m, e],
       curve: (t) =>
         t < 0.5 ? ns + (nm - ns) * t * 2 : nm + (ne - nm) * (t - 0.5) * 2,
     };
@@ -371,6 +377,10 @@ _onSeed(() => {
  */
 function draw(angleScale, isPlot) {
   if (!isPlot) _dir = angleScale;
+  // W3: route eligible line/flowLine strokes to the GPU flow-field walk.
+  // Plots, image/custom tips, function-curve pressures, non-translation
+  // transforms, and Stats-instrumented runs take the retained CPU walk.
+  if (!isPlot && tryGpuWalk(angleScale)) return;
   saveState();
 
   const stepSize = spacing();
@@ -391,6 +401,48 @@ function draw(angleScale, isPlot) {
     }
   }
   restoreState();
+}
+
+/**
+ * W3 GPU-walk router. Replicates saveState()'s environment side effects
+ * (gauss pool fill order, strokeId sequencing, blend-cycle bookkeeping)
+ * and hands the stroke to strokewalk-compute via gl_draw's batch queue.
+ * The cross-stroke pressure-cache chain (upstream's leak) is synced
+ * through the descriptor builder so CPU- and GPU-walked strokes can
+ * interleave without diverging from the all-CPU sequence.
+ * @param {number} dirDegrees internal-degrees stroke direction
+ * @returns {boolean} true when the stroke was queued on the GPU path
+ */
+function tryGpuWalk(dirDegrees) {
+  const param = list.get(State.stroke.type)?.param;
+  if (!walkEligible(param)) return false;
+
+  if (!_gaussPoolReady) fillGaussPool(); // same lazy fill point as saveState
+  _strokeId++;
+
+  isReady();
+  const switchingToBrush = Mix.isBrush !== true;
+  Mix.isBrush = true;
+  if (switchingToBrush) Mix.justChanged = true;
+  Mix.blend(State.stroke.color);
+
+  const chain = queueWalkStroke({
+    strokeId: _strokeId,
+    kind: param.type === "marker" || param.type === "spray" ? param.type : "default",
+    x: _position.x - Cwidth / 2,
+    y: _position.y - Cheight / 2,
+    dir: dirDegrees,
+    length: _length,
+    brush: param,
+    strokeWeight: State.stroke.weight,
+    fieldActive: State.field?.isActive ?? false,
+    wiggle: State.field?.wiggle ?? 1,
+    gaussPool: gaussians,
+    chain: { pc: current.pressureCount, cached: current.cachedPressure },
+  });
+  current.pressureCount = chain.pc;
+  current.cachedPressure = chain.cached;
+  return true;
 }
 
 /**

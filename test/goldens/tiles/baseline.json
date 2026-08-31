@@ -1,7 +1,7 @@
 {
-  "frozenAt": "2026-08-31T05:24:28.935Z",
+  "frozenAt": "2026-08-31T14:49:14.703Z",
   "seed": "parity-0",
-  "left": "/dist/brush.esm.js",
+  "left": "/test/goldens/ref-dist/brush.esm.js",
   "tileSize": 150,
   "cols": 6,
   "tiles": [

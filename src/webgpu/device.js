@@ -66,7 +66,15 @@ export async function initDevice(opts = {}) {
   }
   const adapter = await navigator.gpu.requestAdapter();
   if (!adapter) throw new Error("WebGPU: no adapter");
-  const device = await adapter.requestDevice();
+  // W3: tall standalone canvases (visual_suite is 2800x11400 device px)
+  // exceed the 8192 default limit — request the adapter's real maximum.
+  const device = await adapter.requestDevice({
+    requiredLimits: {
+      maxTextureDimension2D: adapter.limits.maxTextureDimension2D,
+      maxBufferSize: adapter.limits.maxBufferSize,
+      maxStorageBufferBindingSize: adapter.limits.maxStorageBufferBindingSize,
+    },
+  });
   const format = navigator.gpu.getPreferredCanvasFormat();
 
   /** @type {GpuStats} */
@@ -117,7 +125,13 @@ export async function initDevice(opts = {}) {
       device,
       format,
       alphaMode: "premultiplied", // gotcha #7
-      usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC,
+      // COPY_DST: the W3 adapter presents by copying the persistent
+      // painting texture into the swapchain (gotcha #3 — the swapchain is
+      // write-only in this design).
+      usage:
+        GPUTextureUsage.RENDER_ATTACHMENT |
+        GPUTextureUsage.COPY_SRC |
+        GPUTextureUsage.COPY_DST,
     });
     resize(
       opts.width ?? canvas.width / density,

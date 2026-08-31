@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-31T05:46:42.480Z",
+  "generatedAt": "2026-08-31T15:00:02.281Z",
   "adapter": {
     "vendor": "apple",
     "architecture": "metal-3",
@@ -9,8 +9,8 @@
     {
       "name": "disc-grid",
       "pass": true,
-      "rmse": 0,
-      "maxDiff": 0,
+      "rmse": 0.0022,
+      "maxDiff": 1,
       "stampCount": 52,
       "glCoverage": 13791,
       "gpuCoverage": 13791,
@@ -39,7 +39,7 @@
           "name": "pen",
           "discStamps": 1273,
           "imageStamps": 0,
-          "pixels": 229,
+          "pixels": 230,
           "pass": true
         },
         {
@@ -53,28 +53,28 @@
           "name": "2B",
           "discStamps": 1380,
           "imageStamps": 0,
-          "pixels": 332,
+          "pixels": 330,
           "pass": true
         },
         {
           "name": "HB",
           "discStamps": 1156,
           "imageStamps": 0,
-          "pixels": 304,
+          "pixels": 303,
           "pass": true
         },
         {
           "name": "2H",
           "discStamps": 1285,
           "imageStamps": 0,
-          "pixels": 298,
+          "pixels": 297,
           "pass": true
         },
         {
           "name": "cpencil",
           "discStamps": 1295,
           "imageStamps": 0,
-          "pixels": 297,
+          "pixels": 298,
           "pass": true
         },
         {
@@ -88,14 +88,14 @@
           "name": "crayon",
           "discStamps": 2458,
           "imageStamps": 0,
-          "pixels": 651,
+          "pixels": 652,
           "pass": true
         },
         {
           "name": "charcoal",
           "discStamps": 5735,
           "imageStamps": 0,
-          "pixels": 644,
+          "pixels": 645,
           "pass": true
         },
         {
@@ -116,7 +116,7 @@
           "name": "parity-custom",
           "discStamps": 1147,
           "imageStamps": 0,
-          "pixels": 250,
+          "pixels": 249,
           "pass": true
         },
         {
