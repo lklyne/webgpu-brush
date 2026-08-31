@@ -1,0 +1,102 @@
+{
+  "generatedAt": "2026-08-31T20:48:06.264Z",
+  "runs": 3,
+  "results": [
+    {
+      "scenario": "stroke_bench",
+      "runs": 3,
+      "totalMs": 54,
+      "drawMs": 28,
+      "renderMs": 6,
+      "parseMs": 18
+    },
+    {
+      "scenario": "fill_bench",
+      "runs": 3,
+      "totalMs": 385,
+      "drawMs": 360,
+      "renderMs": 5,
+      "parseMs": 19
+    },
+    {
+      "scenario": "visual_suite",
+      "runs": 3,
+      "totalMs": 265,
+      "drawMs": 236,
+      "renderMs": 3,
+      "parseMs": 25
+    },
+    {
+      "scenario": "hatch_test",
+      "runs": 3,
+      "totalMs": 51.5,
+      "drawMs": null,
+      "renderMs": null,
+      "parseMs": null
+    },
+    {
+      "scenario": "fill_angle_test",
+      "runs": 3,
+      "totalMs": 144,
+      "drawMs": 119,
+      "renderMs": 2,
+      "parseMs": 22
+    },
+    {
+      "scenario": "angle_mode_test",
+      "runs": 3,
+      "totalMs": 44,
+      "drawMs": null,
+      "renderMs": null,
+      "parseMs": null
+    },
+    {
+      "scenario": "wash_test",
+      "runs": 3,
+      "totalMs": 38.5,
+      "drawMs": null,
+      "renderMs": null,
+      "parseMs": null
+    },
+    {
+      "scenario": "transform_test",
+      "runs": 3,
+      "totalMs": 64.6,
+      "drawMs": null,
+      "renderMs": null,
+      "parseMs": null
+    },
+    {
+      "scenario": "pushpop_test",
+      "runs": 3,
+      "totalMs": 57.6,
+      "drawMs": null,
+      "renderMs": null,
+      "parseMs": null
+    },
+    {
+      "scenario": "pastel_hatching_test",
+      "runs": 3,
+      "totalMs": 121.2,
+      "drawMs": null,
+      "renderMs": null,
+      "parseMs": null
+    },
+    {
+      "scenario": "field_explorer",
+      "runs": 3,
+      "totalMs": 58.3,
+      "drawMs": null,
+      "renderMs": null,
+      "parseMs": null
+    },
+    {
+      "scenario": "fill_circle_explorer",
+      "runs": 3,
+      "totalMs": 52.3,
+      "drawMs": null,
+      "renderMs": null,
+      "parseMs": null
+    }
+  ]
+}

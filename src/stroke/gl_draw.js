@@ -44,6 +44,17 @@ import {
 import { createUniformRing } from "../webgpu/pipeline.js";
 import { STAMP_BLEND } from "../webgpu/stamps.js";
 import { WALK_RASTER_WGSL } from "../webgpu/wgsl/walkraster.wgsl.js";
+// W4b inspection/manipulation seam — every call below is `_iflag.active`-
+// guarded (one boolean test when no hooks/captures exist; see inspect.js).
+import {
+  _iflag,
+  _tapDisc,
+  _tapImage,
+  _drainStroke,
+  _captureWalkBatch,
+  _strokeHookActive,
+  _noteGpuStroke,
+} from "../webgpu/inspect.js";
 
 // =============================================================================
 // Section: Initialization and Setup
@@ -164,6 +175,9 @@ export function circle(x, y, diameter, alpha) {
 
   const dScreenX = screenX * _density;
   const dScreenY = screenY * _density;
+  // W4b: hooked-stream strokes stage into inspect.js instead (replayed —
+  // possibly mutated — at glDraw); captures record without diverting.
+  if (_iflag.active && _tapDisc(dScreenX, dScreenY, radius, alpha / 255)) return;
   host.stamps.disc(dScreenX, dScreenY, radius, alpha / 255);
   circleDirtyRect = accumulateDirtyRect(
     circleDirtyRect,
@@ -192,6 +206,12 @@ export function stampImage(x, y, size, angle, alpha, extraPadding = 0) {
 
   const dScreenX = screenX * _density;
   const dScreenY = screenY * _density;
+  if (
+    _iflag.active &&
+    _tapImage(dScreenX, dScreenY, halfSize, angle, alpha / 255, extraRadius)
+  ) {
+    return;
+  }
   host.stamps.image(dScreenX, dScreenY, halfSize, angle, alpha / 255, extraRadius);
   const boundsRadius = halfSize * 1.42 + extraRadius;
   imgDirtyRect = accumulateDirtyRect(
@@ -209,6 +229,25 @@ export function stampImage(x, y, size, angle, alpha, extraPadding = 0) {
  * @param {string} src - The image src string / tip key, texture cache key.
  */
 export function glDrawImages(p5img, src) {
+  // W4b: replay this stroke's staged (hooked) image stamps into the queue,
+  // recomputing the dirty rect from post-hook positions.
+  if (_iflag.active && host) {
+    const staged = _drainStroke("image");
+    if (staged) {
+      const v = staged.vertices;
+      for (let i = 0; i < v.length; i += 5) {
+        host.stamps.image(v[i], v[i + 1], v[i + 2], v[i + 3], v[i + 4], staged.pad);
+        const br = v[i + 2] * 1.42 + staged.pad;
+        imgDirtyRect = accumulateDirtyRect(
+          imgDirtyRect,
+          v[i] - br - 1,
+          v[i + 1] - br - 1,
+          v[i] + br + 1,
+          v[i + 1] + br + 1,
+        );
+      }
+    }
+  }
   if (host?.stamps.imageCount === 0 || !p5img) {
     if (host && host.stamps.imageCount > 0 && !p5img) {
       throw new Error(`brush-gpu: no tip surface for image brush "${src}"`);
@@ -246,6 +285,24 @@ export function invalidateTexEntry(key) {
  * Flush all queued circle stamps in one instanced draw.
  */
 export function glDraw() {
+  // W4b: replay this stroke's staged (hooked) disc stamps into the queue,
+  // recomputing the dirty rect from post-hook positions.
+  if (_iflag.active && host) {
+    const staged = _drainStroke("disc");
+    if (staged) {
+      const v = staged.vertices;
+      for (let i = 0; i < v.length; i += 4) {
+        host.stamps.disc(v[i], v[i + 1], v[i + 2], v[i + 3]);
+        circleDirtyRect = accumulateDirtyRect(
+          circleDirtyRect,
+          v[i] - v[i + 2] - 1,
+          v[i + 1] - v[i + 2] - 1,
+          v[i] + v[i + 2] + 1,
+          v[i + 1] + v[i + 2] + 1,
+        );
+      }
+    }
+  }
   if (!host || host.stamps.discCount === 0) return;
   flushWalkBatch(); // preserve stamp order (gotcha #10)
   Mix.glMask.isDrawn = true;
@@ -340,6 +397,11 @@ function ensureRasterPipeline() {
  */
 export function walkEligible(param) {
   if (useCpuWalk || Stats.enabled) return false;
+  // W4b: a hooked stream forfeits the GPU walk (documented honest cost) —
+  // its strokes take the retained CPU producer so the hook can run on
+  // CPU-resident arrays with zero readback. Scoped: other streams keep
+  // the GPU walk untouched.
+  if (_iflag.active && _strokeHookActive()) return false;
   if (!walker || !walkerReady || !host?.gpu) return false;
   if (!param) return false;
   const type = param.type ?? "default";
@@ -406,6 +468,7 @@ function ensureEnvironment(gaussPool) {
  * @returns {{pc, cached}} updated pressure-cache chain
  */
 export function queueWalkStroke(o) {
+  _noteGpuStroke(); // W4b routing counter (per stroke, trivial)
   ensureEnvironment(o.gaussPool);
 
   const key = pendingKey;
@@ -484,6 +547,9 @@ export function flushWalkBatch() {
   pendingKey = null;
 
   const batch = walker.walk(descs); // submits its own compute encoder
+  // W4b: an open capture retains the batch (no readback here — it is
+  // mapped only when readGeometry() is awaited, out-of-band).
+  const captured = _iflag.active && _captureWalkBatch(walker, batch, descs, Density);
   ensureRasterPipeline();
 
   const W = Math.max(1, Math.round(Cwidth * Density));
@@ -526,5 +592,5 @@ export function flushWalkBatch() {
   pass.end();
   host.gpu.device.queue.submit([enc.finish()]);
   rasterRing.reset(); // writeBuffer is queue-ordered — safe post-submit
-  batch.destroy(); // deferred by WebGPU until execution completes
+  if (!captured) batch.destroy(); // deferred by WebGPU until execution completes
 }

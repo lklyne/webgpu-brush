@@ -491,3 +491,289 @@ color/translation changes.
 - `scripts/profile-baseline.mjs` — the timing tables above.
 - `scripts/assert-structure.mjs` — structural capture/compare/identity
   (W1b gate; see header comment for the calibrated rules).
+
+## W4b — Inspection and manipulation API
+
+Wraps the W1a readback primitives as supported public API, both
+directions (plan: "Inspection and manipulation"). New module
+`src/webgpu/inspect.js`; seam insertions in `stroke/gl_draw.js` /
+`stroke/stroke.js` are all guarded by a single `_iflag.active` boolean so
+the seam is a no-op when unused (verified: geomHash `3878505443`
+unchanged, goldens gate unchanged — see below).
+
+### API surface (standalone build)
+
+- **`brush.stream(id?)`** — gets/sets the current geometry stream, a
+  user-chosen label tagging every stroke drawn afterwards (default
+  `"default"`). Streams are routing tags consulted per stroke; they do
+  not exist on the GPU.
+- **`brush.onGeometry(streamId, fn)`** → dispose fn (or pass `fn=null`
+  to unregister). Hook between generation and rasterization, fired once
+  per stroke flush with `{ streamId, kind: "disc"|"image", stride,
+  vertices, counts, strokeIds }`; mutate `vertices` in place or return
+  `{ vertices }` replacements (length % stride === 0) — the result is
+  replayed into the stamp queue (dirty rects recomputed from post-hook
+  positions) before the raster pass. **Honest cost:** a hooked stream's
+  strokes take the retained CPU walk producer (`walkEligible` consults
+  the hook table), so the hook runs synchronously on CPU-resident
+  arrays with zero readback; that stream forfeits the GPU-walk speedup.
+  Other streams keep the GPU walk untouched.
+- **`brush.beginGeometry()`** → capture handle;
+  **`await brush.readGeometry(handle)`** → `{ vertices, counts,
+  strokeIds, images }`; **`brush.endGeometry(handle)`** discards an
+  unread capture. The handle is a capture scope (immediate-mode library
+  — there is no retained stroke object to hand out): open it, draw,
+  read. One scope at a time. Capture does NOT reroute strokes: CPU-walk
+  stamps are recorded as they queue; GPU-walk batches are retained
+  (destroy deferred) and mapped only when `readGeometry` is awaited —
+  the explicit out-of-band readback of gotcha #9. Format (both
+  producers, normalized): `vertices` Float32Array ×4/stamp — x, y
+  (device px, post-transform), radius (device px, pre GL 1px clamp),
+  alpha 0..1; `counts`/`strokeIds` Uint32Array per stroke, ordered by
+  the library's global sequential strokeId (= draw order). Image-tip
+  stamps (5 floats: x, y, halfSize, angle, alpha) come back separately
+  under `images`. Fill/hatch-mass polygon geometry is not captured
+  (fills are CPU-produced; different consumer).
+- **`brush.useCpuGeometry(bool)`** — unchanged from W3 (global CPU
+  producer), now oracle-verified against the GPU producer.
+- `_geometryStats()` / `_resetGeometryStats()` — test instrumentation,
+  not API (routing counters used by the oracle).
+
+### Oracle (`node scripts/oracle-w4b.mjs`, page
+`test/webgpu/oracle-w4b.{html,js}`, report
+`test/webgpu/oracle-w4b-report.json`)
+
+Four gates, all PASS (headless Chrome for Testing, Metal, same launch
+flags as every WebGPU oracle):
+
+1. **roundtrip** — identity hook (read → write back unmodified) is
+   **byte-identical** (0 differing bytes) to the CPU-producer baseline
+   (same producer, minus the hook — the honest comparison, since a hook
+   reroutes its stream to the CPU walk); replacement-returning identity
+   hook likewise; an open capture does not perturb the GPU render
+   (byte-identical); captured geometry structurally sound (14 strokes /
+   27 162 stamps, counts·4 = vertices length, strokeIds strictly
+   increasing); GPU capture vs CPU capture of the same scene:
+   counts identical, max position delta 0 px (f32-rounds equal on these
+   scenes; the strokewalk oracle stresses the f32 envelope harder).
+2. **translate-hook** — hook adding +40 device px in x: ink bbox moves
+   exactly +40 px in x (dxMin=dxMax=40), 0 in y, identical ink pixel
+   count.
+3. **perf-isolation** — hooked stream A (80 strokes) + unhooked stream
+   B (400 strokes) in one scene, 7 reps: B draw-path median 0.3–0.4 ms
+   with hook vs 0.3–0.4 ms without (threshold: ≤ 1.5×no-hook median
+   + 3 ms), and routing asserted — with the hook, B's 400 strokes all
+   stay on the GPU walk, A's 80 are all hooked (counters).
+4. **cpu-vs-gpu** — `useCpuGeometry(true)/(false)` on four scenarios
+   (default lines, marker+spray, field flowLines, mixed): RMSE 0.006 /
+   0.330 / 0.383 / 0.248 per 255, all under the 1.0/255 gate (max
+   single-channel diffs 2–66 at isolated AA/spray-dot edge pixels —
+   f64-vs-f32 walk drift, exactly the strokewalk oracle's envelope).
+
+Chain note baked into the oracle: stroke.js's cross-stroke
+pressure-cache chain (upstream's markerTip leak) survives `seed()`, so
+every run draws one sacrificial CPU-path stroke before reseeding —
+without it, byte-identity across in-page runs depends on run order.
+
+### Invariants re-verified (isolated worktree: W3 HEAD + only W4b files,
+because W4a was mid-flight in the shared tree)
+
+- `assert-structure` geomHash **`3878505443`** (identical to W1b/W3),
+  no hooks, `useCpuGeometry(false)`.
+- Goldens gate `diff-parity --goldens /test/goldens/tiles --regime
+  character --tolerance 3.0`: **52/54, mean 1.2771, worst 4.7958** —
+  bit-for-bit the W3 result (same two documented residuals,
+  edge-subpixel 3.75 / edge-self-intersect 4.80).
+- All five W2 oracles green post-change; `vitest` 99/99; `pnpm build`
+  clean. The oracle also passes identically in the mixed tree.
+
+Ownership per plan: new files only + minimal `_iflag`-guarded seam
+calls; walker/grow internals untouched (W4a owns them) — inspect.js
+depends only on the documented batch contract
+(`{stampsBuffer, offsetsBuffer, countsBuffer}`, `readBatch`) and desc
+fields (`salt`, `mx`, `my`).
+
+## W4a — Tune (Metal re-baseline, fill batching, targets)
+
+### Metal re-baseline (supersedes the swiftshader ratios)
+
+The W0/W1b tables were swiftshader **software GL**; swiftshader cannot
+run WebGPU, so the fork can only be measured on the real GPU and the
+≥10×/≥5× targets are ratios against a **new upstream-on-Metal baseline**
+(same machine, same scenarios, same command). Both sides: headless
+Chrome for Testing, `--enable-unsafe-webgpu --use-angle=metal`, Apple
+Silicon macOS 25.2.0, Node 22.17.1, median of 3 first-frame runs via
+`scripts/profile-baseline.mjs`. Upstream = the pinned npm dist served in
+place of `/dist/brush.esm.js` (new `--module` flag). Raw JSON:
+`test/parity/baseline-upstream-metal.json` (upstream),
+`test/parity/timings-w4a.json` (fork).
+
+The re-baseline overturns the W0 premise for upstream: visual_suite
+23.5 s → **296 ms** on real GL. Most of the swiftshader "draw JS" was
+software rasterization inside synchronous gl.*/canvas2d calls, not
+geometry JS. On Metal, upstream is already GPU-rasterized and its CPU
+cost is the same geometry code both sides share (grow(), field fill,
+scenario JS).
+
+Two benchmark scenarios were added because every existing scenario
+bottoms out at the ~40–60 ms page/parse floor on a real GPU:
+`stroke_bench` (320 full-width field-driven flowLines across the 8
+GPU-walkable tips, 2000×1400) and `fill_bench` (48 large high-bleed
+watercolor fills, no strokes/hatch, 1600×1600). Public API only — the
+same file runs against upstream and the fork.
+
+### Final timing table (Metal, median of 3, first frame)
+
+| Scenario | upstream total (ms) | fork total (ms) | ratio | upstream draw | fork draw | draw ratio |
+|---|---:|---:|---:|---:|---:|---:|
+| **stroke_bench** | 867 | 54 | **16.1×** | 845 | 28 | **30.2×** |
+| **fill_bench** | 329 | 385 | **0.85×** | 305 | 360 | 0.85× |
+| visual_suite | 301 | 265 | 1.14× | 273 | 236 | 1.16× |
+| hatch_test | 111 | 52 | 2.1× | — | — | — |
+| fill_angle_test | 123 | 144 | 0.85× | 103 | 119 | 0.87× |
+| angle_mode_test | 63 | 44 | 1.4× | — | — | — |
+| wash_test | 45 | 39 | 1.2× | — | — | — |
+| transform_test | 58 | 65 | 0.9× | — | — | — |
+| pushpop_test | 62 | 58 | 1.1× | — | — | — |
+| pastel_hatching_test | 136 | 121 | 1.1× | — | — | — |
+| field_explorer | 49 | 58 | 0.8× | — | — | — |
+| fill_circle_explorer | 60 | 52 | 1.2× | — | — | — |
+
+Scenarios without a draw split report only the total (page floor
+~40–60 ms dominates them on both sides; ±10 ms run noise).
+
+- **Stroke-heavy ≥10×: HIT** — 16.1× total, 30.2× on draw. No
+  divergence work needed (the stop-condition branch never triggered);
+  the two-pass per-step restructure was NOT built, per plan ("do not
+  build it preemptively"). The fork's stroke_bench profile is
+  idle/page-bound: walk 4.6 ms, composite 2.4 ms — nothing left to cut.
+- **Fill-heavy ≥5×: NOT HIT — profile explains why** (next section).
+
+### What was optimized: stencil-fill batching (the 19× fork-side win)
+
+Where the fork's visual_suite first frame went at W3 handoff
+(5.0 s draw, CPU profile, Metal): **4.11 s in webgpu/fill.js
+`pushVerts`** — a `queue.writeBuffer` per polygon — plus 168 ms
+`stencilThenCover`, 86 ms `pushUniform`, i.e. per-layer GPU API chatter:
+~185 render passes, ~370 writeBuffers, ~370 bind groups per fill.
+
+Fix (src/webgpu/fill.js + wgsl/fill.wgsl.js, internals only — public
+renderer API and the fill/composite.js seam kept, oracle call sites
+gained one `flushInto(encoder)` line):
+
+1. **Record-then-flush**: layer/fillPolygon/strokePolygon/erase/clear
+   append to CPU staging arrays (grow-only typed arrays); nothing GPU
+   happens until `flushInto(encoder)` uploads the whole batch with one
+   writeBuffer per arena.
+2. **One render pass per batch** (was one per polygon): the cover
+   pipeline's stencil passOp is now `zero` — covering a polygon zeroes
+   exactly the stencil it consumed, so polygons no longer need
+   per-polygon `stencilLoadOp: clear` passes. Pass splits only at
+   `clear()` boundaries. Draw order = record order (gotcha #10 safe;
+   MSAA resolve at pass end is idempotent, pixels bit-identical).
+3. **Per-draw params via `firstInstance`**: `draw(n, 1, 0, paramIdx)`
+   indexes a storage array of `{base, color}` with
+   `@builtin(instance_index)` — no per-draw uniforms or bind groups
+   (4 bind groups per flush total). Erase discs carry alpha in the
+   vec4's w and share the same pass (their pipeline gained a no-op
+   stencil state).
+4. `buildStrokeGeometry`: preallocated scratch instead of
+   `Array.push` + copy (87→26 ms), `Math.hypot`→`sqrt`, per-edge
+   dx/dy/len computed once and shared by the quad and join loops,
+   scissor bounds tracked during generation (conservative superset —
+   output-neutral because the cover draw is stencil-gated).
+
+Measured per lever (visual_suite draw, Metal): 4972 ms → 363 ms
+(batching) → 304 ms (scratch buffer) → 236 ms (sqrt + bounds + edge
+sharing). Stencil oracle encoder report: passesPerFill 185→**1**,
+encode+submit median 15 ms→**1.0 ms**, all 12 stencil tests pass
+unchanged. The W3-flagged composite-encoder lever (3 encoders/
+composite, per-stroke stamp submits) became a no-op after this:
+post-fix profiles show runComposite 2.4 ms / copyToBlendSource 1.6 ms
+per scenario — the earlier 162 ms copyToBlendSource reading was
+backpressure from the per-polygon writeBuffer flood, not submit cost.
+
+### Fill-heavy: why 5× is not reachable without grow-compute, and why
+### grow-compute was not wired this wave
+
+fill_bench fork profile (376 ms draw): **grow() 207 ms**,
+buildStrokeGeometry 66 ms, transformVerts 14 ms, flushInto 8.5 ms,
+hash/gaussian 20 ms. Upstream's 305 ms draw contains the *same* CPU
+grow (~200 ms) — both sides are grow-bound, which is why the ratio
+pins near 1×. Arithmetic ceiling: zeroing every fork-side
+rasterization cost leaves ~230 ms vs upstream 305 ms ≈ 1.3×; **5×
+requires deleting grow() from the CPU**, i.e. the full
+FillPoly-DAG-on-GPU integration, not tuning.
+
+Wiring it was evaluated and deliberately deferred, with the blockers
+mapped concretely:
+
+- fill()'s op chain interleaves CPU vertex consumers with grow chains:
+  `scatter()` (point-in-polygon + pull-in on *grown* vertices),
+  erase-circle generation, and layer()'s border expansion all read
+  vertex data mid-fill. GPU-resident grow therefore forces either a
+  mid-fill readback (gotcha #9, forbidden) or WGSL ports of scatter +
+  erase + border expansion.
+- The op-salt counter cannot round-trip: trim()'s salt consumption
+  depends on the polygon's *current* vertex count, which is
+  data-dependent (trim's nInsert reads vertex coordinates), so counts
+  exist only GPU-side mid-chain (grow.js already keeps the counter in
+  a GPU buffer for exactly this reason). Any CPU op mid-fill would need
+  the counter back — a readback. So it is all-or-nothing: every salt
+  consumer in fill() must move to the GPU together.
+- That is a W2-component-sized build (new scatter/erase/border WGSL
+  kernels with bit-exact hash parity + oracles + indirect scissor
+  bounds), and it **rewrites the fill generate→rasterize seam that W4b
+  is concurrently hooking** (readGeometry/onGeometry/useCpuGeometry).
+  Per the W4a brief ("keep that seam stable"), it was not touched.
+
+Recommended next wave (post-W4b): port scatter/erase/border to compute
+reusing the existing grow.wgsl machinery (STREAM ids SCATTER_PICK/
+PULL_X/PULL_Y already exist), rasterize layer taps via the existing
+`drawIndirect(poly.buffer, 32)` contract, and add a border-expansion
+vertex shader (pulls polygon verts, emits edge quads + miter joins with
+degenerate-triangle skips) — that also removes the last 66 ms of
+buildStrokeGeometry and cuts fill vertex upload ~12×. Projected
+fill_bench draw ≈ 50–70 ms ≈ 4.5–6× — the target lives exactly there.
+
+### Deliberate no-ops (profile-justified)
+
+- **Hatch**: stays on CPU. hatch_test fork profile is page-bound
+  (idle 17 ms, program 14 ms; largest library frame `tryGpuWalk`
+  1.1 ms) and the fork already beats upstream 2.1× — nothing to port.
+- **strokewalk two-pass restructure**: not built; 30× draw on
+  stroke_bench without it.
+- **Composite encoder consolidation**: see above — post-batching cost
+  is 2–4 ms/scenario.
+- **Border expansion in the vertex shader**: valuable only as part of
+  the grow-compute wave (66 ms standalone gain caps fill_bench at
+  ~0.97×); folded into the recommendation above.
+
+### Verification (after every change, final state)
+
+- Five W2 oracles + oracle-w1a: PASS (stencil 12/12; grow op-counter
+  sync intact; strokewalk determinism PASS).
+- Goldens gate `diff-parity --goldens /test/goldens/tiles --regime
+  character --tolerance 3.0`: **52/54, mean 1.2771, worst 4.7958 —
+  bit-for-bit the W3 numbers**, same two documented residuals
+  (edge-subpixel 3.75, edge-self-intersect 4.80). RMSEs did not move
+  at all across the batching/sqrt/bounds changes.
+- `assert-structure --identity` over 3 fresh captures: geomHash
+  **`3878505443`** ×3 (the W1b/W3 value).
+- `vitest` 99/99, `pnpm build` clean, `grep mapAsync src/` matches only
+  `webgpu/readback.js` (+ a comment).
+- All checks ran in the **mixed tree with W4b's seam hooks present**
+  and stayed green.
+
+### Tooling added in W4a
+
+- `scripts/profile-baseline.mjs`: `--module <path>` (serve any dist at
+  `/dist/brush.esm.js` — how the upstream Metal baseline is produced)
+  and `--only <scenario>`; SCENARIOS now leads with the two benches.
+- `test/standalone/stroke_bench.{html,js}`,
+  `test/standalone/fill_bench.{html,js}` — the target-measurement
+  scenarios (deterministic, module-agnostic).
+
+Papercut carried forward (pre-existing, unchanged): webgpu/fill.js
+still uses a local pipeline memo because pipeline.js's cache has no
+`multisample` key.

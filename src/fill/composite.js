@@ -31,14 +31,9 @@ const clamp01 = (v) => Math.max(0, Math.min(1, v));
 function createFillSurface(Renderer, mask) {
   const host = Renderer.host;
   const SS = host.fillSS ?? 1; // supersampling factor of the fill target
-  let encoder = null;
-
-  function enc() {
-    if (!encoder) {
-      encoder = host.gpu.device.createCommandEncoder({ label: "fill-batch" });
-    }
-    return encoder;
-  }
+  // W4a: the fill renderer records ops CPU-side (no encoder needed until
+  // flush); flush() creates one encoder, encodes the whole batch as one
+  // render pass, and submits.
 
   /**
    * Transforms {x,y} vertices by a 2D matrix into a flat device-px array
@@ -86,7 +81,7 @@ function createFillSurface(Renderer, mask) {
       const flat = transformVerts(verts, scaledMatrix(matrix), bounds);
       const lwDevice = lineWidth * matrixScale(matrix);
       host.fillR.layer(
-        enc(),
+        null,
         flat,
         { r: 1, g: 0, b: 0, a: clamp01(fillAlpha) },
         lwDevice * SS,
@@ -125,7 +120,7 @@ function createFillSurface(Renderer, mask) {
       }
       // Upstream's canvas2d erase never fed dirty-rect tracking; keep that
       // (erase only removes alpha inside already-dirty polygon bounds).
-      host.fillR.erase(enc(), flat, clamp01(alpha));
+      host.fillR.erase(null, flat, clamp01(alpha));
     },
 
     /**
@@ -137,14 +132,15 @@ function createFillSurface(Renderer, mask) {
 
     /** Queue a clear of the fill mask target (keeps pass ordering). */
     clear() {
-      host.fillR.clear(enc());
+      host.fillR.clear(null);
     },
 
     /** Submit all pending fill passes. Call before sampling the mask. */
     flush() {
-      if (!encoder) return;
+      if (!host.fillR.pending()) return;
+      const encoder = host.gpu.device.createCommandEncoder({ label: "fill-batch" });
+      host.fillR.flushInto(encoder);
       host.gpu.device.queue.submit([encoder.finish()]);
-      encoder = null;
       host.fillR.finish();
     },
   };

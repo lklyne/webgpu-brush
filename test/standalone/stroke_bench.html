@@ -1,0 +1,27 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>brush-gpu Stroke Benchmark</title>
+    <style>
+      * { box-sizing: border-box; }
+      body { margin: 0; color: #22313f; background: #f7f2e7; font-family: Palatino, serif; }
+      main { width: min(1240px, calc(100vw - 24px)); margin: 0 auto; padding: 18px 0 24px; }
+      h1 { margin: 0 0 8px; font-size: clamp(24px, 3.6vw, 34px); letter-spacing: -0.04em; }
+      p { max-width: 860px; margin: 0 0 8px; color: #52616e; line-height: 1.45; font-size: 13px; }
+      #canvas-host { margin-top: 18px; display: grid; justify-content: center; width: 100%; overflow: hidden; }
+      #canvas-host canvas { grid-area: 1 / 1; display: block; max-width: 100%; height: auto !important; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Stroke Benchmark <small style="font-size:0.55em;color:#8a9aa8;">standalone · W4a</small></h1>
+      <p>320 full-width field-driven flowLines across all GPU-walkable brush tips. Used by scripts/profile-baseline.mjs for the stroke-heavy speedup target.</p>
+      <div id="canvas-host"></div>
+      <script src="./standalone_profiler.js"></script>
+      <script type="module" src="./stroke_bench.js"></script>
+    </main>
+  <script src="../test-nav.js"></script>
+  </body>
+</html>

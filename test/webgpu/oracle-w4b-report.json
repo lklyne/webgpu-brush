@@ -1,0 +1,100 @@
+{
+  "generatedAt": "2026-08-31T20:28:09.746Z",
+  "tests": [
+    {
+      "name": "roundtrip",
+      "pass": true,
+      "identityByteIdentical": true,
+      "identityDiffBytes": 0,
+      "replacementByteIdentical": true,
+      "captureByteIdentical": true,
+      "hookCalls": 15,
+      "hookedStrokes": 14,
+      "gpuStrokesDuringHook": 0,
+      "capturedStrokes": 14,
+      "capturedStamps": 27162,
+      "structuralOk": true,
+      "captureCountsMatch": true,
+      "captureMaxPosDiffPx": 0
+    },
+    {
+      "name": "translate-hook",
+      "pass": true,
+      "baseBBox": {
+        "minX": 51,
+        "minY": 52,
+        "maxX": 321,
+        "maxY": 332,
+        "count": 6922
+      },
+      "shiftedBBox": {
+        "minX": 91,
+        "minY": 52,
+        "maxX": 361,
+        "maxY": 332,
+        "count": 6922
+      },
+      "dxMin": 40,
+      "dxMax": 40,
+      "dyMin": 0,
+      "dyMax": 0,
+      "inkRatio": 1
+    },
+    {
+      "name": "perf-isolation",
+      "pass": true,
+      "repMsBase": [
+        0.5,
+        0.6,
+        0.3,
+        0.3,
+        0.3,
+        0.3,
+        0.2
+      ],
+      "repMsHooked": [
+        0.5,
+        0.6,
+        0.4,
+        0.4,
+        0.3,
+        0.4,
+        0.3
+      ],
+      "medianMsBase": 0.3,
+      "medianMsHooked": 0.4,
+      "thresholdMs": 3.45,
+      "baseGpuStrokes": 480,
+      "hookedGpuStrokes": 400,
+      "hookedStrokes": 80,
+      "hookCalls": 80
+    },
+    {
+      "name": "cpu-vs-gpu",
+      "pass": true,
+      "scenes": {
+        "lines": {
+          "rmse": 0.0062,
+          "maxAbs": 2,
+          "pass": true
+        },
+        "markerSpray": {
+          "rmse": 0.3304,
+          "maxAbs": 52,
+          "pass": true
+        },
+        "field": {
+          "rmse": 0.3834,
+          "maxAbs": 53,
+          "pass": true
+        },
+        "mixed": {
+          "rmse": 0.2482,
+          "maxAbs": 66,
+          "pass": true
+        }
+      }
+    }
+  ],
+  "pageErrors": []
+}

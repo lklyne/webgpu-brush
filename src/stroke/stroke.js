@@ -53,6 +53,8 @@ import {
   walkEligible,
   queueWalkStroke,
 } from "./gl_draw.js";
+// W4b inspection seam (guarded by _iflag.active — no-op when unused)
+import { _iflag, _notifyStrokeBegin } from "../webgpu/inspect.js";
 
 initStrokeComposite(); // Register the stroke composite system for offscreen mask rendering and compositing.
 
@@ -452,6 +454,8 @@ function saveState() {
   if (Stats.enabled) Stats.beginStroke();
   if (!_gaussPoolReady) fillGaussPool();
   _strokeId++;
+  // W4b seam: latch the stream/hook decision for this CPU-walked stroke.
+  if (_iflag.active) _notifyStrokeBegin(_strokeId);
   // Stamp salt: low 2 bits reserved for draw phase (0 loop, 1 start, 2 end).
   current.salt = (_strokeId << 2) >>> 0;
   current.phase = 0;

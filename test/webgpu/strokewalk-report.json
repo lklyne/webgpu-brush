@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-31T15:00:04.896Z",
+  "generatedAt": "2026-08-31T20:50:40.744Z",
   "adapter": {
     "vendor": "apple",
     "architecture": "metal-3"
@@ -180,10 +180,10 @@
       "stepsPerStroke": 2500,
       "gpuStamps": 428200,
       "cpuMs": 7.9,
-      "gpuBuildDescMs": 0.5,
-      "gpuWalkMs": 3.6,
-      "speedup": 2.2,
-      "cpuFixtureMs": 29.1
+      "gpuBuildDescMs": 0.4,
+      "gpuWalkMs": 3.9,
+      "speedup": 2,
+      "cpuFixtureMs": 28.2
     }
   ],
   "pageErrors": []

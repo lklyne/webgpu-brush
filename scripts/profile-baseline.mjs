@@ -28,11 +28,19 @@ function opt(name, fallback) {
 }
 const RUNS = Number(opt("runs", "3"));
 const JSON_OUT = opt("json", null);
+// W4a: serve a different module at /dist/brush.esm.js (the path every
+// standalone page imports), e.g. the upstream npm dist for the Metal
+// upstream baseline:
+//   --module /node_modules/p5.brush/dist/brush.esm.js
+const MODULE_REMAP = opt("module", null);
+const ONLY = opt("only", null);
 
 // Every standalone page that calls reportStandaloneFirstFrame after an
 // automatic first render. The two explorers render a default view before
 // becoming interactive, so their first frame is still meaningful.
 const SCENARIOS = [
+  "stroke_bench",
+  "fill_bench",
   "visual_suite",
   "hatch_test",
   "fill_angle_test",
@@ -60,7 +68,8 @@ const MIME = {
 function startServer() {
   return new Promise((res, rej) => {
     const server = createServer(async (req, resp) => {
-      const urlPath = req.url.split("?")[0];
+      let urlPath = req.url.split("?")[0];
+      if (MODULE_REMAP && urlPath === "/dist/brush.esm.js") urlPath = MODULE_REMAP;
       if (urlPath === "/favicon.ico") {
         resp.writeHead(204);
         resp.end();
@@ -143,6 +152,7 @@ try {
 
   const results = [];
   for (const name of SCENARIOS) {
+    if (ONLY && name !== ONLY) continue;
     const runs = [];
     for (let i = 0; i < RUNS; i++) {
       const page = await browser.newPage();

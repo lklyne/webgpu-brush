@@ -102,6 +102,7 @@ async function gpuRender(ops) {
   const encoder = gpu.device.createCommandEncoder();
   renderer.clear(encoder);
   ops(encoder, renderer);
+  renderer.flushInto(encoder); // W4a: recording is deferred; encode the batch
   gpu.device.queue.submit([encoder.finish()]);
   renderer.finish();
   const { data } = await readTexture(gpu, renderer.target.texture);
@@ -357,6 +358,7 @@ try {
       const encoder = gpu.device.createCommandEncoder();
       renderer.clear(encoder);
       replay(encoder, renderer);
+      renderer.flushInto(encoder);
       gpu.device.queue.submit([encoder.finish()]);
       const t1 = performance.now();
       await gpu.device.queue.onSubmittedWorkDone();
@@ -379,7 +381,7 @@ try {
       runs: 7,
       note:
         "encode+submit is CPU JS; gpuWait is submit->onSubmittedWorkDone. " +
-        "Per plan, no batching applied — W4a's problem.",
+        "W4a: batched — whole fill records CPU-side, encodes as one pass.",
     };
 
     results.push({
@@ -402,6 +404,7 @@ try {
       const enc = gpu.device.createCommandEncoder();
       r16.clear(enc);
       replay(enc, r16);
+      r16.flushInto(enc);
       gpu.device.queue.submit([enc.finish()]);
       r16.finish();
       const { data } = await readTexture(gpu, r16.target.texture, {
@@ -472,6 +475,7 @@ try {
         const enc = gpu.device.createCommandEncoder();
         r16b.clear(enc);
         replay(enc, r16b);
+        r16b.flushInto(enc);
         gpu.device.queue.submit([enc.finish()]);
         r16b.finish();
         const { data } = await readTexture(gpu, r16b.target.texture, { bytesPerPixel: 8 });
@@ -520,6 +524,7 @@ try {
           rss.erase(enc, c2, op.alpha);
         }
       }
+      rss.flushInto(enc);
       gpu.device.queue.submit([enc.finish()]);
       rss.finish();
       const { data } = await readTexture(gpu, rss.target.texture);

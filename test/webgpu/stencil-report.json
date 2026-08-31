@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-31T15:00:03.303Z",
+  "generatedAt": "2026-08-31T20:50:39.102Z",
   "adapter": {
     "vendor": "apple",
     "architecture": "metal-3"
@@ -139,17 +139,17 @@
     }
   ],
   "encoder": {
-    "passesPerFill": 185,
+    "passesPerFill": 1,
     "drawsPerFill": 364,
     "polygons": 90,
     "strokes": 90,
     "erases": 4,
     "vertexFloatsWritten": 559638,
     "pipelines": 4,
-    "encodeSubmitMsMedian": 4.3,
-    "gpuWaitMsMedian": 9.8,
+    "encodeSubmitMsMedian": 1,
+    "gpuWaitMsMedian": 2.4,
     "runs": 7,
-    "note": "encode+submit is CPU JS; gpuWait is submit->onSubmittedWorkDone. Per plan, no batching applied — W4a's problem."
+    "note": "encode+submit is CPU JS; gpuWait is submit->onSubmittedWorkDone. W4a: batched — whole fill records CPU-side, encodes as one pass."
   },
   "pageErrors": []
 }
