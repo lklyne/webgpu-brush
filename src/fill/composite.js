@@ -130,15 +130,77 @@ function createFillSurface(Renderer, mask) {
       surface.layer(verts, matrix, alpha, 0, 0);
     },
 
+    // ------------------------------------------------------------------
+    // W5 — GPU-resident fill geometry. These mirror layer()/erase() above
+    // but take a grow-compute poly handle instead of CPU vertices, and let
+    // the dirty rect accumulate GPU-side (there is no CPU bbox to mark).
+    // ------------------------------------------------------------------
+
+    /** The GPU fill DAG driver, built on first use; null before ready. */
+    get gpuFill() {
+      return host.ensureFillGpu();
+    },
+
+    /**
+     * Opens a GPU-resident fill and returns the root poly handle. All the
+     * device-space maths (supersampling, the dirty-rect transform and pad)
+     * lives here, next to the rest of it — fill/fill.js stays in user space.
+     * @param {object} o see webgpu/fillgpu.js beginFill, plus:
+     *   matrix — the fill matrix in FINAL device px;
+     *   maxLineWidth — the layer border width at i = 0 (its maximum), which
+     *   sets the dirty-rect padding the CPU path uses (1 + lineWidth / 2).
+     */
+    beginGpuFill(o) {
+      const lwDevice = o.maxLineWidth * matrixScale(o.matrix);
+      return host.fillGpu.beginFill({
+        ...o,
+        rectMatrix: o.matrix,
+        rectPad: 1 + lwDevice / 2 + DIRTY_FILL_PADDING,
+      });
+    },
+
+    endGpuFill() {
+      host.fillGpu.endFill();
+    },
+
+    layerGpu(poly, matrix, fillAlpha, lineWidth, strokeAlpha) {
+      const lwDevice = lineWidth * matrixScale(matrix);
+      host.fillGpu.drawLayer(
+        poly,
+        scaledMatrix(matrix),
+        clamp01(fillAlpha),
+        lwDevice * SS,
+        clamp01(strokeAlpha),
+      );
+      // markDirtyRect() would normally set this; the GPU path has no CPU
+      // bbox to merge, so isDrawn has to be raised here or applyShader()
+      // skips the composite entirely.
+      mask.isDrawn = true;
+      mask.gpuDirty = true;
+    },
+
+    eraseGpu(handle, base, matrix, alpha) {
+      const m = scaledMatrix(matrix);
+      // Upstream stores a DIAMETER in the third slot (composite halves it).
+      host.fillGpu.drawErase(handle, base, m, 0.5 * matrixScale(m), clamp01(alpha));
+    },
+
     /** Queue a clear of the fill mask target (keeps pass ordering). */
     clear() {
       host.fillR.clear(null);
     },
 
-    /** Submit all pending fill passes. Call before sampling the mask. */
+    /**
+     * Submit all pending fill passes. Call before sampling the mask.
+     * The GPU-resident ops are encoded FIRST, as one compute pass on the
+     * same encoder — the render pass that follows consumes their poly
+     * buffers through drawIndirect.
+     */
     flush() {
-      if (!host.fillR.pending()) return;
+      const gpuPending = host.fillGpu?.pending();
+      if (!host.fillR.pending() && !gpuPending) return;
       const encoder = host.gpu.device.createCommandEncoder({ label: "fill-batch" });
+      if (gpuPending) host.fillGpu.flushCompute(encoder);
       host.fillR.flushInto(encoder);
       host.gpu.device.queue.submit([encoder.finish()]);
       host.fillR.finish();
@@ -178,6 +240,8 @@ export function ensureFillCompositeResources(
       width: maskWidth,
       height: maskHeight,
       dirtyRect: null,
+      /** true when GPU-resident fill geometry contributed to this cycle */
+      gpuDirty: false,
       isDrawn: false,
       get colorTexture() {
         return Renderer.host.ensureFillMask().texture;
@@ -207,6 +271,7 @@ export function clearFillMask(target, clearTarget) {
   clearTarget(target);
   target.isDrawn = false;
   target.dirtyRect = null;
+  target.gpuDirty = false;
 }
 
 /**
@@ -220,6 +285,20 @@ export function getFillCompositeRect(
   normalizeDirtyRect,
 ) {
   if (!target) return null;
+  if (target.gpuDirty) {
+    // W5: GPU-resident fill geometry has no CPU-side bbox, so the rect is a
+    // GPU BUFFER the composite and the blend-source blit read as vertex
+    // data. Flushing here (rather than in getShaderMask, which core calls
+    // AFTER the blit) is what guarantees the compute pass that fills that
+    // buffer has been submitted before either consumer runs.
+    const driver = target.surface.gpuFill;
+    target.surface.flush();
+    const cpu = target.dirtyRect
+      ? normalizeDirtyRect(expandDirtyRect(target.dirtyRect, DIRTY_FILL_PADDING))
+      : null;
+    driver.writeRectCpuHalf(cpu, target.width, target.height);
+    return { __gpuRect: true, buffer: driver.rectBuffer };
+  }
   if (!target.dirtyRect) return getFullDirtyRect();
   return normalizeDirtyRect(
     expandDirtyRect(target.dirtyRect, DIRTY_FILL_PADDING),

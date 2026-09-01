@@ -366,8 +366,10 @@ appears only in `webgpu/readback.js`, verified by grep). The walker is
 warmed up inside `brush.ready()` so fully-synchronous sketches route
 from the first stroke.
 
-**grow-compute is NOT in the default frame path.** Fills run CPU
-`grow()` → GPU stencil raster. Reason: `FillPoly.fill()` interleaves
+**grow-compute is NOT in the default frame path.** *(Superseded by W5 —
+it is now the default; see the W5 section. The W3 reasoning is kept
+because it is the record of why the seam is shaped the way it is.)*
+Fills run CPU `grow()` → GPU stencil raster. Reason: `FillPoly.fill()` interleaves
 `scatter()` (and the erase/darker op-salt draws) with grow chains, and
 `scatter()` needs actual vertices — GPU-resident grow would force a
 mid-fill readback (gotcha #9) or a scatter compute port. The W3 enabling
@@ -777,3 +779,212 @@ fill_bench draw ≈ 50–70 ms ≈ 4.5–6× — the target lives exactly there.
 Papercut carried forward (pre-existing, unchanged): webgpu/fill.js
 still uses a local pipeline memo because pipeline.js's cache has no
 `multisample` key.
+
+## W5 — grow-compute wired: the FillPoly DAG, GPU-resident
+
+W4a's recommendation is implemented as written. Fills no longer run
+`grow()` on the CPU: `FillPoly.fill()` drives either the retained CPU
+producer or a GPU handle, and on the GPU path **no fill vertex, vertex
+count or bounding box ever touches the CPU**.
+
+### Why it had to be all-or-nothing (and how the seam was cut)
+
+The blocker was never grow() itself — it was the op-salt counter.
+`trim()` consumes a salt only when `v.length > 8`, and the vertex counts
+that decision keys on are data-dependent (`nInsert` reads coordinates),
+so mid-chain counts exist only GPU-side. Any CPU op between two grows
+would need the counter back, i.e. a frame-path readback (gotcha #9).
+So every salt consumer moved together:
+
+| op | where it lives now | salt |
+|---|---|---|
+| `grow()` / `trim()` | `growStep` (grow.wgsl) | GPU counter |
+| `scatter()` | `scatterStep` | GPU counter |
+| `erase()` | `eraseStep` | GPU counter |
+| `flipDirs()` | a uniform flag on the next grow — no kernel | none |
+| layer border | `vsBorderPoly` vertex shader | none |
+| `createFill` / centre / `darker` | still CPU | CPU counter (ops 0–2, before the GPU takes over) |
+
+`opInit` seeds the GPU counter from inside the compute pass, so the
+per-fill reset is ordered structurally rather than by `queue.writeBuffer`
+timing. `fill()` itself is unchanged control flow operating on a `root`
+that is either `this` or a `GpuFillPoly` — **one schedule, so the op
+order (and therefore the salt sequence) cannot drift between producers**.
+`_layerStyle()` and `_eraseParams()` were extracted so both producers
+share the same arithmetic verbatim.
+
+### One dispatch per op, one workgroup
+
+W2's grow was two dispatches (prepare @ 1 thread, exec @ `2 * capacity`
+threads — 256 workgroups regardless of the real vertex count). A fill
+issues ~220 ops, so at 48 fills that is ~21 000 dispatches of mostly
+early-outs. `growStep` is now ONE dispatch of ONE workgroup: thread 0
+runs the sequential prepare into workgroup memory, a barrier publishes
+it, 256 threads stride the output indices, and a third phase reduces the
+per-thread vertex bbox into the poly header. `scatterStep` has the same
+shape. Halves the dispatch count and removes the fixed launch.
+
+Gotcha #10 holds throughout: every output slot is a pure function of its
+index (erase circles land at `i - floor(i/5) - 1`, the skipped `i % 5`
+draws still consuming their RNG), and the only atomics are the
+`atomicMin/Max` accumulating the dirty rect — commutative and
+associative, so interleaving cannot change the result. No atomic append
+anywhere.
+
+### The two things that had no CPU-side answer
+
+1. **Vertex counts** — `drawIndirect` args are written by the compute
+   shader into the poly header: byte 32 for the fan fill
+   (`3 * (count - 2)`), byte 48 for the border (`12 * count`).
+2. **Bounding boxes** — a scissor rect cannot be indirect, so the
+   geometry carries the bound instead:
+   - the fill/border **cover draw is a bbox QUAD** (`vsCoverPoly`) built
+     from the GPU-computed bbox in the header, snapped to whole pixels
+     (a fractional edge under MSAA would leave stencil samples uncleared
+     for the next of ~90 layers);
+   - the **composite dirty rect is a GPU buffer**. `getFillCompositeRect`
+     returns `{__gpuRect, buffer}`, and both consumers became quad draws:
+     `spectral.wgsl`'s new `vsRect` entry replaces fullscreen-tri +
+     `setScissorRect`, and the blend-source blit replaces
+     `copyTextureToTexture` with a `textureLoad` quad. The buffer holds
+     the GPU-accumulated half (ordered-u32-encoded f32) and a CPU half
+     the retained path still writes, unioned in the shader — so CPU and
+     GPU fills can coexist in one composite cycle. The flush moved into
+     `getFillCompositeRect` because shared core calls it BEFORE the blit;
+     that ordering is what guarantees the rect buffer is populated.
+
+Full-canvas compositing was measured as the alternative and rejected:
+192 composites × 2.56 Mpx of Kubelka-Munk per fill_bench frame.
+
+### Border expansion in the vertex shader
+
+`buildStrokeGeometry`'s CPU output is variable length (skipped degenerate
+edges, a 3-vertex bevel fallback past the miter limit). `vsBorderPoly`
+emits a FIXED 12 vertices per polygon vertex — 6 edge quad, 6 miter join
+— and collapses every skipped case to a degenerate triangle, so the
+vertex count stays a pure function of the vertex count. No compaction, no
+atomics. This also deletes the 66 ms of `buildStrokeGeometry` and the
+14 ms of `transformVerts` W4a measured (the affine now runs in the vertex
+stage).
+
+### Timings (Metal, median of 3, first frame; same command as W4a)
+
+`node scripts/profile-baseline.mjs --json test/parity/timings-w5.json`;
+upstream column is the unchanged `test/parity/baseline-upstream-metal.json`.
+
+| Scenario | upstream | W4a fork | W5 fork | W4a ratio | **W5 ratio** | up draw | W5 draw | draw ratio |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| **stroke_bench** | 867 | 54 | 53 | 16.1× | **16.4×** | 845 | 28 | 30.2× |
+| **fill_bench** | 329 | 385 | **49** | 0.85× | **6.7×** | 305 | 28 | **10.9×** |
+| visual_suite | 301 | 265 | 138 | 1.14× | 2.18× | 273 | 112 | 2.44× |
+| hatch_test | 110.6 | 51.5 | 46.5 | 2.15× | 2.38× | — | — | — |
+| fill_angle_test | 123 | 144 | 74 | 0.85× | 1.66× | 103 | 53 | 1.94× |
+| angle_mode_test | 62.7 | 44 | 44.3 | 1.43× | 1.42× | — | — | — |
+| wash_test | 44.9 | 38.5 | 43.6 | 1.17× | 1.03× | — | — | — |
+| transform_test | 58.2 | 64.6 | 38.1 | 0.90× | 1.53× | — | — | — |
+| pushpop_test | 61.5 | 57.6 | 39.6 | 1.07× | 1.55× | — | — | — |
+| pastel_hatching_test | 135.9 | 121.2 | 126.6 | 1.12× | 1.07× | — | — | — |
+| field_explorer | 48.5 | 58.3 | 51.7 | 0.83× | 0.94× | — | — | — |
+| fill_circle_explorer | 60.2 | 52.3 | 35.2 | 1.15× | 1.71× | — | — | — |
+
+- **Fill-heavy ≥5×: HIT** — 6.7× total, 10.9× on draw (was 0.85×).
+  fill_bench draw went 358 ms → 28 ms.
+- **Stroke-heavy ≥10×: still HIT** — 16.4×, untouched by this wave.
+- The sub-60 ms scenarios (wash, angle_mode, pastel, field_explorer) are
+  page/parse-floor bound on both sides at ±10 ms run noise; they are not
+  measuring the library. field_explorer's 0.94× is that floor — an early
+  W5 build made it worse (0.69×) by compiling the five new compute
+  pipelines inside `ready()`, so **the fill driver is now built lazily on
+  the first fill**; stroke-only sketches pay nothing.
+
+### Verification (all re-run at final state)
+
+- **`node scripts/oracle-w5.mjs`** (new; page `test/webgpu/oracle-w5.js`,
+  report `test/webgpu/oracle-w5-report.json`, `--dump` writes failing
+  scenes to `test/webgpu/w5-dumps/`). Eight fill scenarios spanning
+  bleed strength/direction, texture (erase density), scatter on/off,
+  alpha 255, multi-colour, self-intersecting, fill+stroke:
+  1. **cpu-vs-gpu** `useCpuGeometry(true)` vs `(false)`: RMSE
+     **0.0018–0.0080** per 255 (gate < 1.0), max single-channel diff
+     **1**, 2–38 differing bytes out of 589 824. Effectively bit-exact.
+  2. **determinism**: three consecutive GPU-fill renders **byte-identical**
+     on all eight scenes.
+  3. **dirty-rect**: GPU ink bbox contains the CPU ink bbox and ink pixel
+     counts match to 1.0000–1.0001 on all eight — the GPU rect never
+     clips the composite.
+  4. **routing**: `useCpuGeometry(true)` and `Stats.enabled` fall back to
+     the CPU DAG (0 GPU fills), the GPU path is taken otherwise.
+- **Goldens gate** `diff-parity --goldens /test/goldens/tiles --regime
+  character --tolerance 3.0`: **52/54, mean 1.2771, worst 4.7957** — the
+  W3/W4a/W4b numbers to four decimals (edge-subpixel 3.7466,
+  edge-self-intersect 4.7957 vs 4.7958). Fills included.
+- **`assert-structure --identity`** over 3 fresh captures: geomHash
+  **`3878505443`** ×3.
+- All seven earlier oracles green: w1a, spectral, stamps, stencil (12/12,
+  `passesPerFill` still 1), grow (8/8, op-counter sync intact),
+  strokewalk, w4b (4/4).
+- `pnpm build` clean, `vitest` 99/99, `grep -rn mapAsync src/` still
+  matches only `webgpu/readback.js` (+ two comments).
+
+### Deviations from W4a's written plan
+
+- W4a proposed keeping prepare/exec as two dispatches. Profiling the op
+  count (~220 per fill) made the fixed 256-workgroup exec launch the
+  dominant term, so they were merged into one single-workgroup dispatch.
+  This is an internal restructure of an oracle-verified W2 component; the
+  grow oracle passes unchanged (`maxVertDev` ≤ 3e-5).
+- W4a did not anticipate the composite dirty rect. It is the one place
+  where "no readback" forced work outside `webgpu/` — `spectral.wgsl`
+  gained `vsRect`, and `gpu.js` gained a quad blit. Shared core
+  (`core/color.js`) is untouched: the rect marker flows through the
+  existing hook signatures.
+- `grow.js`'s uniform arena is now staged CPU-side and uploaded with ONE
+  `writeBuffer` per batch (per-call `writeBuffer` was W4a's 4.1 s
+  finding). Existing callers must add `gc.uploadBatch()` before submit;
+  the grow oracle was updated accordingly.
+- `pipeline.js#getComputePipeline` gained an optional explicit `layout`,
+  needed because `layout: 'auto'` never declares `hasDynamicOffset` —
+  and dynamic offsets are what keep bind groups keyed on buffers
+  (~a dozen per frame) rather than per draw (~20 000).
+
+### Papercuts
+
+- **~29 MB of pooled poly buffers.** The driver never aliases a buffer
+  within a fill (no lifetime analysis, no chance of a later op clobbering
+  a buffer an earlier draw reads), so a fill's ~220 ops each take a fresh
+  8192-vertex slot: 220 × 131 KB. Pooled and reused across fills, so it
+  is a ceiling, not per-fill. A liveness pass over `_fillBody` would cut
+  it to about a dozen buffers.
+- **Uniform arena cannot grow mid-batch** (bind groups recorded during
+  the batch hold it). Capacity is a fixed 8192 ops per batch — ~9× the
+  largest fill this library produces — and overflow throws with a
+  pointer to the fix rather than corrupting.
+- `nh()`'s `1 - hash01()` had to be reproduced as `(2^32 - h) * 2^-32`
+  in u32 space; the naive f32 subtraction cancels catastrophically and
+  `nh` feeds `log()`, so a 2^-24 absolute error there becomes an
+  unbounded erase-circle offset. Documented in the shader.
+- Two f32-vs-f64 truncation risks are accepted rather than emulated:
+  erase's `~~(rh(80,110) * countFactor)` and scatter's
+  `~~(i*step + rh(...))` can flip by one with probability ~1e-5 per
+  draw. Both are single-element effects (one circle, one vertex pick);
+  the count-critical truncations (`~~((1-f) * N)`, `~~(L * ratio)`,
+  `ceil(idx / GROW_CAP)`) all go through the exact-integer path.
+- `scatter()` after `flipDirs()` throws — `fill()` never does it, and
+  supporting it would need a copy kernel the lazy flag avoids.
+
+### Files changed
+
+`src/webgpu/wgsl/grow.wgsl.js` (growStep/scatterStep/eraseStep/opInit/
+rectInit, bbox reduction, dirty-rect merge), `src/webgpu/grow.js`,
+`src/webgpu/fillgpu.js` (new), `src/webgpu/fill.js` (GPU-geometry
+pipelines + record ops), `src/webgpu/wgsl/fill.wgsl.js` (POLY_WGSL,
+ERASE_POLY_WGSL), `src/webgpu/wgsl/spectral.wgsl.js` (`vsRect`),
+`src/webgpu/pipeline.js` (explicit compute layout), `src/fill/fill.js`
+(`GpuFillPoly`, `_tryGpuFill`, `_fillBody`, `_layerStyle`,
+`_eraseParams`), `src/fill/composite.js` (GPU record API, GPU rect),
+`src/adapters/standalone/gpu.js` (lazy driver, rect-quad blit +
+composite), `src/stroke/gl_draw.js` (`_getUseCpuWalk`),
+`src/index.standalone.js` (`_fillDriverStats`),
+`test/webgpu/oracle-w5.{html,js}` (new), `scripts/oracle-w5.mjs` (new),
+`test/webgpu/grow-oracle.js` (`uploadBatch`),
+`test/parity/timings-w5.json` (new).

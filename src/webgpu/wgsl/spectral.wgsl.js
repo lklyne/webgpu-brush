@@ -340,6 +340,47 @@ struct VSOut {
   return out;
 }
 
+// W5: the fill dirty rect is GPU-resident (fill geometry never touches the
+// CPU, so no CPU-side bbox exists and setScissorRect cannot be indirect).
+// The composite therefore draws a QUAD built from that buffer instead of a
+// scissored fullscreen triangle. Layout (see webgpu/grow.js RECT_*):
+//   words 0..3  GPU-accumulated bounds, ordered-u32-encoded f32, device px
+//   words 4..7  bounds contributed by the retained CPU fill path, plain f32
+//   word  8     1 when the CPU half has anything in it
+//   words 9,10  target size in device px
+@group(0) @binding(4) var<storage, read> u_rect: array<u32>;
+
+// Inverse of grow.wgsl's f32->ordered-u32 map: positives got + 2^31 (high
+// bit set), negatives got bitwise NOT (high bit clear).
+fn ordU32ToF32(v: u32) -> f32 {
+  if ((v & 0x80000000u) != 0u) { return bitcast<f32>(v - 0x80000000u); }
+  return bitcast<f32>(~v);
+}
+
+@vertex fn vsRect(@builtin(vertex_index) vi: u32) -> VSOut {
+  let size = vec2f(bitcast<f32>(u_rect[9]), bitcast<f32>(u_rect[10]));
+  var mn = vec2f(ordU32ToF32(u_rect[0]), ordU32ToF32(u_rect[1]));
+  var mx = vec2f(ordU32ToF32(u_rect[2]), ordU32ToF32(u_rect[3]));
+  if (u_rect[8] != 0u) {
+    mn = min(mn, vec2f(bitcast<f32>(u_rect[4]), bitcast<f32>(u_rect[5])));
+    mx = max(mx, vec2f(bitcast<f32>(u_rect[6]), bitcast<f32>(u_rect[7])));
+  }
+  mn = clamp(floor(mn), vec2f(0.0), size);
+  mx = clamp(ceil(mx), vec2f(0.0), size);
+  var idx = vi;
+  if (vi == 3u) { idx = 0u; } else if (vi == 4u) { idx = 2u; } else if (vi == 5u) { idx = 3u; }
+  var p = mn;
+  if (idx == 1u) { p = vec2f(mx.x, mn.y); }
+  else if (idx == 2u) { p = mx; }
+  else if (idx == 3u) { p = vec2f(mn.x, mx.y); }
+  // Pixel space (y down) -> the same clip/varying convention as vs().
+  let ndc = p / size * 2.0 - 1.0;
+  var out: VSOut;
+  out.p = ndc;                                // uv = 0.5*p + 0.5 = p / size
+  out.pos = vec4f(ndc.x, -ndc.y, 0.0, 1.0);   // same y flip vs() applies
+  return out;
+}
+
 @fragment fn fs(in: VSOut) -> @location(0) vec4f {
   let uv = 0.5 * in.p + 0.5;
   let sourceUV = select(uv, vec2f(uv.x, 1.0 - uv.y), (u.flags & 1u) != 0u);

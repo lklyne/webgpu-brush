@@ -344,6 +344,10 @@ let useCpuWalk = false;
 export function _setUseCpuWalk(v) {
   useCpuWalk = !!v;
 }
+/** brush.useCpuGeometry() is one switch: it also forces the CPU fill DAG. */
+export function _getUseCpuWalk() {
+  return useCpuWalk;
+}
 
 function initWalker() {
   if (walker || !host?.gpu) return;

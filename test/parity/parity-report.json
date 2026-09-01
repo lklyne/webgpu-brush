@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-31T20:47:50.711Z",
+  "generatedAt": "2026-09-01T01:43:30.265Z",
   "regime": "character",
   "tolerance": 3,
   "seed": "parity-0",
@@ -8,7 +8,7 @@
   "right": "/dist/brush.esm.js",
   "summary": {
     "tiles": 54,
-    "worst": 4.7958,
+    "worst": 4.7957,
     "mean": 1.2771,
     "failing": 2,
     "pageErrors": []
@@ -203,7 +203,7 @@
       "feature": "fillTexture",
       "section": "fill",
       "regime": "character",
-      "rmse": 2.2276,
+      "rmse": 2.2277,
       "verdict": "pass"
     },
     {
@@ -411,7 +411,7 @@
       "feature": "self-intersecting fill",
       "section": "edge",
       "regime": "character",
-      "rmse": 4.7958,
+      "rmse": 4.7957,
       "verdict": "fail"
     },
     {

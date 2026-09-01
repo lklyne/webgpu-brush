@@ -30,6 +30,7 @@ import { initDevice } from "../../webgpu/device.js";
 import { createPipelineCache, createUniformRing } from "../../webgpu/pipeline.js";
 import { createStampRenderer } from "../../webgpu/stamps.js";
 import { createFillRenderer } from "../../webgpu/fill.js";
+import { createGpuFillDriver } from "../../webgpu/fillgpu.js";
 import { packBlendUniforms, BLEND_UNIFORM_BYTES } from "../../webgpu/spectral.js";
 import { SPECTRAL_WGSL } from "../../webgpu/wgsl/spectral.wgsl.js";
 
@@ -57,6 +58,8 @@ export function createGpuHost(canvas, width, height, density) {
     cache: null,
     stamps: null,
     fillR: null,
+    /** W5 GPU-resident fill DAG driver (webgpu/fillgpu.js), built lazily */
+    fillGpu: null,
     ready: null,
     /** painting texture (image convention, gpu.format) */
     painting: null,
@@ -138,6 +141,17 @@ export function createGpuHost(canvas, width, height, density) {
     ensurePainting();
     return host;
   })();
+
+  /**
+   * The GPU fill DAG driver, built on first use. Eager construction cost
+   * every stroke-only sketch ~10 ms of shader compilation in ready().
+   */
+  host.ensureFillGpu = () => {
+    if (!host.fillGpu && host.gpu) {
+      host.fillGpu = createGpuFillDriver(host.gpu, host.cache, host.fillR);
+    }
+    return host.fillGpu;
+  };
 
   /** True once GPU encoding is possible. */
   host.isReady = () => !!host.gpu;
@@ -354,8 +368,94 @@ struct VSOut { @builtin(position) pos: vec4f, @location(0) uv: vec2f };
    * @param {GPUTexture} fromTexture
    * @param {{minX,minY,maxX,maxY}|null} rect device px, image convention
    */
+  // W5: when fill geometry is GPU-resident there is no CPU-side dirty rect
+  // (computing one would need a readback — gotcha #9). The rect lives in a
+  // storage buffer instead, so the blend-source blit becomes a QUAD DRAW
+  // pulling its corners from that buffer rather than a copyTextureToTexture
+  // with CPU extents.
+  const BLIT_RECT_WGSL = /* wgsl */ `
+@group(0) @binding(0) var src: texture_2d<f32>;
+@group(0) @binding(1) var<storage, read> u_rect: array<u32>;
+
+fn ordU32ToF32(v: u32) -> f32 {
+  if ((v & 0x80000000u) != 0u) { return bitcast<f32>(v - 0x80000000u); }
+  return bitcast<f32>(~v);
+}
+
+@vertex fn vs(@builtin(vertex_index) vi: u32) -> @builtin(position) vec4f {
+  let size = vec2f(bitcast<f32>(u_rect[9]), bitcast<f32>(u_rect[10]));
+  var mn = vec2f(ordU32ToF32(u_rect[0]), ordU32ToF32(u_rect[1]));
+  var mx = vec2f(ordU32ToF32(u_rect[2]), ordU32ToF32(u_rect[3]));
+  if (u_rect[8] != 0u) {
+    mn = min(mn, vec2f(bitcast<f32>(u_rect[4]), bitcast<f32>(u_rect[5])));
+    mx = max(mx, vec2f(bitcast<f32>(u_rect[6]), bitcast<f32>(u_rect[7])));
+  }
+  mn = clamp(floor(mn), vec2f(0.0), size);
+  mx = clamp(ceil(mx), vec2f(0.0), size);
+  var idx = vi;
+  if (vi == 3u) { idx = 0u; } else if (vi == 4u) { idx = 2u; } else if (vi == 5u) { idx = 3u; }
+  var p = mn;
+  if (idx == 1u) { p = vec2f(mx.x, mn.y); }
+  else if (idx == 2u) { p = mx; }
+  else if (idx == 3u) { p = vec2f(mn.x, mx.y); }
+  let ndc = p / size * 2.0 - 1.0;
+  return vec4f(ndc.x, -ndc.y, 0.0, 1.0);
+}
+
+// textureLoad at the fragment's own pixel: an exact copy, no filtering.
+@fragment fn fs(@builtin(position) pos: vec4f) -> @location(0) vec4f {
+  return textureLoad(src, vec2i(i32(pos.x), i32(pos.y)), 0);
+}
+`;
+
+  let blitPipeline = null;
+  let blitLayout = null;
+  let blitSrcTex = null;
+  let blitSrcView = null;
+
+  function blitRectQuad(sourceFramebuffer, fromTexture, rectBuffer) {
+    if (!blitPipeline) {
+      blitPipeline = host.cache.getRenderPipeline({
+        code: BLIT_RECT_WGSL,
+        vertexEntry: "vs",
+        fragmentEntry: "fs",
+        blend: null,
+        format: host.gpu.format,
+        label: "blend-source-rect-blit",
+      });
+      blitLayout = blitPipeline.getBindGroupLayout(0);
+    }
+    if (blitSrcTex !== fromTexture) {
+      blitSrcTex = fromTexture;
+      blitSrcView = fromTexture.createView();
+    }
+    const bind = host.cache.getBindGroup(
+      blitLayout,
+      [
+        { binding: 0, resource: blitSrcView },
+        { binding: 1, resource: { buffer: rectBuffer } },
+      ],
+      "blend-source-rect-blit-bg",
+    );
+    const enc = host.gpu.device.createCommandEncoder({ label: "blit-blend-source" });
+    const pass = enc.beginRenderPass({
+      colorAttachments: [
+        { view: sourceFramebuffer.view, loadOp: "load", storeOp: "store" },
+      ],
+    });
+    pass.setPipeline(blitPipeline);
+    pass.setBindGroup(0, bind);
+    pass.draw(6);
+    pass.end();
+    host.gpu.device.queue.submit([enc.finish()]);
+  }
+
   host.copyToBlendSource = (sourceFramebuffer, fromTexture, rect) => {
     host.requireReady();
+    if (rect && rect.__gpuRect) {
+      blitRectQuad(sourceFramebuffer, fromTexture, rect.buffer);
+      return;
+    }
     const w = fromTexture.width;
     const h = fromTexture.height;
     const x0 = rect ? Math.max(0, Math.floor(rect.minX)) : 0;
@@ -385,9 +485,69 @@ struct VSOut { @builtin(position) pos: vec4f, @location(0) uv: vec2f };
    * @param {{minX,minY,maxX,maxY}|null} o.rect device px
    * @param {object|null} o.targetFramebuffer duck or null → painting
    */
+  let rectCompositePipeline = null;
+  let rectCompositeLayout = null;
+
+  /**
+   * The spectral composite bounded by the GPU-resident fill dirty rect: the
+   * same fragment shader, but the fullscreen triangle + setScissorRect is
+   * replaced by a quad whose corners are pulled from the rect buffer
+   * (spectral.wgsl vsRect). A scissor rect cannot be indirect, and reading
+   * the rect back to the CPU would be a frame-path stall (gotcha #9).
+   */
+  function runCompositeRect(o, gpuRect) {
+    const device = host.gpu.device;
+    if (o.targetFramebuffer) {
+      throw new Error("brush-gpu standalone: framebuffer targets are not supported.");
+    }
+    if (!rectCompositePipeline) {
+      rectCompositePipeline = host.cache.getRenderPipeline({
+        code: SPECTRAL_WGSL,
+        vertexEntry: "vsRect",
+        fragmentEntry: "fs",
+        blend: {
+          color: { srcFactor: "one", dstFactor: "one-minus-src-alpha" },
+          alpha: { srcFactor: "one", dstFactor: "one-minus-src-alpha" },
+        },
+        format: host.gpu.format,
+        label: "spectral-composite-rect",
+      });
+      rectCompositeLayout = rectCompositePipeline.getBindGroupLayout(0);
+    }
+    packBlendUniforms(
+      { color: o.color, isBrush: o.isBrush, targetIsFramebuffer: false, flags: 0 },
+      blendScratch,
+    );
+    const slot = blendRing.write(blendScratch);
+    const bind = host.cache.getBindGroup(
+      rectCompositeLayout,
+      [
+        { binding: 0, resource: { buffer: slot.buffer, offset: slot.offset, size: slot.size } },
+        { binding: 1, resource: o.source.view },
+        { binding: 2, resource: o.maskView },
+        { binding: 3, resource: sampler },
+        { binding: 4, resource: { buffer: gpuRect.buffer } },
+      ],
+      "composite-rect",
+    );
+    const enc = device.createCommandEncoder({ label: "composite-rect" });
+    const pass = enc.beginRenderPass({
+      colorAttachments: [{ view: host.paintingView, loadOp: "load", storeOp: "store" }],
+    });
+    pass.setPipeline(rectCompositePipeline);
+    pass.setBindGroup(0, bind);
+    pass.draw(6);
+    pass.end();
+    host.present(enc);
+    device.queue.submit([enc.finish()]);
+    blendRing.reset();
+  }
+
   host.runComposite = (o) => {
     host.requireReady();
     const device = host.gpu.device;
+    const gpuRect = o.rect && o.rect.__gpuRect ? o.rect : null;
+    if (gpuRect) return runCompositeRect(o, gpuRect);
     if (!compositePipeline) {
       compositePipeline = host.cache.getRenderPipeline({
         code: SPECTRAL_WGSL,

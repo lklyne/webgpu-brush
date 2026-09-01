@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-31T20:28:09.746Z",
+  "generatedAt": "2026-09-01T01:41:38.697Z",
   "tests": [
     {
       "name": "roundtrip",
@@ -46,24 +46,24 @@
       "repMsBase": [
         0.5,
         0.6,
-        0.3,
-        0.3,
-        0.3,
-        0.3,
-        0.2
-      ],
-      "repMsHooked": [
         0.5,
-        0.6,
-        0.4,
         0.4,
         0.3,
-        0.4,
+        0.3,
         0.3
       ],
-      "medianMsBase": 0.3,
+      "repMsHooked": [
+        0.6,
+        0.4,
+        0.5,
+        0.4,
+        0.3,
+        0.3,
+        0.3
+      ],
+      "medianMsBase": 0.4,
       "medianMsHooked": 0.4,
-      "thresholdMs": 3.45,
+      "thresholdMs": 3.6,
       "baseGpuStrokes": 480,
       "hookedGpuStrokes": 400,
       "hookedStrokes": 80,

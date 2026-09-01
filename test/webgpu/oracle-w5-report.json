@@ -1,0 +1,248 @@
+{
+  "generatedAt": "2026-09-01T01:43:29.174Z",
+  "tests": [
+    {
+      "name": "cpu-vs-gpu",
+      "pass": true,
+      "scenes": {
+        "basic": {
+          "rmse": 0.0041,
+          "maxAbs": 1,
+          "differingBytes": 10,
+          "pass": true
+        },
+        "bleedHigh": {
+          "rmse": 0.0032,
+          "maxAbs": 1,
+          "differingBytes": 6,
+          "pass": true
+        },
+        "bleedIn": {
+          "rmse": 0.008,
+          "maxAbs": 1,
+          "differingBytes": 38,
+          "pass": true
+        },
+        "alphaFull": {
+          "rmse": 0.0018,
+          "maxAbs": 1,
+          "differingBytes": 2,
+          "pass": true
+        },
+        "noScatter": {
+          "rmse": 0.0043,
+          "maxAbs": 1,
+          "differingBytes": 11,
+          "pass": true
+        },
+        "multi": {
+          "rmse": 0.0061,
+          "maxAbs": 1,
+          "differingBytes": 22,
+          "pass": true
+        },
+        "selfIntersect": {
+          "rmse": 0.0041,
+          "maxAbs": 1,
+          "differingBytes": 10,
+          "pass": true
+        },
+        "strokedFill": {
+          "rmse": 0.0062,
+          "maxAbs": 1,
+          "differingBytes": 23,
+          "pass": true
+        }
+      }
+    },
+    {
+      "name": "determinism",
+      "pass": true,
+      "scenes": {
+        "basic": {
+          "identical": true
+        },
+        "bleedHigh": {
+          "identical": true
+        },
+        "bleedIn": {
+          "identical": true
+        },
+        "alphaFull": {
+          "identical": true
+        },
+        "noScatter": {
+          "identical": true
+        },
+        "multi": {
+          "identical": true
+        },
+        "selfIntersect": {
+          "identical": true
+        },
+        "strokedFill": {
+          "identical": true
+        }
+      }
+    },
+    {
+      "name": "dirty-rect",
+      "pass": true,
+      "scenes": {
+        "basic": {
+          "gpuBBox": {
+            "minX": 86,
+            "minY": 95,
+            "maxX": 293,
+            "maxY": 289,
+            "count": 22903
+          },
+          "cpuBBox": {
+            "minX": 86,
+            "minY": 95,
+            "maxX": 293,
+            "maxY": 289,
+            "count": 22903
+          },
+          "inkRatio": 1,
+          "pass": true
+        },
+        "bleedHigh": {
+          "gpuBBox": {
+            "minX": 109,
+            "minY": 99,
+            "maxX": 281,
+            "maxY": 271,
+            "count": 11979
+          },
+          "cpuBBox": {
+            "minX": 109,
+            "minY": 99,
+            "maxX": 281,
+            "maxY": 271,
+            "count": 11979
+          },
+          "inkRatio": 1,
+          "pass": true
+        },
+        "bleedIn": {
+          "gpuBBox": {
+            "minX": 96,
+            "minY": 91,
+            "maxX": 293,
+            "maxY": 285,
+            "count": 19904
+          },
+          "cpuBBox": {
+            "minX": 96,
+            "minY": 91,
+            "maxX": 293,
+            "maxY": 285,
+            "count": 19903
+          },
+          "inkRatio": 1.0001,
+          "pass": true
+        },
+        "alphaFull": {
+          "gpuBBox": {
+            "minX": 96,
+            "minY": 112,
+            "maxX": 269,
+            "maxY": 281,
+            "count": 6121
+          },
+          "cpuBBox": {
+            "minX": 96,
+            "minY": 112,
+            "maxX": 269,
+            "maxY": 281,
+            "count": 6121
+          },
+          "inkRatio": 1,
+          "pass": true
+        },
+        "noScatter": {
+          "gpuBBox": {
+            "minX": 99,
+            "minY": 98,
+            "maxX": 268,
+            "maxY": 291,
+            "count": 20856
+          },
+          "cpuBBox": {
+            "minX": 99,
+            "minY": 98,
+            "maxX": 268,
+            "maxY": 291,
+            "count": 20856
+          },
+          "inkRatio": 1,
+          "pass": true
+        },
+        "multi": {
+          "gpuBBox": {
+            "minX": 72,
+            "minY": 87,
+            "maxX": 312,
+            "maxY": 300,
+            "count": 20231
+          },
+          "cpuBBox": {
+            "minX": 72,
+            "minY": 87,
+            "maxX": 312,
+            "maxY": 300,
+            "count": 20231
+          },
+          "inkRatio": 1,
+          "pass": true
+        },
+        "selfIntersect": {
+          "gpuBBox": {
+            "minX": 62,
+            "minY": 93,
+            "maxX": 318,
+            "maxY": 278,
+            "count": 31825
+          },
+          "cpuBBox": {
+            "minX": 62,
+            "minY": 93,
+            "maxX": 318,
+            "maxY": 278,
+            "count": 31825
+          },
+          "inkRatio": 1,
+          "pass": true
+        },
+        "strokedFill": {
+          "gpuBBox": {
+            "minX": 90,
+            "minY": 111,
+            "maxX": 290,
+            "maxY": 272,
+            "count": 20344
+          },
+          "cpuBBox": {
+            "minX": 90,
+            "minY": 111,
+            "maxX": 290,
+            "maxY": 272,
+            "count": 20344
+          },
+          "inkRatio": 1,
+          "pass": true
+        }
+      }
+    },
+    {
+      "name": "routing",
+      "pass": true,
+      "gpuFills": 1,
+      "cpuPathFills": 0,
+      "polyBuffersPooled": 220,
+      "opsRecorded": 10104
+    }
+  ],
+  "pageErrors": []
+}

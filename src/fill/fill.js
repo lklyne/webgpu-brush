@@ -36,6 +36,7 @@ import { createColor, getAffineMatrix } from "../core/runtime.js";
 import { Polygon } from "../core/polygon.js";
 import { Plot } from "../core/plot.js";
 import { Stats } from "../core/stats.js";
+import { _getUseCpuWalk } from "../stroke/gl_draw.js";
 
 // Internal module imports
 import { initFillComposite } from "./composite.js";
@@ -150,11 +151,15 @@ _onSeed(() => {
 // Pre-compute gaussians for reuse
 const GAUSSIAN_POOL_SIZE = 512;
 const _gaussians = [[], []]; // [a, b]
+// Bumped whenever the pools are refilled, so the GPU producer can re-upload
+// them exactly once per seed() instead of once per fill.
+let _poolsVersion = 0;
 function _fillGaussianPools() {
   for (let i = 0; i < GAUSSIAN_POOL_SIZE; i++) {
     _gaussians[0][i] = gaussian(0.5, 0.2);
     _gaussians[1][i] = gaussian(0, 0.02);
   }
+  _poolsVersion++;
 }
 _onSeed(_fillGaussianPools);
 
@@ -596,6 +601,21 @@ class FillPoly {
    * @param {number} intensity - Opacity intensity (mapped from 0 to 1).
    * @param {number} tex - Texture factor.
    */
+  /**
+   * The layer border width and the two alphas, shared verbatim by the CPU
+   * and GPU producers (see GpuFillPoly.layer) so there is one source of
+   * truth for the arithmetic.
+   */
+  _layerStyle(i, size, int) {
+    return {
+      lineWidth:
+        map(i, 0, 24, size / 25, size / 30, true) * State.fill.border_strength,
+      // canvas2d "rgb(255 0 0 / int%)": percentage alpha, clamped to 100%.
+      fillAlpha: Math.min(100, Math.max(0, int)) / 100,
+      borderAlpha: State.fill.border_strength * 0.01,
+    };
+  }
+
   fill(color, intensity, tex) {
     const numLayers = 20;
     const texture = tex * 3;
@@ -620,8 +640,25 @@ class FillPoly {
     GROW_CAP = GROW_MAX_VERTS * Math.max(0.2, 2 * State.fill.bleed_strength);
     const size = Math.max(this.sizeX, this.sizeY);
     const darker = rh(STREAM.FILL_DARKER, nextOpSalt(), 0, 0.15, 0.7);
-    let pol = this.grow();
-    const sparse = this.scatter(0.1).grow().scatter(0.75).flipDirs();
+
+    // W5: `root` is either `this` (the retained CPU producer) or a
+    // GpuFillPoly handle. Everything below is producer-agnostic — one
+    // control flow, so the op order (and therefore the salt sequence) can
+    // never drift between the two.
+    const root = _tryGpuFill(this, fillMatrix, size) ?? this;
+    try {
+      this._fillBody(root, numLayers, texture, int, intensity, size, darker, color, fillMatrix);
+    } finally {
+      if (root !== this) Mix.ctx.endGpuFill();
+    }
+
+    if (Stats.enabled) Stats.endFill();
+  }
+
+  /** @private the layer schedule; see fill() for the producer routing. */
+  _fillBody(root, numLayers, texture, int, intensity, size, darker, color, fillMatrix) {
+    let pol = root.grow();
+    const sparse = root.scatter(0.1).grow().scatter(0.75).flipDirs();
     let pols;
 
     for (let i = 0; i < numLayers; i++) {
@@ -657,8 +694,6 @@ class FillPoly {
         Mix.blend(color, true);
       }
     }
-
-    if (Stats.enabled) Stats.endFill();
   }
 
   /**
@@ -670,11 +705,7 @@ class FillPoly {
       Stats.recordLayer(i, this.v.length);
       for (let k = 0; k < this.v.length; k++) Stats.hashNums(this.v[k].x, this.v[k].y);
     }
-    const lineWidth =
-      map(i, 0, 24, size / 25, size / 30, true) * State.fill.border_strength;
-    // canvas2d "rgb(255 0 0 / int%)": percentage alpha, clamped to 100%.
-    const fillAlpha = Math.min(100, Math.max(0, int)) / 100;
-    const borderAlpha = State.fill.border_strength * 0.010;
+    const { lineWidth, fillAlpha, borderAlpha } = this._layerStyle(i, size, int);
     Mix.ctx.layer(this.v, matrix, fillAlpha, lineWidth, borderAlpha);
   }
 
@@ -683,19 +714,38 @@ class FillPoly {
    * @param {number} texture - Texture strength factor.
    * @param {number} intensity - Intensity value for size scaling.
    */
+  /**
+   * Everything erase() needs except the SALT — all of it CPU-known, because
+   * sizeX/sizeY/midP are constant along a whole FillPoly chain. The GPU
+   * producer takes exactly this record; only the salt (and therefore the
+   * circle count) has to be resolved GPU-side, since the op counter lives
+   * there. Shared so the two producers cannot drift.
+   */
+  _eraseParams(texture, intensity) {
+    const minSize = Math.min(this.sizeX, this.sizeY) * 1.3;
+    return {
+      countFactor: map(texture, 0, 1, 2, 3.5),
+      halfSizeX: this.sizeX / 1.3,
+      halfSizeY: this.sizeY / 1.3,
+      minSizeFactor: 0.03 * minSize,
+      maxSizeFactor: 0.45 * minSize,
+      midX: this.midP.x,
+      midY: this.midP.y,
+      alpha: ((5 - map(intensity, 80, 100, 0.3, 0.7, true)) * texture) / 255,
+    };
+  }
+
   erase(texture, intensity, matrix) {
     const salt = nextOpSalt();
-    const numCircles = ~~(rh(STREAM.ERASE_COUNT, salt, 0, 80, 110) * map(texture, 0, 1, 2, 3.5));
-    const halfSizeX = this.sizeX / 1.3;
-    const halfSizeY = this.sizeY / 1.3;
-    const minSize =
-      Math.min(this.sizeX, this.sizeY) * (1.3);
-    const minSizeFactor = 0.03 * minSize;
-    const maxSizeFactor = 0.45 * minSize;
-    const { x: midX, y: midY } = this.midP;
-
-    const alpha =
-      ((5 - map(intensity, 80, 100, 0.3, 0.7, true)) * texture) / 255;
+    const p = this._eraseParams(texture, intensity);
+    const numCircles = ~~(rh(STREAM.ERASE_COUNT, salt, 0, 80, 110) * p.countFactor);
+    const halfSizeX = p.halfSizeX;
+    const halfSizeY = p.halfSizeY;
+    const minSizeFactor = p.minSizeFactor;
+    const maxSizeFactor = p.maxSizeFactor;
+    const midX = p.midX;
+    const midY = p.midY;
+    const alpha = p.alpha;
 
     // Same draws/skips as the canvas2d path: every circle consumes its RNG
     // draws, but circles at i % 5 == 0 were never filled (their path was
@@ -713,12 +763,141 @@ class FillPoly {
 }
 
 // ---------------------------------------------------------------------------
+// GPU-resident FillPoly (W5)
+//
+// A handle into the grow-compute poly pool wearing FillPoly's interface, so
+// FillPoly.fill() below drives ONE control flow for both producers. Nothing
+// here reads a vertex: grow/scatter/erase record compute dispatches, layer()
+// records a drawIndirect. sizeX/sizeY/midP are CPU-side because they are
+// invariant along a chain (every FillPoly constructor passes them through).
+//
+// flipDirs() is a lazy flag rather than a copy kernel: fill() only ever
+// consumes a flipDirs() result with a grow, and grow reads the source dirs
+// inverted when asked.
+// ---------------------------------------------------------------------------
+
+class GpuFillPoly {
+  constructor(surface, handle, sizeX, sizeY, midP, flip = false) {
+    this.s = surface;
+    this.h = handle;
+    this.sizeX = sizeX;
+    this.sizeY = sizeY;
+    this.midP = midP;
+    this.flip = flip;
+  }
+
+  _wrap(handle) {
+    return new GpuFillPoly(this.s, handle, this.sizeX, this.sizeY, this.midP);
+  }
+
+  grow(f = 1) {
+    return this._wrap(this.s.gpuFill.recordGrow(this.h, f, this.flip));
+  }
+
+  scatter(ratio = 0.3) {
+    if (this.flip) {
+      // fill() never does this; a copy kernel would be needed if it did.
+      throw new Error("gpu-fill: scatter() after flipDirs() is unsupported");
+    }
+    return this._wrap(this.s.gpuFill.recordScatter(this.h, ratio));
+  }
+
+  flipDirs() {
+    return new GpuFillPoly(
+      this.s,
+      this.h,
+      this.sizeX,
+      this.sizeY,
+      this.midP,
+      !this.flip,
+    );
+  }
+
+  layer(i, size, int, matrix) {
+    const { lineWidth, fillAlpha, borderAlpha } = FillPoly.prototype._layerStyle.call(
+      this,
+      i,
+      size,
+      int,
+    );
+    this.s.layerGpu(this.h, matrix, fillAlpha, lineWidth, borderAlpha);
+  }
+
+  erase(texture, intensity, matrix) {
+    const p = FillPoly.prototype._eraseParams.call(this, texture, intensity);
+    // rh(..., 80, 110) bounds the count draw, so the arena reservation is a
+    // pure CPU decision even though the count itself is resolved GPU-side.
+    const maxCircles = Math.ceil(110 * p.countFactor) + 1;
+    const { handle, base } = this.s.gpuFill.recordErase(p, maxCircles);
+    this.s.eraseGpu(handle, base, matrix, p.alpha);
+  }
+}
+
+/**
+ * Opens a GPU-resident fill for `poly`, or returns null when the GPU path is
+ * unavailable or deliberately bypassed:
+ *   - `Stats.enabled` — structural capture reads CPU vertex arrays.
+ *   - `brush.useCpuGeometry(true)` — the documented CPU producer switch.
+ *   - no WebGPU fill driver, or a polygon past the poly-buffer capacity.
+ */
+function _tryGpuFill(poly, matrix, size) {
+  if (Stats.enabled || _getUseCpuWalk()) return null;
+  const surface = Mix.ctx;
+  const driver = surface?.gpuFill;
+  if (!driver || typeof surface.beginGpuFill !== "function") return null;
+  const n = poly.v.length;
+  if (n < 3 || n > driver.capacity) return null;
+  if (_gaussians[0].length === 0) _fillGaussianPools();
+  // The gaussian pools are DATA (drawn by the seeded sequential generator at
+  // seed() time); the shader only hashes an INDEX into them.
+  driver.uploadPoolsIfStale(_poolsVersion, _gaussians[0], _gaussians[1]);
+  const polyVerts = _polygon.vertices;
+  const rootVerts = new Float32Array(2 * n);
+  for (let i = 0; i < n; i++) {
+    rootVerts[2 * i] = poly.v[i].x;
+    rootVerts[2 * i + 1] = poly.v[i].y;
+  }
+  const sides = new Float32Array(2 * polyVerts.length);
+  for (let i = 0; i < polyVerts.length; i++) {
+    sides[2 * i] = polyVerts[i].x;
+    sides[2 * i + 1] = polyVerts[i].y;
+  }
+  const handle = surface.beginGpuFill({
+    rootVerts,
+    rootMods: poly.m,
+    rootDirs: poly.dir,
+    midP: poly.midP,
+    sizeX: poly.sizeX,
+    sizeY: poly.sizeY,
+    polygonVerts: sides,
+    polygonBBox: { minX: _bbMinX, minY: _bbMinY, maxX: _bbMaxX, maxY: _bbMaxY },
+    fillId: _fillId,
+    opCounter: _fillOp,
+    bleedStrength: State.fill.bleed_strength,
+    direction: State.fill.direction,
+    growCap: GROW_CAP,
+    matrix,
+    // The border is widest at layer 0 — that sets the dirty-rect padding.
+    maxLineWidth: (size / 25) * State.fill.border_strength,
+  });
+  return new GpuFillPoly(surface, handle, poly.sizeX, poly.sizeY, poly.midP);
+}
+
+// ---------------------------------------------------------------------------
 // Test-only exports (W3). grow-cpu-ref.js currently rebuilds FillPoly by
 // extracting trim()/grow() source text; this export lets the oracle move
 // to the real class. setScope wires the module-level randomness scope the
 // methods read (fill id / op counter / GROW_CAP / gaussian pools).
 // Not public API.
 // ---------------------------------------------------------------------------
+
+/**
+ * W5 test instrumentation (not API): the GPU fill driver's op counters, so
+ * the oracle can assert routing rather than infer it from pixels.
+ */
+export function _fillDriverStats() {
+  return Mix.ctx?.gpuFill?.stats ?? null;
+}
 
 export const _test = {
   get FillPoly() {

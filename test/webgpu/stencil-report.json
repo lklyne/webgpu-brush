@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-31T20:50:39.102Z",
+  "generatedAt": "2026-09-01T01:41:36.017Z",
   "adapter": {
     "vendor": "apple",
     "architecture": "metal-3"
@@ -147,7 +147,7 @@
     "vertexFloatsWritten": 559638,
     "pipelines": 4,
     "encodeSubmitMsMedian": 1,
-    "gpuWaitMsMedian": 2.4,
+    "gpuWaitMsMedian": 2.6,
     "runs": 7,
     "note": "encode+submit is CPU JS; gpuWait is submit->onSubmittedWorkDone. W4a: batched — whole fill records CPU-side, encodes as one pass."
   },

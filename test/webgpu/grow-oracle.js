@@ -249,6 +249,9 @@ async function main() {
     const pass = encoder.beginComputePass();
     gc.grow(pass, src, dst, f);
     pass.end();
+    // W5: uniform slots are staged during recording and uploaded once per
+    // batch (per-call writeBuffer was the W4a hot spot).
+    gc.uploadBatch();
     gpu.device.queue.submit([encoder.finish()]);
     return gc.readPoly(dst, readBuffer);
   }
@@ -396,6 +399,7 @@ async function main() {
       dst = dst === polyB ? polyC : polyB;
     }
     pass0.end();
+    gc.uploadBatch();
     gpu.device.queue.submit([encoder.finish()]);
     const gpuP = await gc.readPoly(src, readBuffer);
     const r = comparePoly("batched-final", gpuP, cpu);

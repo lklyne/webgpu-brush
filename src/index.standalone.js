@@ -20,6 +20,8 @@ export {
   _geometryStats, // test instrumentation, not API
   _resetGeometryStats,
 } from "./webgpu/inspect.js";
+// W5: GPU fill DAG routing counters — test instrumentation, not API.
+export { _fillDriverStats } from "./fill/fill.js";
 
 import { initStandaloneTargetRuntime } from "./adapters/standalone/target.js";
 import { initStandaloneRendererRuntime } from "./adapters/standalone/renderer.js";

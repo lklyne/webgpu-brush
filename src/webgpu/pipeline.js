@@ -156,7 +156,10 @@ export function createPipelineCache(gpu) {
   function getComputePipeline(desc) {
     const module = desc.module ?? getModule(desc.code, desc.label);
     const entry = desc.entry ?? "main";
-    const key = `c|${idOf(module)}|${entry}`;
+    // desc.layout (a GPUPipelineLayout) opts out of 'auto' — needed when the
+    // caller wants dynamic-offset uniform bindings, which auto layouts never
+    // declare. Keyed by layout identity so the two variants cannot collide.
+    const key = `c|${idOf(module)}|${entry}|${desc.layout ? idOf(desc.layout) : "auto"}`;
     let p = pipelines.get(key);
     if (p) {
       stats.pipelineHits++;
@@ -164,7 +167,7 @@ export function createPipelineCache(gpu) {
     }
     p = device.createComputePipeline({
       label: desc.label,
-      layout: "auto",
+      layout: desc.layout ?? "auto",
       compute: { module, entryPoint: entry },
     });
     pipelines.set(key, p);

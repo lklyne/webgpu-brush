@@ -44,7 +44,7 @@
 // one pass; WebGPU draws within a pass execute in order).
 // =============================================================================
 
-import { FILL_WGSL, ERASE_WGSL } from "./wgsl/fill.wgsl.js";
+import { FILL_WGSL, ERASE_WGSL, POLY_WGSL, ERASE_POLY_WGSL } from "./wgsl/fill.wgsl.js";
 
 const STENCIL_FORMAT = "stencil8";
 
@@ -95,6 +95,34 @@ export function createFillRenderer(gpu, cache, opts = {}) {
 
   const fillModule = cache.getModule(FILL_WGSL, "fill-wgsl");
   const eraseModule = cache.getModule(ERASE_WGSL, "erase-wgsl");
+  const polyModule = cache.getModule(POLY_WGSL, "poly-wgsl");
+  const erasePolyModule = cache.getModule(ERASE_POLY_WGSL, "erase-poly-wgsl");
+
+  // W5: one explicit bind-group layout for every GPU-resident-geometry
+  // pipeline. Binding 1 is the varying one (a grow-compute poly buffer, or
+  // the erase circle arena); the per-draw record rides in a DYNAMIC-offset
+  // uniform at binding 2, which is what keeps bind groups keyed on the
+  // buffer alone (~a dozen for a whole frame) instead of per draw.
+  const polyBgLayout = device.createBindGroupLayout({
+    label: "fill-poly-bgl",
+    entries: [
+      { binding: 0, visibility: GPUShaderStage.VERTEX, buffer: { type: "uniform" } },
+      {
+        binding: 1,
+        visibility: GPUShaderStage.VERTEX,
+        buffer: { type: "read-only-storage" },
+      },
+      {
+        binding: 2,
+        visibility: GPUShaderStage.VERTEX,
+        buffer: { type: "uniform", hasDynamicOffset: true },
+      },
+    ],
+  });
+  const polyPipeLayout = device.createPipelineLayout({
+    label: "fill-poly-pl",
+    bindGroupLayouts: [polyBgLayout],
+  });
 
   const stats = {
     passes: 0,
@@ -197,6 +225,79 @@ export function createFillRenderer(gpu, cache, opts = {}) {
           multisample,
         };
         break;
+      // ---- W5: GPU-resident geometry variants ----------------------------
+      case "poly-fan-stencil":
+        desc = {
+          label: "fill-poly-fan-stencil",
+          layout: polyPipeLayout,
+          vertex: { module: polyModule, entryPoint: "vsFanPoly" },
+          fragment: {
+            module: polyModule,
+            entryPoint: "fsNullPoly",
+            targets: [{ format, writeMask: 0 }],
+          },
+          primitive: { topology: "triangle-list", cullMode: "none" },
+          depthStencil: {
+            format: STENCIL_FORMAT,
+            stencilFront: { compare: "always", passOp: "increment-wrap" },
+            stencilBack: { compare: "always", passOp: "decrement-wrap" },
+          },
+          multisample,
+        };
+        break;
+      case "poly-border-stencil":
+        desc = {
+          label: "fill-poly-border-stencil",
+          layout: polyPipeLayout,
+          vertex: { module: polyModule, entryPoint: "vsBorderPoly" },
+          fragment: {
+            module: polyModule,
+            entryPoint: "fsNullPoly",
+            targets: [{ format, writeMask: 0 }],
+          },
+          primitive: { topology: "triangle-list", cullMode: "none" },
+          depthStencil: {
+            format: STENCIL_FORMAT,
+            stencilFront: { compare: "always", passOp: "increment-wrap" },
+            stencilBack: { compare: "always", passOp: "increment-wrap" },
+          },
+          multisample,
+        };
+        break;
+      case "poly-cover":
+        desc = {
+          label: "fill-poly-cover",
+          layout: polyPipeLayout,
+          vertex: { module: polyModule, entryPoint: "vsCoverPoly" },
+          fragment: {
+            module: polyModule,
+            entryPoint: "fsCoverPoly",
+            targets: [{ format, blend: SOURCE_OVER_BLEND }],
+          },
+          primitive: { topology: "triangle-list", cullMode: "none" },
+          depthStencil: {
+            format: STENCIL_FORMAT,
+            stencilFront: { compare: "not-equal", passOp: "zero" },
+            stencilBack: { compare: "not-equal", passOp: "zero" },
+          },
+          multisample,
+        };
+        break;
+      case "poly-erase":
+        desc = {
+          label: "fill-poly-erase",
+          layout: polyPipeLayout,
+          vertex: { module: erasePolyModule, entryPoint: "vsEraseGpu" },
+          fragment: {
+            module: erasePolyModule,
+            entryPoint: "fsEraseGpu",
+            targets: [{ format, blend: ERASE_BLEND }],
+          },
+          primitive: { topology: "triangle-strip", cullMode: "none" },
+          depthStencil: STENCIL_NOOP,
+          multisample,
+        };
+        break;
       default:
         throw new Error(`unknown fill pipeline variant: ${variant}`);
     }
@@ -255,9 +356,31 @@ export function createFillRenderer(gpu, cache, opts = {}) {
     return paramCount++;
   }
 
+  // W5: per-draw records for GPU-resident geometry. These are DYNAMIC-offset
+  // uniform slots rather than an instance-indexed storage array, because
+  // drawIndirect owns firstInstance (the compute shader writes it) and so
+  // cannot be used to select a params index.
+  const POLY_SLOT = 256; // minUniformBufferOffsetAlignment
+  let stPoly = new ArrayBuffer(POLY_SLOT * 256);
+  let stPolyF32 = new Float32Array(stPoly);
+  let stPolyU32 = new Uint32Array(stPoly);
+  let polyCount = 0;
+
+  function polySlot() {
+    if ((polyCount + 2) * POLY_SLOT > stPoly.byteLength) {
+      const next = new ArrayBuffer(stPoly.byteLength * 2);
+      new Uint8Array(next).set(new Uint8Array(stPoly));
+      stPoly = next;
+      stPolyF32 = new Float32Array(stPoly);
+      stPolyU32 = new Uint32Array(stPoly);
+    }
+    return { f: polyCount * (POLY_SLOT / 4), off: polyCount++ * POLY_SLOT };
+  }
+
   /**
    * Recorded draw ops, encoded in order by flushInto().
-   * kind 1 = geo (stencil variant + cover), 2 = erase, 3 = clear.
+   * kind 1 = geo (stencil variant + cover), 2 = erase, 3 = clear,
+   * 4 = GPU-resident poly (stencil variant + cover), 5 = GPU-resident erase.
    * @type {Array<object>}
    */
   let ops = [];
@@ -273,6 +396,8 @@ export function createFillRenderer(gpu, cache, opts = {}) {
   let paramsBuf = null; // per-draw params storage
   let paramsCapacity = 0; // bytes
   let vpBuf = null; // 16-byte viewport uniform
+  let polyParamsBuf = null; // W5 dynamic-offset per-draw uniform arena
+  let polyParamsCapacity = 0; // bytes
 
   function ensureGpuBuffers() {
     if (!vpBuf) {
@@ -305,6 +430,39 @@ export function createFillRenderer(gpu, cache, opts = {}) {
         usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
       });
     }
+    // One extra slot of headroom: a dynamic offset binds POLY_SLOT bytes.
+    const polyBytes = (polyCount + 1) * POLY_SLOT;
+    if (polyBytes > polyParamsCapacity) {
+      polyParamsBuf?.destroy();
+      let cap = Math.max(polyParamsCapacity * 2, POLY_SLOT * 256);
+      while (cap < polyBytes) cap *= 2;
+      polyParamsCapacity = cap;
+      polyParamsBuf = gpu.createBuffer({
+        label: "fill-poly-params",
+        size: cap,
+        usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+      });
+      polyBindCache.clear();
+    }
+  }
+
+  // Bind groups for the GPU-geometry pipelines, keyed on the storage buffer
+  // (the poly, or the circle arena) — the per-draw record is a dynamic
+  // offset, so a whole frame needs about a dozen of these.
+  const polyBindCache = new Map();
+  function polyBind(buffer) {
+    let bg = polyBindCache.get(buffer);
+    if (bg) return bg;
+    bg = device.createBindGroup({
+      layout: polyBgLayout,
+      entries: [
+        { binding: 0, resource: { buffer: vpBuf } },
+        { binding: 1, resource: { buffer } },
+        { binding: 2, resource: { buffer: polyParamsBuf, offset: 0, size: POLY_SLOT } },
+      ],
+    });
+    polyBindCache.set(buffer, bg);
+    return bg;
   }
 
   // --------------------------------------------------------------------------
@@ -640,6 +798,102 @@ export function createFillRenderer(gpu, cache, opts = {}) {
     stats.erases++;
   }
 
+  // --------------------------------------------------------------------------
+  // W5 recording API — GPU-resident geometry. Vertices, vertex counts and
+  // bounding boxes all live in the grow-compute poly buffer; nothing about
+  // the geometry crosses to the CPU (gotcha #9).
+  // --------------------------------------------------------------------------
+
+  function writeAffine(f32, o, m) {
+    f32[o] = m.a;
+    f32[o + 1] = m.b;
+    f32[o + 2] = m.c;
+    f32[o + 3] = m.d;
+    f32[o + 4] = m.e;
+    f32[o + 5] = m.f;
+  }
+
+  /**
+   * FillPoly.layer() against a GPU-resident polygon: nonzero-winding fill
+   * then the border, both drawIndirect from the poly header.
+   * @param {GPUBuffer} polyBuffer grow-compute poly buffer
+   * @param {{a,b,c,d,e,f}} matrix user space -> target px
+   * @param {FillColor} fillColor
+   * @param {number} lineWidth target px (0 disables the border)
+   * @param {FillColor} strokeColor
+   * @param {{fill: number, border: number}} indirect byte offsets in the poly
+   */
+  function layerGpu(polyBuffer, matrix, fillColor, lineWidth, strokeColor, indirect) {
+    if (fillColor.a > 0) {
+      const s = polySlot();
+      writeAffine(stPolyF32, s.f, matrix);
+      stPolyF32[s.f + 6] = 0;
+      stPolyF32[s.f + 7] = 1; // bbox pad: the CPU path scissors to bbox + 1
+      stPolyF32[s.f + 8] = fillColor.r;
+      stPolyF32[s.f + 9] = fillColor.g;
+      stPolyF32[s.f + 10] = fillColor.b;
+      stPolyF32[s.f + 11] = fillColor.a;
+      ops.push({
+        k: 4,
+        buf: polyBuffer,
+        variant: "poly-fan-stencil",
+        indirectOffset: indirect.fill,
+        paramOff: s.off,
+      });
+      stats.polygons++;
+    }
+    if (lineWidth > 0 && strokeColor.a > 0) {
+      const halfW = lineWidth / 2;
+      const s = polySlot();
+      writeAffine(stPolyF32, s.f, matrix);
+      stPolyF32[s.f + 6] = halfW;
+      // Miter tips reach halfW / cos(half turn) with the canvas2d miter
+      // limit of 10 — so 10 * halfW is the exact worst case, + 1 px slack.
+      stPolyF32[s.f + 7] = 10 * halfW + 1;
+      stPolyF32[s.f + 8] = strokeColor.r;
+      stPolyF32[s.f + 9] = strokeColor.g;
+      stPolyF32[s.f + 10] = strokeColor.b;
+      stPolyF32[s.f + 11] = strokeColor.a;
+      ops.push({
+        k: 4,
+        buf: polyBuffer,
+        variant: "poly-border-stencil",
+        indirectOffset: indirect.border,
+        paramOff: s.off,
+      });
+      stats.strokes++;
+    }
+  }
+
+  /**
+   * FillPoly.erase() against GPU-generated circles.
+   * @param {{buffer: GPUBuffer}} circleRef the grow-compute circle arena
+   *   (a live reference — the arena can still grow after this record)
+   * @param {GPUBuffer} handleBuffer holds the drawIndirect args
+   * @param {number} indirectOffset byte offset of the args in handleBuffer
+   * @param {{a,b,c,d,e,f}} matrix
+   * @param {number} radiusScale multiplies the stored circle value to a
+   *   target-px radius (upstream stores a diameter, hence the 0.5)
+   * @param {number} alpha
+   * @param {number} base first slot of this erase in the circle arena
+   */
+  function eraseGpu(circleRef, handleBuffer, indirectOffset, matrix, radiusScale, alpha, base) {
+    if (alpha <= 0) return;
+    const s = polySlot();
+    writeAffine(stPolyF32, s.f, matrix);
+    stPolyF32[s.f + 6] = radiusScale;
+    stPolyF32[s.f + 7] = alpha;
+    stPolyU32[s.f + 8] = base;
+    ops.push({
+      k: 5,
+      ref: circleRef,
+      handle: handleBuffer,
+      indirectOffset,
+      paramOff: s.off,
+    });
+    stats.erases++;
+  }
+
   /**
    * Records a clear of the mask target (splits the batched pass).
    * @param {GPUCommandEncoder} _encoder unused (deferred encoding)
@@ -673,32 +927,42 @@ export function createFillRenderer(gpu, cache, opts = {}) {
     if (paramCount > 0) {
       device.queue.writeBuffer(paramsBuf, 0, stParams, 0, paramCount * PARAM_FLOATS * 4);
     }
+    if (polyCount > 0) {
+      device.queue.writeBuffer(polyParamsBuf, 0, stPoly, 0, polyCount * POLY_SLOT);
+    }
 
-    // Bind groups: one per pipeline per flush (auto layouts differ).
+    // Bind groups for the CPU-uploaded-geometry pipelines. Built LAZILY:
+    // a batch of purely GPU-resident fills never allocates the vertex arena,
+    // so eager construction would bind a null buffer.
     const fan = getPipeline("fan-stencil");
     const tris = getPipeline("coverage-stencil");
     const cover = getPipeline("cover");
     const eraseP = getPipeline("erase-disc");
-    const geoEntries = [
+    const bindMemo = {};
+    const geoEntries = () => [
       { binding: 0, resource: { buffer: vpBuf } },
       { binding: 1, resource: { buffer: arena } },
       { binding: 2, resource: { buffer: paramsBuf } },
     ];
-    const binds = {
-      "fan-stencil": device.createBindGroup({ layout: fan.layout, entries: geoEntries }),
-      "coverage-stencil": device.createBindGroup({ layout: tris.layout, entries: geoEntries }),
-      cover: device.createBindGroup({
-        layout: cover.layout,
-        entries: [{ binding: 2, resource: { buffer: paramsBuf } }],
-      }),
-      erase: device.createBindGroup({
-        layout: eraseP.layout,
-        entries: [
-          { binding: 0, resource: { buffer: vpBuf } },
-          { binding: 1, resource: { buffer: arena } },
-        ],
-      }),
+    const makeBind = {
+      "fan-stencil": () => device.createBindGroup({ layout: fan.layout, entries: geoEntries() }),
+      "coverage-stencil": () =>
+        device.createBindGroup({ layout: tris.layout, entries: geoEntries() }),
+      cover: () =>
+        device.createBindGroup({
+          layout: cover.layout,
+          entries: [{ binding: 2, resource: { buffer: paramsBuf } }],
+        }),
+      erase: () =>
+        device.createBindGroup({
+          layout: eraseP.layout,
+          entries: [
+            { binding: 0, resource: { buffer: vpBuf } },
+            { binding: 1, resource: { buffer: arena } },
+          ],
+        }),
     };
+    const binds = (k) => (bindMemo[k] ??= makeBind[k]());
 
     let pass = null;
     let pendingLoad = null; // {clearValue} when a clear precedes the next pass
@@ -721,7 +985,7 @@ export function createFillRenderer(gpu, cache, opts = {}) {
     const setPipe = (variant, entry) => {
       if (currentPipeline === variant) return;
       pass.setPipeline(entry.pipeline);
-      pass.setBindGroup(0, binds[variant === "erase-disc" ? "erase" : variant]);
+      pass.setBindGroup(0, binds(variant === "erase-disc" ? "erase" : variant));
       currentPipeline = variant;
     };
 
@@ -735,6 +999,31 @@ export function createFillRenderer(gpu, cache, opts = {}) {
         continue;
       }
       if (!pass) beginPass();
+      if (op.k === 4) {
+        // GPU-resident polygon: vertex counts come from drawIndirect args
+        // the compute shader wrote, and the cover is a bbox QUAD (a scissor
+        // rect cannot be indirect) — so the pass scissor must be opened up.
+        pass.setScissorRect(0, 0, target.width, target.height);
+        const bind = polyBind(op.buf);
+        pass.setPipeline(getPipeline(op.variant).pipeline);
+        pass.setBindGroup(0, bind, [op.paramOff]);
+        pass.drawIndirect(op.buf, op.indirectOffset);
+        pass.setPipeline(getPipeline("poly-cover").pipeline);
+        pass.setBindGroup(0, bind, [op.paramOff]);
+        pass.draw(6);
+        currentPipeline = null;
+        stats.draws += 2;
+        continue;
+      }
+      if (op.k === 5) {
+        pass.setScissorRect(0, 0, target.width, target.height);
+        pass.setPipeline(getPipeline("poly-erase").pipeline);
+        pass.setBindGroup(0, polyBind(op.ref.buffer), [op.paramOff]);
+        pass.drawIndirect(op.handle, op.indirectOffset);
+        currentPipeline = null;
+        stats.draws++;
+        continue;
+      }
       if (op.k === 1) {
         const geo = op.variant === "fan-stencil" ? fan : tris;
         pass.setScissorRect(op.box.x, op.box.y, op.box.w, op.box.h);
@@ -762,6 +1051,7 @@ export function createFillRenderer(gpu, cache, opts = {}) {
     ops = [];
     stVertsCursor = 0;
     paramCount = 0;
+    polyCount = 0;
   }
 
   /** True when recorded ops await flushInto(). */
@@ -788,9 +1078,14 @@ export function createFillRenderer(gpu, cache, opts = {}) {
     ops = [];
     stVertsCursor = 0;
     paramCount = 0;
+    polyCount = 0;
+    polyBindCache.clear();
     destroyTarget();
     arena?.destroy();
     paramsBuf?.destroy();
+    polyParamsBuf?.destroy();
+    polyParamsBuf = null;
+    polyParamsCapacity = 0;
     vpBuf?.destroy();
     arena = null;
     paramsBuf = null;
@@ -809,6 +1104,8 @@ export function createFillRenderer(gpu, cache, opts = {}) {
     strokePolygon,
     layer,
     erase,
+    layerGpu,
+    eraseGpu,
     flushInto,
     pending,
     finish,
