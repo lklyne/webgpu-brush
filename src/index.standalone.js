@@ -22,6 +22,8 @@ export {
 } from "./webgpu/inspect.js";
 // W5: GPU fill DAG routing counters — test instrumentation, not API.
 export { _fillDriverStats } from "./fill/fill.js";
+// Painting snapshots (GPU-side undo support for host applications).
+export { snapshot, restore, freeSnapshot } from "./adapters/standalone/snapshot.js";
 
 import { initStandaloneTargetRuntime } from "./adapters/standalone/target.js";
 import { initStandaloneRendererRuntime } from "./adapters/standalone/renderer.js";

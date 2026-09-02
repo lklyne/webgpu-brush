@@ -988,3 +988,61 @@ composite), `src/stroke/gl_draw.js` (`_getUseCpuWalk`),
 `test/webgpu/oracle-w5.{html,js}` (new), `scripts/oracle-w5.mjs` (new),
 `test/webgpu/grow-oracle.js` (`uploadBatch`),
 `test/parity/timings-w5.json` (new).
+
+## Painting snapshots (undo support, standalone build)
+
+`src/adapters/standalone/snapshot.js`, exported from the standalone entry.
+p5.brush is immediate-mode (no stroke objects to replay), so host-side undo
+is a snapshot stack of the painting texture — GPU-side only,
+`copyTextureToTexture` into pooled textures matching the painting's
+size/format. No readback, no `mapAsync` (gotcha #9 holds; the grep
+invariant is unchanged).
+
+- **`brush.snapshot()`** → opaque handle (`{__brushSnapshot, width,
+  height}`). Flushes pending compositing first (`flushActiveComposite`), so
+  the copy contains everything drawn up to the call. Requires
+  `await brush.ready()`.
+- **`brush.restore(handle)`** — flush/reset composite + dirty-rect state
+  (same reset path `render()`/`clear()` use, so stale masks cannot land on
+  the restored painting), copy the snapshot back into the painting, then
+  re-present via the same painting → `getCurrentTexture()` copy path every
+  composite uses. Handles stay valid across restores (undo AND redo work
+  from one handle). Throws on freed/dropped handles and on size mismatch
+  after a canvas resize.
+- **`brush.freeSnapshot(handle)`** → boolean; returns the texture to the
+  pool. No-op on already-freed handles.
+- **Pool bound**: `MAX_SNAPSHOTS = 20` live snapshots; taking one beyond
+  the bound drops the OLDEST live handle and reuses its texture. Freed
+  textures are kept on a spare list (≤ 20) and reused when size/format
+  still match; a resize invalidates them lazily.
+
+## Timing semantics — read before quoting the tables above
+
+The headline tables in this file (16.1× stroke-heavy, 6.7× fill-heavy) are
+**wall-clock at JS return**. That measures different things on the two sides:
+
+- **Upstream (WebGL2):** Chrome's GL driver drains most GPU work inside the
+  JS calls, so JS-return ≈ pixels-done.
+- **This fork (WebGPU):** JS-return is submission only — the GPU queue drains
+  after. The number is main-thread cost, not completion.
+
+Measured honestly to GPU completion on both sides (hard GL sync vs readback
+barrier; the barrier's idle cost is ~10 ms), the two columns are:
+
+| metric | fill-heavy (morph-style) | what it answers |
+|---|---|---|
+| main-thread (cpu) time | **10–16× faster** | how long JS is blocked — interactivity, achievable FPS |
+| to-completion latency | **~1.3–2× faster** | when pixels are actually done — batch/export wall-clock |
+
+Both are real; neither substitutes for the other. The fork's design target
+was always the first column ("the win comes from deleting the CPU from the
+hot path" — the plan's own words): total GPU raster work is comparable on
+both sides, so end-to-end latency improves only by the CPU share it removed.
+Quote the CPU column for interactive use, the completion column for offline
+rendering, and never one as the other. Discovered via the site's perf tab
+(`/experiments/brush-parity` → perf), which times both ways and displays both.
+
+Order-of-runs note: without completion fences, a benchmark that runs WebGL
+then WebGPU lets the GL queue's backlog bleed into the WebGPU measurement
+(observed 433 ms vs a true ~30 ms submission). Any A/B timing of the two APIs
+needs a full sync between runs.
