@@ -21,10 +21,12 @@ struct WalkRasterU {
   proj  : vec4f, // clip.xy = devicePx * proj.xy + proj.zw
   color : vec4f, // stroke rgb; a ignored
   trans : vec4f, // x: matrix tx, y: matrix ty (logical), z: density, w: pad
+  misc  : vec4u, // x: first stroke index of this group (offsets[] base)
 };
 
 @group(0) @binding(0) var<uniform> u : WalkRasterU;
 @group(0) @binding(1) var<storage, read> stamps : array<vec4f>;
+@group(0) @binding(2) var<storage, read> offsets : array<u32>; // exclusive scan
 
 struct VSOut {
   @builtin(position) clip : vec4f,
@@ -36,7 +38,7 @@ struct VSOut {
   @builtin(vertex_index) vi : u32,
   @builtin(instance_index) ii : u32,
 ) -> VSOut {
-  let s = stamps[ii];
+  let s = stamps[offsets[u.misc.x] + ii];
   let corner = vec2f(f32(vi & 1u) * 2.0 - 1.0, f32(vi >> 1u) * 2.0 - 1.0);
   let dev = (s.xy + u.trans.xy) * u.trans.z;
   let hRaw = s.z * u.trans.z * 0.5;

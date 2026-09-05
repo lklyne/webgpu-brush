@@ -21,7 +21,7 @@ export const PREFIX_SCAN_WGSL = /* wgsl */ `
 
 struct ScanParams {
   n: u32,
-  pad0: u32,
+  groupCount: u32, // writeIndirect: number of raster groups (stroke ranges)
   pad1: u32,
   pad2: u32,
 }
@@ -61,20 +61,26 @@ fn scanExclusive(@builtin(local_invocation_id) lid3: vec3u) {
 }
 
 // ---------------------------------------------------------------------------
-// W3: drawIndirect args from the scan total — {vertexCount 4 (triangle-strip
-// quad), instanceCount = dst[n] = total stamps, firstVertex 0, firstInstance
-// 0}. Lets the walker's stamp rasterization draw without any readback
-// (gotcha #9): the instance count never touches the CPU.
+// W3: drawIndirect args from the scan — one 16-byte entry per raster GROUP
+// (a contiguous stroke range [start, end)): {vertexCount 4 (triangle-strip
+// quad), instanceCount = dst[end] - dst[start], firstVertex 0, firstInstance
+// 0}. The raster vertex shader adds dst[start] itself (walkraster.wgsl), so
+// no indirect-first-instance feature is needed and nothing is read back
+// (gotcha #9): stamp counts never touch the CPU.
 // ---------------------------------------------------------------------------
 
 @group(0) @binding(3) var<storage, read_write> indirectArgs: array<u32>;
+@group(0) @binding(4) var<storage, read> groups: array<vec2u>; // start, end
 
-@compute @workgroup_size(1)
-fn writeIndirect() {
-  indirectArgs[0] = 4u;
-  indirectArgs[1] = dst[params.n];
-  indirectArgs[2] = 0u;
-  indirectArgs[3] = 0u;
+@compute @workgroup_size(64)
+fn writeIndirect(@builtin(global_invocation_id) gid: vec3u) {
+  let g = gid.x;
+  if (g >= params.groupCount) { return; }
+  let r = groups[g];
+  indirectArgs[g * 4u + 0u] = 4u;
+  indirectArgs[g * 4u + 1u] = dst[r.y] - dst[r.x];
+  indirectArgs[g * 4u + 2u] = 0u;
+  indirectArgs[g * 4u + 3u] = 0u;
 }
 `;
 export default PREFIX_SCAN_WGSL;

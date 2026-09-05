@@ -299,6 +299,10 @@ export const Mix = {
    * @param {boolean} isBrushMask - True when compositing the GL brush mask.
    */
   applyShader(mask, isBrushMask) {
+    // Deferred GPU-walk stroke groups precede this composite in draw order:
+    // flush them into the painting first (they were never rasterized into
+    // the brush mask, so they are invisible to isDrawn below).
+    if (!isBrushMask) strokeComposite?.flushPending?.();
     if (!mask?.isDrawn) return;
 
     const dirtyRect = this.getCompositeRect(mask, isBrushMask);
@@ -355,6 +359,7 @@ export const Mix = {
  */
 export const flushActiveComposite = () => {
   isMixReady();
+  strokeComposite?.flushPending?.();
   Mix.blend(false, true);
   Mix.clearMask(Mix.glMask);
   Mix.clearMask(Mix.mask);

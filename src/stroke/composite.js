@@ -143,6 +143,9 @@ export function initStrokeComposite() {
     clearMask: clearStrokeMask,
     getCompositeRect: getStrokeCompositeRect,
     getShaderMask: getStrokeShaderMask,
+    // Deferred GPU-walk groups must land in the painting before anything
+    // else writes it (fill composites, frame end, snapshots, clear).
+    flushPending: flushWalkBatch,
   });
   isStrokeCompositeRegistered = true;
 }

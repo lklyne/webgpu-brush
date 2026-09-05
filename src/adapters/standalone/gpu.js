@@ -413,18 +413,21 @@ fn ordU32ToF32(v: u32) -> f32 {
   let blitSrcTex = null;
   let blitSrcView = null;
 
+  function ensureBlitPipeline() {
+    if (blitPipeline) return;
+    blitPipeline = host.cache.getRenderPipeline({
+      code: BLIT_RECT_WGSL,
+      vertexEntry: "vs",
+      fragmentEntry: "fs",
+      blend: null,
+      format: host.gpu.format,
+      label: "blend-source-rect-blit",
+    });
+    blitLayout = blitPipeline.getBindGroupLayout(0);
+  }
+
   function blitRectQuad(sourceFramebuffer, fromTexture, rectBuffer) {
-    if (!blitPipeline) {
-      blitPipeline = host.cache.getRenderPipeline({
-        code: BLIT_RECT_WGSL,
-        vertexEntry: "vs",
-        fragmentEntry: "fs",
-        blend: null,
-        format: host.gpu.format,
-        label: "blend-source-rect-blit",
-      });
-      blitLayout = blitPipeline.getBindGroupLayout(0);
-    }
+    ensureBlitPipeline();
     if (blitSrcTex !== fromTexture) {
       blitSrcTex = fromTexture;
       blitSrcView = fromTexture.createView();
@@ -495,25 +498,28 @@ fn ordU32ToF32(v: u32) -> f32 {
    * (spectral.wgsl vsRect). A scissor rect cannot be indirect, and reading
    * the rect back to the CPU would be a frame-path stall (gotcha #9).
    */
+  function ensureRectCompositePipeline() {
+    if (rectCompositePipeline) return;
+    rectCompositePipeline = host.cache.getRenderPipeline({
+      code: SPECTRAL_WGSL,
+      vertexEntry: "vsRect",
+      fragmentEntry: "fs",
+      blend: {
+        color: { srcFactor: "one", dstFactor: "one-minus-src-alpha" },
+        alpha: { srcFactor: "one", dstFactor: "one-minus-src-alpha" },
+      },
+      format: host.gpu.format,
+      label: "spectral-composite-rect",
+    });
+    rectCompositeLayout = rectCompositePipeline.getBindGroupLayout(0);
+  }
+
   function runCompositeRect(o, gpuRect) {
     const device = host.gpu.device;
     if (o.targetFramebuffer) {
       throw new Error("brush-gpu standalone: framebuffer targets are not supported.");
     }
-    if (!rectCompositePipeline) {
-      rectCompositePipeline = host.cache.getRenderPipeline({
-        code: SPECTRAL_WGSL,
-        vertexEntry: "vsRect",
-        fragmentEntry: "fs",
-        blend: {
-          color: { srcFactor: "one", dstFactor: "one-minus-src-alpha" },
-          alpha: { srcFactor: "one", dstFactor: "one-minus-src-alpha" },
-        },
-        format: host.gpu.format,
-        label: "spectral-composite-rect",
-      });
-      rectCompositeLayout = rectCompositePipeline.getBindGroupLayout(0);
-    }
+    ensureRectCompositePipeline();
     packBlendUniforms(
       { color: o.color, isBrush: o.isBrush, targetIsFramebuffer: false, flags: 0 },
       blendScratch,
@@ -612,6 +618,81 @@ fn ordU32ToF32(v: u32) -> f32 {
     // executes after this submit on the queue timeline.
     blendRing.reset();
   };
+
+  /**
+   * Deferred stroke groups (gl_draw.js flushWalkBatch): encodes ONE group's
+   * blend-source blit + spectral composite into the caller's encoder, both
+   * bounded by a GPU-resident rect record bound at a buffer offset. No
+   * submit, no present — the caller batches many groups per encoder and
+   * presents once. Call reserveBlendSlots(n) first: every group takes a
+   * blend-uniform ring slot and the ring must not reallocate mid-encoder.
+   *
+   * @param {GPUCommandEncoder} enc
+   * @param {object} o
+   * @param {object} o.source blend-source framebuffer duck ({view})
+   * @param {GPUTextureView} o.maskView
+   * @param {number[]} o.color [r,g,b,(a)] 0..1
+   * @param {{buffer: GPUBuffer, offset: number, size: number}} o.rect
+   *   rect record (strokewalk.wgsl layout == spectral.wgsl vsRect layout)
+   */
+  host.encodeRectComposite = (enc, o) => {
+    host.requireReady();
+    const device = host.gpu.device;
+    ensureBlitPipeline();
+    ensureRectCompositePipeline();
+    const rectBinding = { buffer: o.rect.buffer, offset: o.rect.offset ?? 0, size: o.rect.size };
+    // Per-batch rect buffers churn — bypass the identity-keyed cache.
+    const blitBind = device.createBindGroup({
+      label: "blend-source-rect-blit-bg",
+      layout: blitLayout,
+      entries: [
+        { binding: 0, resource: host.paintingView },
+        { binding: 1, resource: rectBinding },
+      ],
+    });
+    const blit = enc.beginRenderPass({
+      label: "blit-blend-source",
+      colorAttachments: [{ view: o.source.view, loadOp: "load", storeOp: "store" }],
+    });
+    blit.setPipeline(blitPipeline);
+    blit.setBindGroup(0, blitBind);
+    blit.draw(6);
+    blit.end();
+
+    packBlendUniforms(
+      { color: o.color, isBrush: true, targetIsFramebuffer: false, flags: 0 },
+      blendScratch,
+    );
+    const slot = blendRing.write(blendScratch);
+    const bind = device.createBindGroup({
+      label: "composite-rect-bg",
+      layout: rectCompositeLayout,
+      entries: [
+        { binding: 0, resource: { buffer: slot.buffer, offset: slot.offset, size: slot.size } },
+        { binding: 1, resource: o.source.view },
+        { binding: 2, resource: o.maskView },
+        { binding: 3, resource: sampler },
+        { binding: 4, resource: rectBinding },
+      ],
+    });
+    const pass = enc.beginRenderPass({
+      label: "composite-rect",
+      colorAttachments: [{ view: host.paintingView, loadOp: "load", storeOp: "store" }],
+    });
+    pass.setPipeline(rectCompositePipeline);
+    pass.setBindGroup(0, bind);
+    pass.draw(6);
+    pass.end();
+  };
+
+  /** See encodeRectComposite. */
+  host.reserveBlendSlots = (n) => blendRing.reserve(n);
+
+  /**
+   * Rewind the blend-uniform ring after the caller's submit (see
+   * runComposite: writeBuffer is queue-ordered, so this is safe post-submit).
+   */
+  host.resetBlendSlots = () => blendRing.reset();
 
   return host;
 }

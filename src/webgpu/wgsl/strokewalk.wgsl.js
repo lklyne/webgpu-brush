@@ -75,7 +75,7 @@ struct Env {
   fieldRes: f32,
   fieldLeftX: f32,
   fieldTopY: f32,
-  pad0: f32,
+  density: f32,      // device px per logical px (group dirty rects)
   pad1: f32,
   pad2: f32,
 }
@@ -118,7 +118,7 @@ struct Stroke {
   salt: u32,         // (strokeId << 2)
   kind: u32,
   flags: u32,
-  pad0: u32,
+  group: u32,        // raster group (color/translation batch) — see gl_draw.js
   pad1: u32,
 }
 
@@ -132,6 +132,24 @@ struct Stroke {
 @group(0) @binding(5) var<storage, read> field: array<f32>;     // col-major: c*fieldRows + r
 @group(0) @binding(6) var<storage, read> offsets: array<u32>;   // strokeCount+1, exclusive
 @group(0) @binding(7) var<storage, read_write> stamps: array<vec4f>; // x, y, size, alpha
+// Per-group dirty rect, DEVICE px, RECT_STRIDE words per group. Words 0..3
+// are ordered-u32 f32 min/max (grow.wgsl f32ToOrd; decoded by spectral.wgsl
+// vsRect / the blend-source blit). atomicMin/Max only — commutative, so the
+// result is independent of thread interleaving (gotcha #10 permits it).
+@group(0) @binding(8) var<storage, read_write> rects: array<atomic<u32>>;
+const RECT_STRIDE: u32 = 64u;
+const RECT_PAD: f32 = 3.0; // 1 px AA + DIRTY_BRUSH_PADDING (2)
+
+// Per-invocation bounds of every stamp this thread emitted, device px.
+var<private> bMin: vec2f;
+var<private> bMax: vec2f;
+var<private> bTrans: vec2f;
+
+fn f32ToOrd(f: f32) -> u32 {
+  let i = bitcast<u32>(f);
+  if ((i & 0x80000000u) != 0u) { return ~i; }
+  return i + 0x80000000u;
+}
 
 // ---------------------------------------------------------------------------
 // Hash RNG — bit-exact vs utils.js hashU32 (verified by the oracle battery).
@@ -254,6 +272,12 @@ fn emit(out: ptr<function, u32>, outEnd: u32, v: vec4f) {
   if (*out < outEnd) {
     stamps[*out] = v;
     *out = *out + 1u;
+    // Same device mapping as walkraster.wgsl vs(): (xy + trans) * density,
+    // radius floored at the GL point-size clamp (0.5 px).
+    let dev = (v.xy + bTrans) * env.density;
+    let r = max(v.z * env.density * 0.5, 0.5) + RECT_PAD;
+    bMin = min(bMin, dev - r);
+    bMax = max(bMax, dev + r);
   }
 }
 
@@ -347,6 +371,10 @@ fn walkStrokes(@builtin(global_invocation_id) gid: vec3u) {
   let markerTipOn = (s.flags & FLAG_MARKER_TIP) != 0u;
   let fieldActive = (s.flags & FLAG_FIELD_ACTIVE) != 0u;
 
+  bMin = vec2f(3.4e38, 3.4e38);
+  bMax = vec2f(-3.4e38, -3.4e38);
+  bTrans = vec2f(s.mx, s.my);
+
   var pos = vec2f(s.x0, s.y0);
 
   // markerTip(1) — at the stroke start. phase1P carries the upstream
@@ -416,6 +444,16 @@ fn walkStrokes(@builtin(global_invocation_id) gid: vec3u) {
     for (var st = 1u; st < 10u; st++) {
       emitMarker(s, pos, p2 * f32(st) / 10.0, st, 2u, s.alpha * 8.0, &out, outEnd);
     }
+  }
+
+  // Merge this stroke's stamp bounds into its group's dirty rect (4 atomics
+  // per stroke, not per stamp).
+  if (bMin.x <= bMax.x) {
+    let base = s.group * RECT_STRIDE;
+    atomicMin(&rects[base + 0u], f32ToOrd(bMin.x));
+    atomicMin(&rects[base + 1u], f32ToOrd(bMin.y));
+    atomicMax(&rects[base + 2u], f32ToOrd(bMax.x));
+    atomicMax(&rects[base + 3u], f32ToOrd(bMax.y));
   }
 }
 `;

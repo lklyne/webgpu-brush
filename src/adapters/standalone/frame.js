@@ -5,6 +5,7 @@
 import { Renderer, isCanvasReady } from "../../core/target.js";
 import { Mix, flushActiveComposite } from "../../core/color.js";
 import { createColor, setRuntime } from "../../core/runtime.js";
+import { flushWalkBatch } from "../../stroke/gl_draw.js";
 
 // ---- render() reminder ----
 // If drawing calls are made but render() is never called, nothing appears on
@@ -31,6 +32,9 @@ function onDraw() {
 setRuntime({ notifyDraw: onDraw });
 
 function resetCompositeState() {
+  // Deferred GPU-walk groups were drawn before this clear; composite them
+  // (into pixels the clear then wipes) rather than letting them leak past it.
+  flushWalkBatch();
   if (Mix.glMask) Mix.clearMask(Mix.glMask);
   if (Mix.mask) Mix.clearMask(Mix.mask);
   Mix.justChanged = false;

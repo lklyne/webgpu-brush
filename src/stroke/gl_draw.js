@@ -13,13 +13,16 @@
 // Two stamp producers feed the brush mask:
 //   - CPU walk (stroke.js tip loop) → circle()/stampImage() queues →
 //     glDraw()/glDrawImages() flush through the W2 stamp renderer
-//   - GPU walk (strokewalk-compute) → queueWalkStroke() descriptors →
-//     flushWalkBatch() rasterizes stamps straight from the storage buffer
-//     with drawIndirect (no readback — gotcha #9)
+//   - GPU walk (strokewalk-compute) → queueWalkStroke() descriptors,
+//     grouped by (translation, color) ACROSS color changes → flushWalkBatch()
+//     walks every group in one dispatch, then rasterizes each group straight
+//     from the storage buffer with drawIndirect and composites deferred
+//     groups in draw order (no readback — gotcha #9; FORK.md W6)
 //
 // ORDER: the mask blend (one-minus-dst-alpha, one) is order-dependent
-// (gotcha #10), so every CPU flush and every composite flushes the pending
-// GPU-walk batch first — stamps always land in draw order.
+// (gotcha #10), so every CPU flush, every other composite, frame end and
+// clear() flush the pending GPU-walk groups first — stamps and composites
+// always land in draw order.
 // =============================================================================
 
 import { Cwidth, Cheight, Density, Renderer } from "../core/target.js";
@@ -40,6 +43,7 @@ import { Stats } from "../core/stats.js";
 import {
   createStrokeWalker,
   createDescriptorBuilder,
+  RECT_BYTES,
 } from "../webgpu/strokewalk.js";
 import { createUniformRing } from "../webgpu/pipeline.js";
 import { STAMP_BLEND } from "../webgpu/stamps.js";
@@ -254,7 +258,7 @@ export function glDrawImages(p5img, src) {
     }
     return;
   }
-  flushWalkBatch(); // preserve stamp order (gotcha #10)
+  flushWalkBatch(true); // preserve stamp order (gotcha #10); same-color group joins
   Mix.glMask.isDrawn = true;
   const targetState = beginDirectMaskDraw(Renderer, null, Mix.glMask);
 
@@ -304,7 +308,7 @@ export function glDraw() {
     }
   }
   if (!host || host.stamps.discCount === 0) return;
-  flushWalkBatch(); // preserve stamp order (gotcha #10)
+  flushWalkBatch(true); // preserve stamp order (gotcha #10); same-color group joins
   Mix.glMask.isDrawn = true;
   const targetState = beginDirectMaskDraw(Renderer, null, Mix.glMask);
 
@@ -329,15 +333,31 @@ let builder = null;
 let rasterPipeline = null;
 let rasterLayout = null;
 let rasterRing = null;
-const rasterUniform = new Float32Array(12);
+const rasterUniform = new Float32Array(16);
 
 // Environment cache — re-upload only when any input changed.
-const envState = { seed: -1, fieldEpoch: -1, fieldName: null, w: 0, h: 0, pool: null };
+const envState = { seed: -1, fieldEpoch: -1, fieldName: null, w: 0, h: 0, density: 0, pool: null };
 
-// Pending batch: descriptors + the shared translation/color they were
-// queued under. A change in any batch key flushes first.
+// Pending super-batch: descriptors from MANY color/translation groups, walked
+// together in one dispatch at flush time. Each group is a contiguous range of
+// `pending` that shares translation + stroke color, in draw order.
+//
+// Two group modes, decided when the group opens:
+//   deferred  — the brush mask held no CPU stamps, so the group's composite
+//               is ours to run: at flush, every deferred group rasterizes into
+//               the (cleared) mask, blits its GPU-resident dirty rect into the
+//               blend-source and spectral-composites, in order. Mix.blend's
+//               per-color composite sees isDrawn === false and skips.
+//   immediate — CPU stamps (plot/image-tip strokes) already sit in the mask
+//               for this color, so the group must join THAT mask and be
+//               composited by Mix.blend like before: it rasterizes with
+//               loadOp "load", marks a conservative CPU dirty rect, and
+//               getStrokeShaderMask pulls it in via flushWalkBatch().
+// A group never mixes modes; a CPU stamp flush drains deferred groups first
+// (draw order, gotcha #10) and a composite clears isDrawn after immediates.
 let pending = [];
-let pendingKey = null; // { mx, my, r, g, b }
+let groups = []; // { start, end, key: {mx, my, r, g, b}, color, immediate }
+let openGroup = null;
 
 /** Allow tests / users to force the retained CPU walk. */
 let useCpuWalk = false;
@@ -428,6 +448,7 @@ function ensureEnvironment(gaussPool) {
     envState.fieldName === fieldName &&
     envState.w === Cwidth &&
     envState.h === Cheight &&
+    envState.density === Density &&
     envState.pool === gaussPool
   ) {
     return;
@@ -442,6 +463,7 @@ function ensureEnvironment(gaussPool) {
     height: Cheight,
     gaussPool: Float32Array.from(gaussPool),
     field,
+    density: Density,
   });
   builder = createDescriptorBuilder({ seedU32: seed, width: Cwidth, height: Cheight });
   envState.seed = seed;
@@ -449,6 +471,7 @@ function ensureEnvironment(gaussPool) {
   envState.fieldName = fieldName;
   envState.w = Cwidth;
   envState.h = Cheight;
+  envState.density = Density;
   envState.pool = gaussPool;
 }
 
@@ -475,16 +498,26 @@ export function queueWalkStroke(o) {
   _noteGpuStroke(); // W4b routing counter (per stroke, trivial)
   ensureEnvironment(o.gaussPool);
 
-  const key = pendingKey;
   const color = State.stroke.color._array;
+  const immediate = Mix.glMask.isDrawn === true;
   if (
-    key &&
-    (key.mx !== _mx || key.my !== _my ||
-      key.r !== color[0] || key.g !== color[1] || key.b !== color[2])
+    openGroup &&
+    (openGroup.immediate !== immediate ||
+      openGroup.key.mx !== _mx || openGroup.key.my !== _my ||
+      openGroup.key.r !== color[0] || openGroup.key.g !== color[1] ||
+      openGroup.key.b !== color[2])
   ) {
-    flushWalkBatch();
+    sealGroup();
   }
-  pendingKey = { mx: _mx, my: _my, r: color[0], g: color[1], b: color[2] };
+  if (!openGroup) {
+    openGroup = {
+      start: pending.length,
+      end: pending.length,
+      key: { mx: _mx, my: _my, r: color[0], g: color[1], b: color[2] },
+      color: [color[0], color[1], color[2], color[3] ?? 1],
+      immediate,
+    };
+  }
 
   builder.setChain(o.chain);
   const desc = builder.build({
@@ -500,101 +533,193 @@ export function queueWalkStroke(o) {
     wiggle: o.wiggle,
     strokeId: o.strokeId,
   });
+  desc.group = groups.length; // index openGroup takes when sealed
   pending.push(desc);
   notifyDraw();
 
-  // Conservative dirty rect (device px). With a field active the walk can
-  // bend anywhere within `length` of the start; without one it is a
-  // straight segment. Margin covers scatter + tip size + marker tips.
-  const margin =
-    2 +
-    o.strokeWeight *
-      ((o.brush.scatter ?? 0) * 2 + (o.brush.weight ?? 1) * Math.max(1, desc.pmax ?? 1) * 2);
-  const x0 = desc.x0;
-  const y0 = desc.y0;
-  let minX, minY, maxX, maxY;
-  if (o.fieldActive) {
-    minX = x0 - o.length - margin;
-    maxX = x0 + o.length + margin;
-    minY = y0 - o.length - margin;
-    maxY = y0 + o.length + margin;
-  } else {
-    const ex = x0 + desc.dxc * desc.totalSteps;
-    const ey = y0 + desc.dyc * desc.totalSteps;
-    minX = Math.min(x0, ex) - margin;
-    maxX = Math.max(x0, ex) + margin;
-    minY = Math.min(y0, ey) - margin;
-    maxY = Math.max(y0, ey) + margin;
+  // Conservative CPU dirty rect (device px), used only when the group joins
+  // the live mask (immediate now, or converted by a same-color CPU stamp
+  // flush — see flushWalkBatch). With a field active the walk can bend
+  // anywhere within `length` of the start; without one it is a straight
+  // segment. Margin covers scatter + tip size + marker tips. Deferred
+  // groups composite through an exact GPU rect instead.
+  {
+    const margin =
+      2 +
+      o.strokeWeight *
+        ((o.brush.scatter ?? 0) * 2 + (o.brush.weight ?? 1) * Math.max(1, desc.pmax ?? 1) * 2);
+    const x0 = desc.x0;
+    const y0 = desc.y0;
+    let minX, minY, maxX, maxY;
+    if (o.fieldActive) {
+      minX = x0 - o.length - margin;
+      maxX = x0 + o.length + margin;
+      minY = y0 - o.length - margin;
+      maxY = y0 + o.length + margin;
+    } else {
+      const ex = x0 + desc.dxc * desc.totalSteps;
+      const ey = y0 + desc.dyc * desc.totalSteps;
+      minX = Math.min(x0, ex) - margin;
+      maxX = Math.max(x0, ex) + margin;
+      minY = Math.min(y0, ey) - margin;
+      maxY = Math.max(y0, ey) + margin;
+    }
+    const d = _density;
+    desc.cpuRect = {
+      minX: (minX + _mx) * d,
+      minY: (minY + _my) * d,
+      maxX: (maxX + _mx) * d,
+      maxY: (maxY + _my) * d,
+    };
   }
-  const d = _density;
-  Mix.glMask.isDrawn = true;
-  Mix.markDirtyRect(Mix.glMask, {
-    minX: (minX + _mx) * d,
-    minY: (minY + _my) * d,
-    maxX: (maxX + _mx) * d,
-    maxY: (maxY + _my) * d,
-  });
+  if (immediate) Mix.markDirtyRect(Mix.glMask, desc.cpuRect);
 
   return builder.getChain();
 }
 
+function sealGroup() {
+  if (!openGroup) return;
+  openGroup.end = pending.length;
+  groups.push(openGroup);
+  openGroup = null;
+}
+
+const rasterUniformU32 = new Uint32Array(rasterUniform.buffer);
+
 /**
- * Runs the pending GPU-walk batch: compute (count → scan → indirect →
- * walk) then one instanced drawIndirect into the brush mask. Called
- * before every CPU stamp flush and before every composite.
+ * Runs the pending super-batch: ONE compute submit walks every queued
+ * stroke in parallel (count → scan → indirect → walk, per-group rects), then
+ * one render encoder replays the groups in draw order — deferred groups as
+ * clear-mask → raster → blit → composite, immediate groups as raster into
+ * the live mask — and presents once. Called before every CPU stamp flush,
+ * before any other composite, at frame end, and on environment change.
+ *
+ * @param {boolean} [joinMask=false] the caller is about to draw CPU stamps
+ *   for the CURRENT stroke color/translation into the live mask. If the
+ *   trailing deferred group matches, it is converted to immediate — it
+ *   rasterizes into the mask and Mix.blend composites it together with the
+ *   CPU stamps, exactly as upstream would with one mask per color. Without
+ *   this the group would composite alone, and ink overlapping the CPU
+ *   stamps would be spectrally mixed twice.
  */
-export function flushWalkBatch() {
+export function flushWalkBatch(joinMask = false) {
+  sealGroup();
   if (pending.length === 0) return;
   const descs = pending;
-  const key = pendingKey;
+  const gs = groups;
   pending = [];
-  pendingKey = null;
+  groups = [];
 
-  const batch = walker.walk(descs); // submits its own compute encoder
+  if (joinMask) {
+    const last = gs[gs.length - 1];
+    const c = State.stroke.color._array;
+    if (
+      !last.immediate &&
+      last.key.mx === _mx && last.key.my === _my &&
+      last.key.r === c[0] && last.key.g === c[1] && last.key.b === c[2]
+    ) {
+      last.immediate = true;
+      for (let i = last.start; i < last.end; i++) {
+        Mix.markDirtyRect(Mix.glMask, descs[i].cpuRect);
+      }
+      Mix.glMask.isDrawn = true;
+    }
+  }
+
+  const batch = walker.walk(
+    descs,
+    gs.map((g) => ({ start: g.start, end: g.end })),
+  ); // submits its own compute encoder
   // W4b: an open capture retains the batch (no readback here — it is
   // mapped only when readGeometry() is awaited, out-of-band).
   const captured = _iflag.active && _captureWalkBatch(walker, batch, descs, Density);
   ensureRasterPipeline();
+  isMixReady(); // blend-source framebuffer for deferred composites
 
+  const device = host.gpu.device;
   const W = Math.max(1, Math.round(Cwidth * Density));
   const H = Math.max(1, Math.round(Cheight * Density));
-  rasterUniform[0] = 2 / W;
-  rasterUniform[1] = -2 / H;
-  rasterUniform[2] = -1;
-  rasterUniform[3] = 1;
-  rasterUniform[4] = key.r;
-  rasterUniform[5] = key.g;
-  rasterUniform[6] = key.b;
-  rasterUniform[7] = 1;
-  rasterUniform[8] = key.mx;
-  rasterUniform[9] = key.my;
-  rasterUniform[10] = Density;
-  rasterUniform[11] = 0;
-  const slot = rasterRing.write(rasterUniform);
+  const deferredCount = gs.reduce((n, g) => n + (g.immediate ? 0 : 1), 0);
+  rasterRing.reserve(gs.length);
+  host.reserveBlendSlots(deferredCount);
 
-  // Per-batch buffers churn, so bypass the bind-group cache (its own
-  // documented guidance for churning resources).
-  const bind = host.gpu.device.createBindGroup({
-    label: "walk-raster-bg",
-    layout: rasterLayout,
-    entries: [
-      { binding: 0, resource: { buffer: slot.buffer, offset: slot.offset, size: slot.size } },
-      { binding: 1, resource: { buffer: batch.stampsBuffer } },
-    ],
-  });
+  const enc = device.createCommandEncoder({ label: "walk-flush" });
+  let maskHoldsDeferred = false;
+  gs.forEach((g, gi) => {
+    rasterUniform[0] = 2 / W;
+    rasterUniform[1] = -2 / H;
+    rasterUniform[2] = -1;
+    rasterUniform[3] = 1;
+    rasterUniform[4] = g.key.r;
+    rasterUniform[5] = g.key.g;
+    rasterUniform[6] = g.key.b;
+    rasterUniform[7] = 1;
+    rasterUniform[8] = g.key.mx;
+    rasterUniform[9] = g.key.my;
+    rasterUniform[10] = Density;
+    rasterUniform[11] = 0;
+    rasterUniformU32[12] = g.start;
+    rasterUniformU32[13] = 0;
+    rasterUniformU32[14] = 0;
+    rasterUniformU32[15] = 0;
+    const slot = rasterRing.write(rasterUniform);
+    // Per-batch buffers churn, so bypass the bind-group cache (its own
+    // documented guidance for churning resources).
+    const bind = device.createBindGroup({
+      label: "walk-raster-bg",
+      layout: rasterLayout,
+      entries: [
+        { binding: 0, resource: { buffer: slot.buffer, offset: slot.offset, size: slot.size } },
+        { binding: 1, resource: { buffer: batch.stampsBuffer } },
+        { binding: 2, resource: { buffer: batch.offsetsBuffer } },
+      ],
+    });
+    const pass = enc.beginRenderPass({
+      label: "walk-raster",
+      colorAttachments: [
+        {
+          view: Mix.glMask.view,
+          // A deferred group owns the mask outright: clear on load (free on
+          // tile-based GPUs) instead of a separate clear pass per group. An
+          // immediate group joins the live mask — unless a deferred group's
+          // stamps are still sitting in it, which it must not inherit.
+          loadOp: g.immediate && !maskHoldsDeferred ? "load" : "clear",
+          clearValue: { r: 0, g: 0, b: 0, a: 0 },
+          storeOp: "store",
+        },
+      ],
+    });
+    pass.setPipeline(rasterPipeline);
+    pass.setBindGroup(0, bind);
+    pass.drawIndirect(batch.indirectBuffer, gi * 16);
+    pass.end();
 
-  const enc = host.gpu.device.createCommandEncoder({ label: "walk-raster" });
-  const pass = enc.beginRenderPass({
-    label: "walk-raster",
-    colorAttachments: [
-      { view: Mix.glMask.view, loadOp: "load", storeOp: "store" },
-    ],
+    if (g.immediate) {
+      maskHoldsDeferred = false;
+      return;
+    }
+    host.encodeRectComposite(enc, {
+      source: Renderer.blendSourceFramebuffer,
+      maskView: Mix.glMask.view,
+      color: g.color,
+      rect: { buffer: batch.rectsBuffer, offset: gi * RECT_BYTES, size: RECT_BYTES },
+    });
+    maskHoldsDeferred = true;
   });
-  pass.setPipeline(rasterPipeline);
-  pass.setBindGroup(0, bind);
-  pass.drawIndirect(batch.indirectBuffer, 0);
-  pass.end();
-  host.gpu.device.queue.submit([enc.finish()]);
+  if (maskHoldsDeferred) {
+    // Leave the mask empty for whatever CPU stamps come next.
+    enc
+      .beginRenderPass({
+        label: "walk-mask-clear",
+        colorAttachments: [
+          { view: Mix.glMask.view, loadOp: "clear", clearValue: { r: 0, g: 0, b: 0, a: 0 }, storeOp: "store" },
+        ],
+      })
+      .end();
+  }
+  if (deferredCount > 0) host.present(enc);
+  device.queue.submit([enc.finish()]);
   rasterRing.reset(); // writeBuffer is queue-ordered — safe post-submit
+  host.resetBlendSlots();
   if (!captured) batch.destroy(); // deferred by WebGPU until execution completes
 }

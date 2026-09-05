@@ -150,6 +150,22 @@ const U_TOTAL_STEPS = 30;
 const U_SALT = 31;
 const U_KIND = 32;
 const U_FLAGS = 33;
+const U_GROUP = 34;
+
+// Per-group dirty-rect record (strokewalk.wgsl `rects`): 64 u32 words =
+// 256 bytes, so a group's record can be bound at a storage-buffer offset.
+// Layout matches grow.wgsl / spectral.wgsl vsRect: [0..3] ordered-u32
+// min/max, [4..7] CPU-side rect (unused here), [8] CPU flag, [9..10] size.
+export const RECT_WORDS = 64;
+export const RECT_BYTES = RECT_WORDS * 4;
+
+/** JS mirror of grow.wgsl f32ToOrd (total order on f32 as u32). */
+const _ordScratch = new DataView(new ArrayBuffer(4));
+export function f32ToOrd(f) {
+  _ordScratch.setFloat32(0, f);
+  const i = _ordScratch.getUint32(0);
+  return i & 0x80000000 ? ~i >>> 0 : (i + 0x80000000) >>> 0;
+}
 
 /**
  * f64 replica of stroke.js simPressure()/gauss() for the phase-1 pressure
@@ -448,6 +464,7 @@ export function packDescriptors(descs) {
     u[o + U_SALT] = d.salt;
     u[o + U_KIND] = d.kind;
     u[o + U_FLAGS] = d.flags;
+    u[o + U_GROUP] = d.group ?? 0;
   });
   return buf;
 }
@@ -530,6 +547,8 @@ export function createStrokeWalker(gpu, opts = {}) {
    * @param {?{data: Float32Array, numColumns: number, numRows: number,
    *          resolution: number, leftX: number, topY: number}} [e.field]
    *   flattened col-major (c * numRows + r); null when no field is active
+   * @param {number} [e.density] device px per logical px (default 1) — the
+   *   per-group dirty rects are accumulated in device px
    */
   function setEnvironment(e) {
     env = e;
@@ -561,12 +580,25 @@ export function createStrokeWalker(gpu, opts = {}) {
   /**
    * Encode + submit the three passes for a batch of packed descriptors.
    * No readback here (gotcha #9); use readBatch() out-of-band.
-   * @param {Array} descs createDescriptorBuilder().build() outputs
+   *
+   * Strokes are partitioned into raster GROUPS — contiguous index ranges
+   * that share a color/translation (gl_draw.js batches them). Every group
+   * gets its own drawIndirect entry (16 bytes at group * 16 in
+   * indirectBuffer) and its own GPU-resident dirty rect (RECT_BYTES at
+   * group * RECT_BYTES in rectsBuffer, device px), so a whole frame of
+   * strokes walks in ONE parallel dispatch while each color still
+   * rasterizes and composites separately, in draw order.
+   *
+   * @param {Array} descs createDescriptorBuilder().build() outputs; each
+   *   desc's `group` must equal the index of the range containing it
+   * @param {Array<{start: number, end: number}>} [groups] stroke index
+   *   ranges, in order (default: one group spanning every stroke)
    * @returns {{stampsBuffer: GPUBuffer, offsetsBuffer: GPUBuffer,
-   *            countsBuffer: GPUBuffer, strokeCount: number,
-   *            capacity: number, destroy: () => void}}
+   *            countsBuffer: GPUBuffer, indirectBuffer: GPUBuffer,
+   *            rectsBuffer: GPUBuffer, groupCount: number,
+   *            strokeCount: number, capacity: number, destroy: () => void}}
    */
-  function walk(descs) {
+  function walk(descs, groups = [{ start: 0, end: descs.length }]) {
     if (!countPipeline) {
       throw new Error("strokewalk: call await walker.ensureReady() first");
     }
@@ -577,6 +609,8 @@ export function createStrokeWalker(gpu, opts = {}) {
       descs.reduce((s, d) => s + d.maxStamps, 0),
     );
 
+    const density = env.density ?? 1;
+    const G = groups.length;
     const envData = new ArrayBuffer(48);
     {
       const u = new Uint32Array(envData);
@@ -590,6 +624,7 @@ export function createStrokeWalker(gpu, opts = {}) {
       f[6] = env.field?.resolution ?? 1;
       f[7] = env.field?.leftX ?? 0;
       f[8] = env.field?.topY ?? 0;
+      f[9] = density;
     }
     const envBuf = gpu.createBuffer({
       label: "strokewalk-env",
@@ -622,18 +657,54 @@ export function createStrokeWalker(gpu, opts = {}) {
       usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
     });
     // W3: drawIndirect args written GPU-side by the writeIndirect pass —
-    // {4, totalStamps, 0, 0}; the raster pass never reads the total back.
+    // one {4, groupStamps, 0, 0} entry per group; nothing is read back.
     const indirectBuf = gpu.createBuffer({
       label: "strokewalk-indirect",
-      size: 16,
+      size: 16 * G,
       usage: GPUBufferUsage.STORAGE | GPUBufferUsage.INDIRECT,
     });
+    const groupsBuf = gpu.createBuffer({
+      label: "strokewalk-groups",
+      size: 8 * G,
+      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+    });
+    {
+      const gdata = new Uint32Array(2 * G);
+      groups.forEach((g, i) => {
+        gdata[2 * i] = g.start;
+        gdata[2 * i + 1] = g.end;
+      });
+      device.queue.writeBuffer(groupsBuf, 0, gdata);
+    }
+    // Per-group dirty rects: min words start at +inf, max words at -inf
+    // (ordered-u32), size words carry the device-px canvas size for vsRect.
+    const rectsBuf = gpu.createBuffer({
+      label: "strokewalk-rects",
+      size: RECT_BYTES * G,
+      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+    });
+    {
+      const rdata = new Uint32Array(RECT_WORDS * G);
+      const rf = new Float32Array(rdata.buffer);
+      const posInf = f32ToOrd(3.4e38);
+      const negInf = f32ToOrd(-3.4e38);
+      for (let g = 0; g < G; g++) {
+        const o = g * RECT_WORDS;
+        rdata[o + 0] = posInf;
+        rdata[o + 1] = posInf;
+        rdata[o + 2] = negInf;
+        rdata[o + 3] = negInf;
+        rf[o + 9] = Math.round(env.width * density);
+        rf[o + 10] = Math.round(env.height * density);
+      }
+      device.queue.writeBuffer(rectsBuf, 0, rdata);
+    }
     const scanParamsBuf = gpu.createBuffer({
       label: "strokewalk-scan-params",
       size: 16,
       usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
     });
-    device.queue.writeBuffer(scanParamsBuf, 0, new Uint32Array([n, 0, 0, 0]));
+    device.queue.writeBuffer(scanParamsBuf, 0, new Uint32Array([n, G, 0, 0]));
 
     const countBG = device.createBindGroup({
       label: "strokewalk-count-bg",
@@ -660,6 +731,7 @@ export function createStrokeWalker(gpu, opts = {}) {
         { binding: 0, resource: { buffer: scanParamsBuf } },
         { binding: 2, resource: { buffer: offsetsBuf } },
         { binding: 3, resource: { buffer: indirectBuf } },
+        { binding: 4, resource: { buffer: groupsBuf } },
       ],
     });
     const walkBG = device.createBindGroup({
@@ -673,6 +745,7 @@ export function createStrokeWalker(gpu, opts = {}) {
         { binding: 5, resource: { buffer: fieldBuf } },
         { binding: 6, resource: { buffer: offsetsBuf } },
         { binding: 7, resource: { buffer: stampsBuf } },
+        { binding: 8, resource: { buffer: rectsBuf } },
       ],
     });
 
@@ -686,7 +759,7 @@ export function createStrokeWalker(gpu, opts = {}) {
     pass.dispatchWorkgroups(1);
     pass.setPipeline(indirectPipeline);
     pass.setBindGroup(0, indirectBG);
-    pass.dispatchWorkgroups(1);
+    pass.dispatchWorkgroups(Math.ceil(G / WG));
     pass.setPipeline(walkPipeline);
     pass.setBindGroup(0, walkBG);
     pass.dispatchWorkgroups(Math.ceil(n / WG));
@@ -698,6 +771,8 @@ export function createStrokeWalker(gpu, opts = {}) {
       offsetsBuffer: offsetsBuf,
       countsBuffer: countsBuf,
       indirectBuffer: indirectBuf,
+      rectsBuffer: rectsBuf,
+      groupCount: G,
       strokeCount: n,
       capacity,
       destroy() {
@@ -708,6 +783,8 @@ export function createStrokeWalker(gpu, opts = {}) {
         envBuf.destroy();
         scanParamsBuf.destroy();
         indirectBuf.destroy();
+        groupsBuf.destroy();
+        rectsBuf.destroy();
       },
     };
   }

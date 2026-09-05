@@ -257,6 +257,20 @@ export function createUniformRing(gpu, opts = {}) {
       cursor = 0;
     },
     /**
+     * Guarantee `n` slots fit without a mid-batch reallocation. Call BEFORE
+     * encoding a batch that writes many slots into one command encoder:
+     * growth destroys the old buffer, which would invalidate bind groups
+     * already recorded against it in that encoder.
+     * @param {number} n
+     */
+    reserve(n) {
+      if (n <= capacity) return;
+      while (capacity < n) capacity *= 2;
+      buffer.destroy();
+      buffer = alloc();
+      cursor = 0;
+    },
+    /**
      * @param {ArrayBufferView} data byte length ≤ slotSize
      * @returns {{buffer: GPUBuffer, offset: number, size: number}}
      */

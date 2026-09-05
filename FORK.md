@@ -1046,3 +1046,121 @@ Order-of-runs note: without completion fences, a benchmark that runs WebGL
 then WebGPU lets the GL queue's backlog bleed into the WebGPU measurement
 (observed 433 ms vs a true ~30 ms submission). Any A/B timing of the two APIs
 needs a full sync between runs.
+
+## W6 — Deferred stroke groups (per-color flush was serializing the walk)
+
+### Symptom
+
+The site's perf tab (`strokes ×1`, 320 field-driven flowLines cycling four
+colors) showed the fork at **0.2×** upstream to completion: p5.brush 412 ms,
+fork 2399 ms — while the same workload in ONE color ran at 122 ms.
+Reproduced headlessly with the new `scripts/bench-strokes.mjs`
+(`test/standalone/stroke_ab.{html,js}`; 2000×1400, density 1, Metal, every
+run timed to GPU completion on both sides):
+
+| variant (before) | total ms | js ms |
+|---|---:|---:|
+| upstream · color cycles | 900 | 897 |
+| fork · GPU walk · color cycles | **4469** | 22 |
+| fork · CPU walk · color cycles | 867 | 856 |
+| fork · GPU walk · one color | 122 | 6 |
+
+### Cause
+
+`gl_draw.js` batched GPU-walk descriptors per (translation, stroke color)
+and flushed the batch on every color change, because the brush mask holds
+one color and `Mix.blend` composites it at the change. With the palette
+cycling per stroke every batch had **one** stroke, and strokewalk-compute is
+one thread per stroke, sequential along it: at spacing 0.1 a 1940 px line
+is ~20k dependent steps (64k for the marker at 0.03), ≈ 14 ms of
+single-thread GPU latency per stroke, 320 times in a row. The design's
+parallelism (across strokes) never engaged. The conservative field dirty
+rect (start ± length, i.e. the whole canvas) was a second suspect and was
+ruled out first: forcing a thin rect changed nothing (4498 ms).
+
+### Fix — record groups, walk once, replay composites in order
+
+`queueWalkStroke` no longer flushes on a color change. It seals the current
+GROUP (a contiguous descriptor range sharing translation + color, in draw
+order) and keeps queueing into the same super-batch. `flushWalkBatch()` then:
+
+1. `walker.walk(descs, groups)` — ONE compute submit walks every queued
+   stroke in parallel. `writeIndirect` now emits one drawIndirect entry per
+   group (`{4, offsets[end] − offsets[start], 0, 0}`, 16 B stride; the
+   raster vertex shader adds `offsets[start]` from a new binding, so no
+   `indirect-first-instance` feature is needed) and the walk pass
+   accumulates a **per-group GPU dirty rect** (device px, ordered-u32
+   atomicMin/Max, 4 atomics per stroke from thread-local bounds; 256 B stride
+   so a group's record binds at a storage-buffer offset; same record layout
+   as W5's fill rect, decoded by `spectral.wgsl` `vsRect` and the
+   blend-source blit unchanged).
+2. One render encoder replays the groups in order. A **deferred** group
+   (the mask held no CPU stamps when it opened) is: raster into the mask
+   with `loadOp: "clear"` → blend-source blit of its GPU rect →
+   `host.encodeRectComposite` (spectral, rect-bounded, no present). An
+   **immediate** group (CPU stamps of the same color already sat in the
+   mask — plot/image-tip strokes) rasters with `loadOp: "load"` and marks
+   the old conservative CPU rect; `Mix.blend` composites it with those
+   stamps exactly as before. One present at the end, then a mask clear if a
+   deferred group left stamps in it.
+
+Deferred composites run at the next ordering point, so draw order is
+preserved (gotcha #10) without deferring anything else in the host:
+`flushPending` is registered on the stroke composite and called from
+`Mix.applyShader` before any fill-mask composite, from
+`flushActiveComposite` (render / snapshot / restore), from `clear()`
+(`resetCompositeState`), from every CPU stamp flush, and on environment
+change. `Mix.blend`'s own per-color composite sees `isDrawn === false` for
+deferred groups and skips itself.
+
+Same-color join: a CPU stamp flush (`glDraw`/`glDrawImages`) calls
+`flushWalkBatch(true)`; if the trailing deferred group matches the current
+color/translation it is converted to immediate so the group and the CPU
+stamps share one mask and one composite. Without this the goldens moved on
+exactly one tile (`edge-custom-brush`: GPU-walked line + CPU-walked circle,
+same ink, 0.9292 → 0.9775) because overlapping ink was spectrally mixed
+twice. With it the parity report is byte-identical to W5's.
+
+Uniform rings grew a `reserve(n)` (pipeline.js): growth destroys the old
+buffer, which would invalidate bind groups already recorded in the flush's
+encoder, so the raster ring and the blend ring are sized before encoding.
+
+### Timings (same bench, after)
+
+| variant (after) | total ms | js ms | vs upstream (completion) |
+|---|---:|---:|---:|
+| upstream · color cycles | 943 | 938 | — |
+| fork · GPU walk · color cycles | **151** | 9 | **6.2×** |
+| fork · GPU walk · one color | 129 | 6 | 7.5× |
+| fork · CPU walk · color cycles | 956 | 943 | 1.0× |
+
+The CPU (main-thread) column for the cycling case went from 22 ms to 9 ms
+(one walk submit instead of 320). The to-completion floor is now the 320
+rect-bounded spectral composites plus the walk of the longest stroke.
+
+### Verification (final state)
+
+- Goldens gate `diff-parity --webgpu --goldens /test/goldens/tiles --regime
+  character --tolerance 3.0`: **52/54, mean 1.2771, worst 4.7957** — every
+  tile's RMSE identical to the committed report (same two documented
+  residuals).
+- `assert-structure --identity` over 3 fresh captures: geomHash
+  **`3878505443`** ×3.
+- Oracles green: strokewalk (walk-parity, determinism), w4b (4/4 — captures
+  now retain a multi-group batch), w5 (cpu-vs-gpu, determinism, dirty-rect,
+  routing), w1a, spectral, stamps, stencil (12/12), grow.
+- `vitest` 99/99 (the stroke_pressure mock gained the router exports);
+  `npm run build` clean; `grep -rn mapAsync src/` still matches only
+  `webgpu/readback.js` (+ comments).
+
+### Files
+
+`src/stroke/gl_draw.js` (groups, flush), `src/webgpu/strokewalk.js`
+(`walk(descs, groups)`, rect/indirect/groups buffers, `density` env,
+`RECT_BYTES`, `f32ToOrd`), `src/webgpu/wgsl/{strokewalk,prefix-scan,
+walkraster}.wgsl.js`, `src/adapters/standalone/gpu.js`
+(`encodeRectComposite`, `reserveBlendSlots`, `resetBlendSlots`),
+`src/webgpu/pipeline.js` (`reserve`), `src/core/color.js` and
+`src/stroke/composite.js` (`flushPending` hook), `src/adapters/standalone/
+frame.js` (clear flushes), `scripts/bench-strokes.mjs`,
+`test/standalone/stroke_ab.{html,js}`.

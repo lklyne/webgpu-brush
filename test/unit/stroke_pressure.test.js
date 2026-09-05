@@ -59,6 +59,9 @@ vi.mock("../../src/stroke/gl_draw.js", () => ({
   stampImage: () => {},
   invalidateTexEntry: () => {},
   snapshotMatrix: () => {},
+  walkEligible: () => false,
+  queueWalkStroke: () => ({}),
+  flushWalkBatch: () => {},
 }));
 
 import { add, box, normalizePressure } from "../../src/stroke/stroke.js";
