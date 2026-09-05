@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-01T01:41:38.697Z",
+  "generatedAt": "2026-09-02T15:01:08.994Z",
   "tests": [
     {
       "name": "roundtrip",
@@ -44,26 +44,26 @@
       "name": "perf-isolation",
       "pass": true,
       "repMsBase": [
-        0.5,
         0.6,
-        0.5,
+        0.3,
         0.4,
+        0.3,
         0.3,
         0.3,
         0.3
       ],
       "repMsHooked": [
         0.6,
-        0.4,
-        0.5,
+        0.3,
+        0.6,
         0.4,
         0.3,
         0.3,
-        0.3
+        0.4
       ],
-      "medianMsBase": 0.4,
+      "medianMsBase": 0.3,
       "medianMsHooked": 0.4,
-      "thresholdMs": 3.6,
+      "thresholdMs": 3.45,
       "baseGpuStrokes": 480,
       "hookedGpuStrokes": 400,
       "hookedStrokes": 80,
