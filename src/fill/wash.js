@@ -54,7 +54,7 @@ export function wash(a, b, c, d) {
  */
 export function _wash(ctx, ...args) {
   const [a, b, c, d] = args;
-  isCanvasReady();
+  isCanvasReady(ctx);
   const state = ctx.state.wash;
   state.opacity = (args.length < 4 ? b : d) ?? 150;
   state.color = args.length < 3 ? ctx.createColor(a) : ctx.createColor(a, b, c);

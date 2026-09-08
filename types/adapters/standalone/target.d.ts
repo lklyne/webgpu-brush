@@ -9,6 +9,13 @@
  */
 export function ready(): Promise<void>;
 /**
+ * Context-taking implementation of ready().
+ *
+ * @param {import("../../core/context.js").BrushContext} ctx
+ * @returns {Promise<void>}
+ */
+export function _ready(ctx: import("../../core/context.js").BrushContext): Promise<void>;
+/**
  * OUT-OF-BAND readback of the painting texture as RGBA pixels (gotcha #9:
  * never called from any frame path — this is an explicit async API for
  * inspection, export, and the parity harness, which cannot drawImage()
@@ -17,6 +24,17 @@ export function ready(): Promise<void>;
  * @returns {Promise<{width: number, height: number, pixels: Uint8ClampedArray}>}
  */
 export function readPixels(): Promise<{
+    width: number;
+    height: number;
+    pixels: Uint8ClampedArray;
+}>;
+/**
+ * Context-taking implementation of readPixels().
+ *
+ * @param {import("../../core/context.js").BrushContext} ctx
+ * @returns {Promise<{width: number, height: number, pixels: Uint8ClampedArray}>}
+ */
+export function _readPixels(ctx: import("../../core/context.js").BrushContext): Promise<{
     width: number;
     height: number;
     pixels: Uint8ClampedArray;
@@ -49,13 +67,38 @@ export function gpu(): {
     onPaintingChanged: (fn: (painting: GPUTexture) => void) => () => void;
 };
 /**
+ * Context-taking implementation of gpu().
+ *
+ * @param {import("../../core/context.js").BrushContext} ctx
+ */
+export function _gpu(ctx: import("../../core/context.js").BrushContext): {
+    device: any;
+    adapter: any;
+    format: any;
+    readonly painting: any;
+    onPaintingChanged: any;
+};
+/**
  * Loads a standalone draw target from a DOM canvas or OffscreenCanvas.
  *
  * @param {HTMLCanvasElement|OffscreenCanvas} target
  * @param {{device?: GPUDevice, adapter?: GPUAdapter|null}} [options]
  *   adopt an externally owned device (see `gpu()`).
  */
-export function load(target?: HTMLCanvasElement | OffscreenCanvas, options?: {
+export function load(target: HTMLCanvasElement | OffscreenCanvas, options?: {
+    device?: GPUDevice;
+    adapter?: GPUAdapter | null;
+}): void;
+/**
+ * Context-taking implementation of load(). Registered as the `load` target
+ * hook, so core/color.js's load() reaches it with its own context.
+ *
+ * @param {import("../../core/context.js").BrushContext} ctx
+ * @param {HTMLCanvasElement|OffscreenCanvas} [target] defaults to the one this
+ *   context already draws into.
+ * @param {{device?: GPUDevice, adapter?: GPUAdapter|null}} [options]
+ */
+export function _loadTarget(ctx: import("../../core/context.js").BrushContext, target?: HTMLCanvasElement | OffscreenCanvas, options?: {
     device?: GPUDevice;
     adapter?: GPUAdapter | null;
 }): void;
@@ -84,6 +127,16 @@ export function createCanvas(width: number, height: number, options?: {
     adapter?: GPUAdapter | null;
 }): HTMLCanvasElement;
 /**
+ * Context-taking implementation of createCanvas().
+ *
+ * @param {import("../../core/context.js").BrushContext} ctx
+ * @param {number} width
+ * @param {number} height
+ * @param {object} [options]
+ * @returns {HTMLCanvasElement}
+ */
+export function _createCanvas(ctx: import("../../core/context.js").BrushContext, width: number, height: number, options?: object): HTMLCanvasElement;
+/**
  * Refreshes the standalone target density.
  *
  * @param {import("../../core/context.js").BrushContext} ctx
@@ -91,9 +144,11 @@ export function createCanvas(width: number, height: number, options?: {
  */
 export function syncDensity(ctx: import("../../core/context.js").BrushContext): number;
 /**
- * Ensures a standalone target has been loaded.
+ * Ensures this context's standalone target has been loaded.
+ *
+ * @param {import("../../core/context.js").BrushContext} ctx
  */
-export function isCanvasReady(): void;
+export function isCanvasReady(ctx: import("../../core/context.js").BrushContext): void;
 /**
  * Standalone build does not use p5 instance switching, so these are no-ops.
  */

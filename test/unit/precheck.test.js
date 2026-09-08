@@ -1,13 +1,14 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { armDeferred, flushDeferred } from "../../src/adapters/standalone/deferred.js";
-import { precheck as pre } from "../../src/adapters/standalone/precheck.js";
+import { createPrecheck, precheck as pre } from "../../src/adapters/standalone/precheck.js";
+import { createContext, defaultContext } from "../../src/core/context.js";
 
 // The prechecks mirror upstream's call-site errors while calls are being
 // recorded. Arm the recorder so the shadow is (re)seeded, and flush
 // afterwards so other suites see a pass-through recorder.
 describe("deferred prechecks (upstream error semantics while recording)", () => {
   beforeEach(() => {
-    armDeferred();
+    armDeferred(defaultContext);
   });
 
   it("line() without a brush throws upstream's message; set() clears it", () => {
@@ -16,14 +17,14 @@ describe("deferred prechecks (upstream error semantics while recording)", () => 
     expect(() => pre.line()).not.toThrow();
     pre.noStroke();
     expect(() => pre.flowLine()).toThrow("No brush or color set");
-    flushDeferred();
+    flushDeferred(defaultContext);
   });
 
   it("unknown brush and field names throw at the call site", () => {
     expect(() => pre.pick("__DOES_NOT_EXIST__")).toThrow('Brush "__DOES_NOT_EXIST__" not found');
     expect(() => pre.field("__DOES_NOT_EXIST__")).toThrow('Field "__DOES_NOT_EXIST__" does not exist');
     expect(() => pre.field("seabed")).not.toThrow(); // standard fields registered at load
-    flushDeferred();
+    flushDeferred(defaultContext);
   });
 
   it("shape and stroke state machines", () => {
@@ -41,7 +42,7 @@ describe("deferred prechecks (upstream error semantics while recording)", () => 
     expect(() => pre.move()).not.toThrow();
     expect(() => pre.endStroke()).not.toThrow();
     expect(() => pre.spline([[0, 0, 1]])).toThrow("at least 2 points");
-    flushDeferred();
+    flushDeferred(defaultContext);
   });
 
   it("field activation and refreshField()", () => {
@@ -49,7 +50,7 @@ describe("deferred prechecks (upstream error semantics while recording)", () => 
     expect(() => pre.refreshField()).toThrow("No field is currently active");
     pre.wiggle();
     expect(() => pre.refreshField()).not.toThrow();
-    flushDeferred();
+    flushDeferred(defaultContext);
   });
 
   it("push/pop restore the brush and field shadow", () => {
@@ -63,12 +64,38 @@ describe("deferred prechecks (upstream error semantics while recording)", () => 
     pre.pop();
     expect(() => pre.line()).not.toThrow();
     expect(() => pre.refreshField()).not.toThrow();
-    flushDeferred();
+    flushDeferred(defaultContext);
   });
 
   it("angleMode rejects unknown modes", () => {
     expect(() => pre.angleMode("gradians")).toThrow('Invalid angle mode "gradians"');
     expect(() => pre.angleMode("degrees")).not.toThrow();
-    flushDeferred();
+    flushDeferred(defaultContext);
+  });
+
+  it("keeps one shadow per context", () => {
+    const a = createContext();
+    const b = createContext();
+    const preA = createPrecheck(a);
+    const preB = createPrecheck(b);
+    armDeferred(a);
+    armDeferred(b);
+
+    preA.set("HB");
+    preA.beginShape();
+    preA.vertex();
+
+    // b's shadow saw none of it.
+    expect(() => preB.line()).toThrow("No brush or color set");
+    expect(() => preB.vertex()).toThrow("vertex() called outside");
+    expect(() => preA.line()).not.toThrow();
+
+    // Arming a re-seeds only a's shadow from a's real state.
+    armDeferred(a);
+    expect(() => preA.vertex()).toThrow("vertex() called outside");
+    expect(a.precheckShadow).not.toBe(b.precheckShadow);
+
+    flushDeferred(a);
+    flushDeferred(b);
   });
 });

@@ -13,19 +13,36 @@ import {
   setTargetRuntime,
   setTarget,
 } from "../../core/target.js";
-import { defaultContext } from "../../core/context.js";
+import { defaultContext, registerContextInit } from "../../core/context.js";
 import { _onTargetResized } from "../../core/flowfield.js";
 import { createGpuHost } from "./gpu.js";
 import { armDeferred, flushDeferred } from "./deferred.js";
 
-let activeTarget = null;
-let isLoaded = false;
-let activeDensity = 1;
-let activeWidth = 0;
-let activeHeight = 0;
-let activeRenderer = null;
-/** The active target's ready promise (device + walker + deferred replay). */
-let activeReady = null;
+/**
+ * The target of ONE painting: the canvas it was loaded from, the renderer
+ * built over it, the size and density it was loaded at, and the promise for
+ * its device coming up (which also replays that painting's recorded calls).
+ *
+ * @returns {object} The `ctx.target` object.
+ */
+function createTargetState() {
+  return {
+    /** @type {HTMLCanvasElement|OffscreenCanvas|null} */
+    canvas: null,
+    /** @type {object|null} */
+    renderer: null,
+    isLoaded: false,
+    /** @type {Promise<void>|null} device + walker + deferred replay */
+    ready: null,
+    width: 0,
+    height: 0,
+    density: 1,
+  };
+}
+
+registerContextInit((ctx) => {
+  ctx.target = createTargetState();
+});
 
 function isCanvasTarget(target) {
   return (
@@ -61,46 +78,53 @@ function createRenderer(target, width, height, density, gpuOptions) {
   };
 }
 
-function applyLoadedTarget(target, width, height, density, gpuOptions = {}) {
-  activeTarget = target;
-  activeWidth = width;
-  activeHeight = height;
-  activeDensity = density;
+/**
+ * @param {import("../../core/context.js").BrushContext} ctx
+ */
+function applyLoadedTarget(ctx, target, width, height, density, gpuOptions = {}) {
+  const state = ctx.target;
+  state.canvas = target;
+  state.width = width;
+  state.height = height;
+  state.density = density;
 
-  activeRenderer = createRenderer(target, width, height, density, gpuOptions);
-  // One active target per adapter until the instance API lands, so the
-  // default context is the one that gets it.
-  setTarget(defaultContext, {
-    Renderer: activeRenderer,
+  state.renderer = createRenderer(target, width, height, density, gpuOptions);
+  setTarget(ctx, {
+    Renderer: state.renderer,
     Cwidth: width,
     Cheight: height,
     Density: density,
   });
   // The flow-field grid is derived from the target size; a target of a
   // different size needs a new one. Same size: nothing is discarded.
-  _onTargetResized(defaultContext, width, height);
-  isLoaded = true;
+  _onTargetResized(ctx, width, height);
+  state.isLoaded = true;
   // Record stateful calls until the device is ready, then replay them.
   // ready() starts now so a sketch that never awaits it still runs; the
   // catch only silences the unhandled-rejection report — the same promise
   // is what ready() and readPixels() hand back, so failures stay observable.
-  armDeferred();
-  activeReady = null;
-  startReady().catch(() => {});
+  armDeferred(ctx);
+  state.ready = null;
+  startReady(ctx).catch(() => {});
 }
 
-function startReady() {
-  if (activeReady) return activeReady;
-  const renderer = activeRenderer;
-  activeReady = (async () => {
+/**
+ * @param {import("../../core/context.js").BrushContext} ctx
+ * @returns {Promise<void>}
+ */
+function startReady(ctx) {
+  const state = ctx.target;
+  if (state.ready) return state.ready;
+  const renderer = state.renderer;
+  state.ready = (async () => {
     await renderer.host.ready;
     // Warm up the GPU stroke walker BEFORE replaying, so deferred strokes
     // route to strokewalk-compute exactly as post-ready strokes do.
     const { initWalkRouter } = await import("../../stroke/gl_draw.js");
     await initWalkRouter(renderer.host);
-    flushDeferred();
+    flushDeferred(ctx);
   })();
-  return activeReady;
+  return state.ready;
 }
 
 /**
@@ -113,10 +137,20 @@ function startReady() {
  * @returns {Promise<void>}
  */
 export async function ready() {
-  if (!activeRenderer) {
+  return _ready(defaultContext);
+}
+
+/**
+ * Context-taking implementation of ready().
+ *
+ * @param {import("../../core/context.js").BrushContext} ctx
+ * @returns {Promise<void>}
+ */
+export async function _ready(ctx) {
+  if (!ctx.target.renderer) {
     throw new Error("brush.ready(): no target loaded — call brush.load()/createCanvas() first.");
   }
-  return startReady();
+  return startReady(ctx);
 }
 
 /**
@@ -128,12 +162,22 @@ export async function ready() {
  * @returns {Promise<{width: number, height: number, pixels: Uint8ClampedArray}>}
  */
 export async function readPixels() {
-  if (!activeRenderer) {
+  return _readPixels(defaultContext);
+}
+
+/**
+ * Context-taking implementation of readPixels().
+ *
+ * @param {import("../../core/context.js").BrushContext} ctx
+ * @returns {Promise<{width: number, height: number, pixels: Uint8ClampedArray}>}
+ */
+export async function _readPixels(ctx) {
+  if (!ctx.target.renderer) {
     throw new Error("brush.readPixels(): no target loaded.");
   }
   // Includes the deferred replay: pixels reflect every call made so far.
-  await ready();
-  const host = activeRenderer.host;
+  await _ready(ctx);
+  const host = ctx.target.renderer.host;
   host.requireReady();
   const { readTexture } = await import("../../webgpu/readback.js");
   const raw = await readTexture(host.gpu, host.painting);
@@ -170,10 +214,19 @@ export async function readPixels() {
  * }}
  */
 export function gpu() {
-  if (!activeRenderer) {
+  return _gpu(defaultContext);
+}
+
+/**
+ * Context-taking implementation of gpu().
+ *
+ * @param {import("../../core/context.js").BrushContext} ctx
+ */
+export function _gpu(ctx) {
+  if (!ctx.target.renderer) {
     throw new Error("brush.gpu(): no target loaded — call brush.load()/createCanvas() first.");
   }
-  const host = activeRenderer.host;
+  const host = ctx.target.renderer.host;
   host.requireReady();
   return {
     device: host.gpu.device,
@@ -193,14 +246,27 @@ export function gpu() {
  * @param {{device?: GPUDevice, adapter?: GPUAdapter|null}} [options]
  *   adopt an externally owned device (see `gpu()`).
  */
-export function load(target = activeTarget, options = {}) {
+export function load(target, options) {
+  return _loadTarget(defaultContext, target, options);
+}
+
+/**
+ * Context-taking implementation of load(). Registered as the `load` target
+ * hook, so core/color.js's load() reaches it with its own context.
+ *
+ * @param {import("../../core/context.js").BrushContext} ctx
+ * @param {HTMLCanvasElement|OffscreenCanvas} [target] defaults to the one this
+ *   context already draws into.
+ * @param {{device?: GPUDevice, adapter?: GPUAdapter|null}} [options]
+ */
+export function _loadTarget(ctx, target = ctx.target.canvas, options = {}) {
   if (!isSupportedTarget(target)) {
     throw new Error(
       "Standalone brush.load(target) requires an HTMLCanvasElement or OffscreenCanvas.",
     );
   }
 
-  applyLoadedTarget(target, target.width, target.height, 1, {
+  applyLoadedTarget(ctx, target, target.width, target.height, 1, {
     device: options.device,
     adapter: options.adapter,
   });
@@ -224,6 +290,19 @@ export function load(target = activeTarget, options = {}) {
  * @returns {HTMLCanvasElement}
  */
 export function createCanvas(width, height, options = {}) {
+  return _createCanvas(defaultContext, width, height, options);
+}
+
+/**
+ * Context-taking implementation of createCanvas().
+ *
+ * @param {import("../../core/context.js").BrushContext} ctx
+ * @param {number} width
+ * @param {number} height
+ * @param {object} [options]
+ * @returns {HTMLCanvasElement}
+ */
+export function _createCanvas(ctx, width, height, options = {}) {
   if (typeof document === "undefined") {
     throw new Error("brush.createCanvas() requires a browser document.");
   }
@@ -251,7 +330,7 @@ export function createCanvas(width, height, options = {}) {
     parent.appendChild(canvas);
   }
 
-  applyLoadedTarget(canvas, logicalWidth, logicalHeight, density, {
+  applyLoadedTarget(ctx, canvas, logicalWidth, logicalHeight, density, {
     device: options.device,
     adapter: options.adapter,
   });
@@ -265,19 +344,22 @@ export function createCanvas(width, height, options = {}) {
  * @returns {number}
  */
 export function syncDensity(ctx) {
+  const state = ctx.target;
   setTarget(ctx, {
-    Cwidth: activeWidth,
-    Cheight: activeHeight,
-    Density: activeDensity,
+    Cwidth: state.width,
+    Cheight: state.height,
+    Density: state.density,
   });
-  return activeDensity;
+  return state.density;
 }
 
 /**
- * Ensures a standalone target has been loaded.
+ * Ensures this context's standalone target has been loaded.
+ *
+ * @param {import("../../core/context.js").BrushContext} ctx
  */
-export function isCanvasReady() {
-  if (!isLoaded) {
+export function isCanvasReady(ctx) {
+  if (!ctx.target.isLoaded) {
     throw new Error(
       "No standalone target loaded. Call brush.load(canvasOrOffscreenCanvas) first.",
     );
@@ -313,15 +395,21 @@ export function isFramebufferTarget() {
   return arguments[0]?.__brushFramebuffer === true;
 }
 
+const hooks = {
+  load: _loadTarget,
+  syncDensity,
+  isCanvasReady,
+  instance,
+  activateInstance,
+  deactivateInstance,
+  getActiveFramebuffer,
+  isFramebufferTarget,
+};
+
+// The hooks act on the context they are handed, so every context this adapter
+// drives gets the same table.
+registerContextInit((ctx) => setTargetRuntime(ctx, hooks));
+
 export function initStandaloneTargetRuntime() {
-  setTargetRuntime({
-    load,
-    syncDensity,
-    isCanvasReady,
-    instance,
-    activateInstance,
-    deactivateInstance,
-    getActiveFramebuffer,
-    isFramebufferTarget,
-  });
+  setTargetRuntime(defaultContext, hooks);
 }

@@ -29,6 +29,11 @@
  * A context created while only part of the library has been imported gets
  * only the slices of the modules actually in the graph. The unit suites rely
  * on that: they mock whole modules away.
+ *
+ * Live contexts are also tracked weakly (`forEachContext`), for the few
+ * GLOBAL registries whose entries are cached per painting — re-registering a
+ * custom brush tip has to drop that tip from every painting's texture cache,
+ * not just the default one.
  */
 
 import { createRng, _getDefaultRng } from "./rng.js";
@@ -62,11 +67,35 @@ const identityMatrix = {
  * @property {() => void} notifyDraw Tells the host a draw call happened.
  * @property {object} compositor Host compositor hooks (core/compositor_runtime.js).
  * @property {object[]} stateStack push()/pop() brush-state stack (core/save.js).
- * @property {object|null} recorder Host deferred-call recorder, or null.
+ * @property {object|null} recorder This painting's deferred-call recorder,
+ *   installed by the host adapter (adapters/standalone/deferred.js).
  */
 
 /** @type {Array<(ctx: BrushContext) => void>} */
 const initializers = [];
+
+/**
+ * Every context ever built, held weakly so a dropped painting can be
+ * collected without the host announcing it.
+ * @type {Set<WeakRef<BrushContext>>}
+ */
+const liveContexts = new Set();
+
+/**
+ * Runs `fn` against every context still alive, pruning collected ones.
+ *
+ * For global registries with per-painting caches only — a definition changed
+ * in one place has to invalidate what every painting derived from it.
+ *
+ * @param {(ctx: BrushContext) => void} fn
+ */
+export function forEachContext(fn) {
+  for (const ref of liveContexts) {
+    const ctx = ref.deref();
+    if (ctx) fn(ctx);
+    else liveContexts.delete(ref);
+  }
+}
 
 /**
  * Creates a drawing context that owns its own state.
@@ -110,9 +139,10 @@ export function createContext({ rng = createRng() } = {}) {
     // inside a draw, so a flat object would be overwritten mid-stroke.
     stateStack: [],
 
-    // Host deferred-call recorder, installed by the standalone entry.
+    // This painting's deferred-call recorder, installed by the host adapter.
     recorder: null,
   };
+  liveContexts.add(new WeakRef(ctx));
   for (const init of initializers) init(ctx);
   return ctx;
 }
@@ -137,15 +167,4 @@ export const defaultContext = createContext({ rng: _getDefaultRng() });
 export function registerContextInit(init) {
   initializers.push(init);
   init(defaultContext);
-}
-
-/**
- * Installs the host's deferred-call recorder on a context. Core never imports
- * an adapter, so the adapter registers itself here instead.
- *
- * @param {BrushContext} ctx
- * @param {object} recorder
- */
-export function setRecorder(ctx, recorder) {
-  ctx.recorder = recorder;
 }

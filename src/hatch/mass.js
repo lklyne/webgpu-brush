@@ -8,7 +8,7 @@ import { Polygon } from "../core/polygon.js";
 import { Plot } from "../core/plot.js";
 import { dist, calcAngle } from "../core/utils.js";
 import { HatchState, HatchSetState, _hatch, getHatchLines } from "./hatch.js";
-import { BrushState, BrushSetState, getBrushParams, _set } from "../stroke/stroke.js";
+import { BrushState, BrushSetState, _getBrushParams, _set } from "../stroke/stroke.js";
 import { _wiggle } from "../core/flowfield.js";
 
 // ---------------------------------------------------------------------------
@@ -115,7 +115,7 @@ function jitterPolygons(polygons, jitterX, jitterY) {
 function getMassPolygons(ctx, shape, x, y, scale) {
   const rr2 = ctx.rng.rr2;
   const isPolygon = x === false;
-  const scatter = getBrushParams(ctx.state.mass.brush)?.scatter ?? 0;
+  const scatter = _getBrushParams(ctx, ctx.state.mass.brush)?.scatter ?? 0;
   const basePolygon = isPolygon ? shape : shape.genPol(x, y, scale, 0.15);
   const maxJitter = Math.min(scatter * 2, 5);
   const jitters = [
@@ -462,7 +462,7 @@ export function createMass(ctx, shape, x, y, scale) {
   const strength = State.mass.options?.strength ?? 1;
   const gradient = State.mass.options?.gradient ?? 0.1;
   const outline = State.mass.options?.outline ?? false;
-  const scatter = getBrushParams(State.mass.brush)?.scatter ?? 0;
+  const scatter = _getBrushParams(ctx, State.mass.brush)?.scatter ?? 0;
   const hatchDist = 1.6 * rr2(scatter * 0.65, scatter * 0.85) - 0.4 * gradient;
   const baseAngle = rr2(-90, 90);
   const pivotBias = getPivotBias(ctx, baseAngle);

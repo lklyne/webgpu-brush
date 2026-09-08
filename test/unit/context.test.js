@@ -51,7 +51,11 @@ import {
 } from "../../src/core/flowfield.js";
 import { createFillState } from "../../src/fill/fill.js";
 import { push, pop } from "../../src/core/save.js";
-import { createStrokeState } from "../../src/stroke/stroke.js";
+import {
+  createStrokeState,
+  _getBrushParams,
+  _scaleBrushes,
+} from "../../src/stroke/stroke.js";
 import { createHatchState } from "../../src/hatch/hatch.js";
 import { createWashState } from "../../src/fill/wash.js";
 import { createMassState } from "../../src/hatch/mass.js";
@@ -239,5 +243,29 @@ describe("createContext() — independent state", () => {
     expect(b.fields.resolution).toBe(8);
     expect(b.fields.epoch).toBe(epochB);
     expect(_fieldSnapshot(b).numRows).toBe(150);
+  });
+
+  it("scales brushes per context, leaving the definitions pristine", () => {
+    const a = makeContext(800, 600);
+    const b = makeContext(800, 600);
+
+    const base = { ..._getBrushParams(a, "HB") };
+    _scaleBrushes(a, 2);
+    _scaleBrushes(a, 1.5); // cumulative, as upstream is
+
+    const scaled = _getBrushParams(a, "HB");
+    expect(scaled.weight).toBe(base.weight * 2 * 1.5);
+    expect(scaled.scatter).toBe(base.scatter * 2 * 1.5);
+    expect(scaled.spacing).toBe(base.spacing * 2 * 1.5);
+
+    // b never scaled: it still draws the definition, untouched.
+    const other = _getBrushParams(b, "HB");
+    expect(other.weight).toBe(base.weight);
+    expect(other.scatter).toBe(base.scatter);
+    expect(other.spacing).toBe(base.spacing);
+    expect(other).not.toBe(scaled);
+
+    // …and a context built after the scaling gets the definition too.
+    expect(_getBrushParams(makeContext(800, 600), "HB").weight).toBe(base.weight);
   });
 });

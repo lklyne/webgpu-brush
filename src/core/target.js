@@ -5,30 +5,41 @@
 /**
  * The active drawing target lives on the drawing context: `ctx.renderer`,
  * `ctx.width`, `ctx.height`, `ctx.density`. Host adapters keep them updated
- * through `setTarget()`. The exact renderer type is adapter-defined, but core
- * code assumes it exposes:
+ * through `setTarget()`.
+ *
+ * The hooks that ACT on a target — load it, re-read its density, assert it
+ * exists — are context fields too (`ctx.targetHooks`), installed by the host
+ * adapter through `setTargetRuntime(ctx, hooks)`. The neutral table below is
+ * what core does with no adapter registered.
+ *
+ * The exact renderer type is adapter-defined, but core code assumes it
+ * exposes:
  * - `drawingContext`: the active graphics context
  * - `host`: the WebGPU host (standalone adapter)
- *
- * The hook table below is still module-global: the standalone adapter drives
- * exactly one target, so `load()` / `isCanvasReady()` and friends have nothing
- * per-context to say yet.
  */
 
-let targetRuntime = {
-  load: () => {
-    throw new Error("No target runtime adapter registered.");
-  },
-  syncDensity: (ctx) => ctx.density,
-  isCanvasReady: () => {
-    throw new Error("No target runtime adapter registered.");
-  },
-  instance: () => {},
-  activateInstance: () => {},
-  deactivateInstance: () => {},
-  getActiveFramebuffer: () => null,
-  isFramebufferTarget: () => false,
-};
+import { defaultContext, registerContextInit } from "./context.js";
+
+function defaultTargetHooks() {
+  return {
+    load: () => {
+      throw new Error("No target runtime adapter registered.");
+    },
+    syncDensity: (ctx) => ctx.density,
+    isCanvasReady: () => {
+      throw new Error("No target runtime adapter registered.");
+    },
+    instance: () => {},
+    activateInstance: () => {},
+    deactivateInstance: () => {},
+    getActiveFramebuffer: () => null,
+    isFramebufferTarget: () => false,
+  };
+}
+
+registerContextInit((ctx) => {
+  ctx.targetHooks = defaultTargetHooks();
+});
 
 /**
  * Points a drawing context at a target.
@@ -44,20 +55,22 @@ export function setTarget(ctx, state) {
 }
 
 /**
- * Registers or updates host target hooks used by core modules.
+ * Registers or updates one context's host target hooks.
  *
+ * @param {import("./context.js").BrushContext} ctx
  * @param {object} hooks
  */
-export function setTargetRuntime(hooks) {
-  targetRuntime = { ...targetRuntime, ...hooks };
+export function setTargetRuntime(ctx, hooks) {
+  ctx.targetHooks = { ...ctx.targetHooks, ...hooks };
 }
 
-export const load = (buffer = false, options) => targetRuntime.load(buffer, options);
-export const syncDensity = (ctx) => targetRuntime.syncDensity(ctx);
-export const isCanvasReady = () => targetRuntime.isCanvasReady();
-export const instance = (inst) => targetRuntime.instance(inst);
-export const activateInstance = (inst) => targetRuntime.activateInstance(inst);
-export const deactivateInstance = () => targetRuntime.deactivateInstance();
-export const getActiveFramebuffer = () => targetRuntime.getActiveFramebuffer();
-export const isFramebufferTarget = (target) =>
-  targetRuntime.isFramebufferTarget(target);
+export const load = (ctx, buffer = false, options) =>
+  ctx.targetHooks.load(ctx, buffer, options);
+export const syncDensity = (ctx) => ctx.targetHooks.syncDensity(ctx);
+export const isCanvasReady = (ctx) => ctx.targetHooks.isCanvasReady(ctx);
+export const instance = (inst) => defaultContext.targetHooks.instance(inst);
+export const activateInstance = (inst) => defaultContext.targetHooks.activateInstance(inst);
+export const deactivateInstance = () => defaultContext.targetHooks.deactivateInstance();
+export const getActiveFramebuffer = (ctx) => ctx.targetHooks.getActiveFramebuffer(ctx);
+export const isFramebufferTarget = (ctx, target) =>
+  ctx.targetHooks.isFramebufferTarget(target);

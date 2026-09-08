@@ -8,7 +8,7 @@ The WebGPU host for brush-gpu. It implements the core's hook contracts (see [../
 - `compositor.js`: compositor hooks (`core/compositor_runtime.js`). Framebuffer ducks over `GPUTexture`, dirty-rect blit of the painting, and the scissored spectral composite pass.
 - `stroke.js`: stroke-tip hooks (`stroke/runtime.js`). A canvas2d-backed tip surface for `"custom"` brushes and image loading for `"image"` brushes.
 - `frame.js`: `render()` and `clear()`, plus the warning when drawing happens without a `render()`.
-- `deferred.js`: the call recorder that makes `await brush.ready()` optional. Stateful public calls made before the device resolves are queued and replayed in program order.
-- `snapshot.js`: `snapshot()` / `restore()` / `freeSnapshot()`, GPU-side copies of the painting for undo.
+- `deferred.js`: the call recorder that makes `await brush.ready()` optional, one per context (`ctx.recorder`). Stateful public calls made before that painting's device resolves are queued and replayed in program order; `guardFor(ctx, fn)` wraps a call for one painting, `guard(fn)` for the default one.
+- `snapshot.js`: `snapshot()` / `restore()` / `freeSnapshot()`, GPU-side copies of the painting for undo. The pool is per painting (`ctx.snapshots`) and a handle only restores into the context that took it.
 
 `src/index.standalone.js` wires it up: it registers the four hook sets, wraps the stateful exports with the recorder, and exports the public API.

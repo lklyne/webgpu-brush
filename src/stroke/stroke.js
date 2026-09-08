@@ -13,7 +13,7 @@
 
 // Core imports
 import { isCanvasReady } from "../core/target.js";
-import { defaultContext, registerContextInit } from "../core/context.js";
+import { defaultContext, forEachContext, registerContextInit } from "../core/context.js";
 import {
   map,
   dist,
@@ -118,6 +118,7 @@ function createStrokeScope() {
 registerContextInit((ctx) => {
   ctx.state.stroke = createStrokeState();
   ctx.strokeCursor = createStrokeCursor();
+  ctx.scaledBrushes = new Map();
   const scope = createStrokeScope();
   ctx.rng.scopes.stroke = scope;
   ctx.rng.onSeed(() => {
@@ -252,9 +253,10 @@ export function add(name, params) {
     // Users draw in a 100×100 coordinate space (origin at centre);
     // dark fills/strokes → high opacity, light/white → transparent.
     const key = `custom::${name}`;
-    // Discard a stale GPU texture if the tip changed. Brush definitions are
-    // a global registry, so this reaches the default painting's tip cache.
-    invalidateTexEntry(defaultContext, key);
+    // Discard a stale GPU texture if the tip changed. Brush definitions are a
+    // global registry but each painting uploads its own tip texture, so every
+    // live one has to drop the entry under this key.
+    forEachContext((c) => invalidateTexEntry(c, key));
     const g = createTipSurface(500, 500);
     g.pixelDensity(1);
     g.background(255);
@@ -293,7 +295,24 @@ export function box() {
 }
 
 export function getBrushParams(brushName) {
-  return list.get(brushName)?.param ?? null;
+  return _getBrushParams(defaultContext, brushName);
+}
+
+/**
+ * Context-taking implementation of getBrushParams(): the parameters this
+ * painting draws `brushName` with, scaled if it called scaleBrushes().
+ *
+ * @param {import("../core/context.js").BrushContext} ctx
+ * @param {string} brushName
+ * @returns {object|null}
+ */
+export function _getBrushParams(ctx, brushName) {
+  const entry = list.get(brushName);
+  if (!entry?.param) return null;
+  const scaled = ctx.scaledBrushes.get(brushName);
+  // A brush re-registered since this painting scaled it is back to its
+  // definition's values, exactly as it would be with one shared registry.
+  return scaled && scaled.base === entry.param ? scaled.param : entry.param;
 }
 
 /**
@@ -301,12 +320,31 @@ export function getBrushParams(brushName) {
  * @param {number} scaleFactor - The scaling factor to apply.
  */
 export function scaleBrushes(scaleFactor) {
-  for (const { param } of list.values()) {
-    if (param) {
-      param.weight *= scaleFactor;
-      param.scatter *= scaleFactor;
-      param.spacing *= scaleFactor;
+  return _scaleBrushes(defaultContext, scaleFactor);
+}
+
+/**
+ * Context-taking implementation of scaleBrushes().
+ *
+ * The brush definitions themselves stay pristine: this painting gets its own
+ * copy of each one and scales that, so two paintings can work at different
+ * scales. Cumulative, as upstream is — the copies are multiplied in place.
+ *
+ * @param {import("../core/context.js").BrushContext} ctx
+ * @param {number} scaleFactor - The scaling factor to apply.
+ */
+export function _scaleBrushes(ctx, scaleFactor) {
+  for (const [name, entry] of list) {
+    const base = entry.param;
+    if (!base) continue;
+    let scaled = ctx.scaledBrushes.get(name);
+    if (!scaled || scaled.base !== base) {
+      scaled = { base, param: { ...base } };
+      ctx.scaledBrushes.set(name, scaled);
     }
+    scaled.param.weight *= scaleFactor;
+    scaled.param.scatter *= scaleFactor;
+    scaled.param.spacing *= scaleFactor;
   }
 }
 
@@ -356,7 +394,7 @@ export function stroke(r, g, b) {
  * @param {...*} args - Color arguments, forwarded verbatim to the host.
  */
 export function _stroke(ctx, ...args) {
-  isCanvasReady();
+  isCanvasReady(ctx);
   const state = ctx.state.stroke;
   state.color = ctx.createColor(...args);
   state.isActive = true;
@@ -424,7 +462,7 @@ export function _noStroke(ctx) {
  * @param {number[]} region - Array as [x1, y1, x2, y2] defining the clipping region.
  */
 export function clip(region) {
-  isCanvasReady();
+  isCanvasReady(defaultContext);
   return region;
 }
 
@@ -526,7 +564,7 @@ function tryGpuWalk(ctx, dirDegrees) {
   const cur = sc.current;
   const State = ctx.state;
   const Mix = ctx.mix;
-  const param = list.get(State.stroke.type)?.param;
+  const param = _getBrushParams(ctx, State.stroke.type);
   if (!walkEligible(ctx, param)) return false;
 
   const scope = ctx.rng.scopes.stroke;
@@ -579,7 +617,7 @@ function saveState(ctx) {
   cur.phase = 0;
   const salt = cur.salt;
   cur.seed = hash01(STREAM.STROKE_SETUP, salt, 6) * 999999;
-  const { param } = list.get(State.stroke.type) ?? {};
+  const param = _getBrushParams(ctx, State.stroke.type);
   if (!param) return;
   cur.p = param;
 

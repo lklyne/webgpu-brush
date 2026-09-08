@@ -11,17 +11,20 @@ import { flushWalkBatch } from "../../stroke/gl_draw.js";
 // ---- render() reminder ----
 // If drawing calls are made but render() is never called, nothing appears on
 // screen. We detect this via the notifyDraw hook and warn once per cycle.
+// Per painting: one that is being rendered must not silence the warning for
+// one that is not.
 
-let _hasPendingDraw = false;
-let _warnScheduled = false;
-
-function onDraw() {
-  if (_warnScheduled) return;
-  _warnScheduled = true;
-  _hasPendingDraw = true;
+/**
+ * @param {import("../../core/context.js").BrushContext} ctx
+ */
+function onDraw(ctx) {
+  const frame = ctx.frame;
+  if (frame.warnScheduled) return;
+  frame.warnScheduled = true;
+  frame.hasPendingDraw = true;
   requestAnimationFrame(() => {
-    _warnScheduled = false;
-    if (_hasPendingDraw) {
+    frame.warnScheduled = false;
+    if (frame.hasPendingDraw) {
       console.warn(
         "[p5.brush] Drawing calls were made but brush.render() was never called. " +
         "Call brush.render() after your drawing code to flush to the canvas.",
@@ -30,9 +33,10 @@ function onDraw() {
   });
 }
 
-// The reminder is a property of the page, not of a painting, but the hook
-// is a context field: install it on every context.
-registerContextInit((ctx) => setRuntime(ctx, { notifyDraw: onDraw }));
+registerContextInit((ctx) => {
+  ctx.frame = { hasPendingDraw: false, warnScheduled: false };
+  setRuntime(ctx, { notifyDraw: () => onDraw(ctx) });
+});
 
 /**
  * @param {import("../../core/context.js").BrushContext} ctx
@@ -56,8 +60,17 @@ function resetCompositeState(ctx) {
  * Standalone users should call this at the end of a drawing pass or frame.
  */
 export function render() {
-  _hasPendingDraw = false;
-  flushActiveComposite(defaultContext);
+  return _render(defaultContext);
+}
+
+/**
+ * Context-taking implementation of render().
+ *
+ * @param {import("../../core/context.js").BrushContext} ctx
+ */
+export function _render(ctx) {
+  ctx.frame.hasPendingDraw = false;
+  flushActiveComposite(ctx);
 }
 
 /**
@@ -69,8 +82,17 @@ export function render() {
  * @param {...*} args
  */
 export function clear(...args) {
-  const ctx = defaultContext;
-  isCanvasReady();
+  return _clear(defaultContext, ...args);
+}
+
+/**
+ * Context-taking implementation of clear().
+ *
+ * @param {import("../../core/context.js").BrushContext} ctx
+ * @param {...*} args
+ */
+export function _clear(ctx, ...args) {
+  isCanvasReady(ctx);
   resetCompositeState(ctx);
 
   const color =

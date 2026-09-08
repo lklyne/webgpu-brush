@@ -18,26 +18,67 @@
 //
 // The pool is bounded (MAX_SNAPSHOTS live handles): taking one beyond the
 // bound silently drops the OLDEST live snapshot and reuses its texture.
+//
+// The pool belongs to the painting it was copied from (`ctx.snapshots`): the
+// textures match that painting's size and format, and restoring into another
+// painting would blit foreign pixels, so a handle is bound to its context
+// and rejected anywhere else.
 // =============================================================================
 
 import { isCanvasReady } from "../../core/target.js";
 import { flushActiveComposite } from "../../core/color.js";
-import { defaultContext } from "../../core/context.js";
+import { defaultContext, registerContextInit } from "../../core/context.js";
 
 /** Live snapshot bound; the oldest handle is dropped when exceeded. */
 export const MAX_SNAPSHOTS = 20;
 
+// Handle ids are opaque and never compared across paintings, so one counter
+// serves every context; the pools themselves are per painting.
 let nextId = 1;
-/** @type {Map<number, GPUTexture>} live snapshots by handle id */
-const live = new Map();
-/** @type {number[]} live ids, oldest first (drop order) */
-const order = [];
-/** @type {GPUTexture[]} freed textures kept for reuse */
-const spare = [];
 
-function requireHost() {
-  isCanvasReady();
-  const host = defaultContext.renderer.host;
+/**
+ * One painting's snapshot pool.
+ *
+ * @returns {object} The `ctx.snapshots` object.
+ */
+function createSnapshotPool() {
+  return {
+    /** @type {Map<number, GPUTexture>} live snapshots by handle id */
+    live: new Map(),
+    /** @type {number[]} live ids, oldest first (drop order) */
+    order: [],
+    /** @type {GPUTexture[]} freed textures kept for reuse */
+    spare: [],
+  };
+}
+
+registerContextInit((ctx) => {
+  ctx.snapshots = createSnapshotPool();
+});
+
+/**
+ * Which painting handed out a handle. Weak, so a dropped handle costs
+ * nothing; a handle the caller rebuilt by hand has no entry and falls
+ * through to the live-map lookup, as it always did.
+ * @type {WeakMap<object, import("../../core/context.js").BrushContext>}
+ */
+const handleOwner = new WeakMap();
+
+/**
+ * @param {import("../../core/context.js").BrushContext} ctx
+ * @param {object} handle
+ */
+function requireOwned(ctx, handle) {
+  const owner = handle && typeof handle === "object" ? handleOwner.get(handle) : undefined;
+  return owner === undefined || owner === ctx;
+}
+
+/**
+ * @param {import("../../core/context.js").BrushContext} ctx
+ */
+function requireHost(ctx) {
+  isCanvasReady(ctx);
+  const host = ctx.renderer.host;
   if (!host) {
     throw new Error("brush-gpu: renderer has no WebGPU host — was a target loaded?");
   }
@@ -47,7 +88,8 @@ function requireHost() {
 
 /** Pooled texture matching the CURRENT painting size/format (may be
  *  bgra8unorm or rgba16float etc. — always mirrors host.gpu.format). */
-function acquireTexture(host) {
+function acquireTexture(ctx, host) {
+  const { spare } = ctx.snapshots;
   const w = host.painting.width;
   const h = host.painting.height;
   const format = host.painting.format;
@@ -64,7 +106,8 @@ function acquireTexture(host) {
   });
 }
 
-function release(id) {
+function release(ctx, id) {
+  const { live, order, spare } = ctx.snapshots;
   const texture = live.get(id);
   if (!texture) return false;
   live.delete(id);
@@ -84,10 +127,21 @@ function release(id) {
  * @returns {{__brushSnapshot: number, width: number, height: number}} opaque handle
  */
 export function snapshot() {
-  const host = requireHost();
-  flushActiveComposite(defaultContext);
-  if (order.length >= MAX_SNAPSHOTS) release(order[0]);
-  const texture = acquireTexture(host);
+  return _snapshot(defaultContext);
+}
+
+/**
+ * Context-taking implementation of snapshot().
+ *
+ * @param {import("../../core/context.js").BrushContext} ctx
+ * @returns {{__brushSnapshot: number, width: number, height: number}} opaque handle
+ */
+export function _snapshot(ctx) {
+  const host = requireHost(ctx);
+  const { live, order } = ctx.snapshots;
+  flushActiveComposite(ctx);
+  if (order.length >= MAX_SNAPSHOTS) release(ctx, order[0]);
+  const texture = acquireTexture(ctx, host);
   const enc = host.gpu.device.createCommandEncoder({ label: "snapshot-copy" });
   enc.copyTextureToTexture(
     { texture: host.painting },
@@ -98,7 +152,9 @@ export function snapshot() {
   const id = nextId++;
   live.set(id, texture);
   order.push(id);
-  return { __brushSnapshot: id, width: texture.width, height: texture.height };
+  const handle = { __brushSnapshot: id, width: texture.width, height: texture.height };
+  handleOwner.set(handle, ctx);
+  return handle;
 }
 
 /**
@@ -111,8 +167,24 @@ export function snapshot() {
  * @param {{__brushSnapshot: number}} handle from snapshot()
  */
 export function restore(handle) {
-  const host = requireHost();
-  const texture = live.get(handle?.__brushSnapshot);
+  return _restore(defaultContext, handle);
+}
+
+/**
+ * Context-taking implementation of restore().
+ *
+ * @param {import("../../core/context.js").BrushContext} ctx
+ * @param {{__brushSnapshot: number}} handle
+ */
+export function _restore(ctx, handle) {
+  const host = requireHost(ctx);
+  if (!requireOwned(ctx, handle)) {
+    throw new Error(
+      "brush.restore(): this snapshot was taken from a different painting — " +
+        "restore it into the one that took it.",
+    );
+  }
+  const texture = ctx.snapshots.live.get(handle?.__brushSnapshot);
   if (!texture) {
     throw new Error(
       "brush.restore(): unknown or freed snapshot handle (the pool keeps the " +
@@ -124,7 +196,7 @@ export function restore(handle) {
   }
   // Flush + reset composite state so stale masks / dirty rects cannot land
   // on the restored painting; whatever it composites is overwritten below.
-  flushActiveComposite(defaultContext);
+  flushActiveComposite(ctx);
   const enc = host.gpu.device.createCommandEncoder({ label: "snapshot-restore" });
   enc.copyTextureToTexture(
     { texture },
@@ -137,11 +209,24 @@ export function restore(handle) {
 
 /**
  * Returns a snapshot's texture to the pool. Safe to call with an already
- * freed/dropped handle (no-op, returns false).
+ * freed/dropped handle, or with one belonging to another painting (no-op,
+ * returns false).
  *
  * @param {{__brushSnapshot: number}} handle
  * @returns {boolean} true if the handle was live
  */
 export function freeSnapshot(handle) {
-  return release(handle?.__brushSnapshot ?? -1);
+  return _freeSnapshot(defaultContext, handle);
+}
+
+/**
+ * Context-taking implementation of freeSnapshot().
+ *
+ * @param {import("../../core/context.js").BrushContext} ctx
+ * @param {{__brushSnapshot: number}} handle
+ * @returns {boolean} true if the handle was live
+ */
+export function _freeSnapshot(ctx, handle) {
+  if (!requireOwned(ctx, handle)) return false;
+  return release(ctx, handle?.__brushSnapshot ?? -1);
 }

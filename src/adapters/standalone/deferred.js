@@ -10,6 +10,12 @@
 //
 // Cost after the first flush: one boolean check per public call.
 //
+// One recorder per painting (`ctx.recorder`): a second painting still
+// initializing must not swallow the calls of one that is already up, and
+// each replays only its own queue. `guardFor(ctx, fn)` wraps a call for one
+// context and reads that context's recorder at call time; `guard(fn)` is
+// the default painting's wrapper, which is what the module-level API uses.
+//
 // What is deferred: anything that mutates library state or draws — the
 // whole call sequence must replay in order, because a deferred line() has
 // to see the set()/fill()/push() state that was current when it was called.
@@ -34,45 +40,96 @@
 //     random() sequence both match the synchronous run exactly.
 // =============================================================================
 
-let deferring = false;
-/** @type {Array<[Function, unknown, unknown[]]>} */
-let queue = [];
-
-/** @type {Set<() => void>} */
-const armListeners = new Set();
-
-/** Register a callback that runs whenever recording starts (precheck.js). */
-export function onArm(fn) {
-  armListeners.add(fn);
-  return () => armListeners.delete(fn);
-}
-
-/** Start recording (called when a new target is loaded). */
-export function armDeferred() {
-  deferring = true;
-  for (const fn of armListeners) fn();
-}
-
-export function isDeferring() {
-  return deferring;
-}
+import { defaultContext, registerContextInit } from "../../core/context.js";
 
 /**
- * Stop recording and replay everything recorded, in order. Calls made
- * while replaying run immediately (deferring is already off).
+ * The recorder of one painting: the recording flag, the call queue, and the
+ * listeners that re-seed derived state when recording starts (precheck.js's
+ * shadow).
+ *
+ * @returns {object} The `ctx.recorder` object.
  */
-export function flushDeferred() {
-  deferring = false;
-  const pending = queue;
-  queue = [];
-  for (let i = 0; i < pending.length; i++) {
-    const [fn, self, args] = pending[i];
-    fn.apply(self, args);
-  }
+export function createRecorder() {
+  /** @type {Set<() => void>} */
+  const armListeners = new Set();
+  return {
+    deferring: false,
+    /** @type {Array<[Function, unknown, unknown[]]>} */
+    queue: [],
+
+    /** Register a callback that runs whenever recording starts. */
+    onArm(fn) {
+      armListeners.add(fn);
+      return () => armListeners.delete(fn);
+    },
+
+    /** Start recording (called when a new target is loaded). */
+    arm() {
+      this.deferring = true;
+      for (const fn of armListeners) fn();
+    },
+
+    /**
+     * Stop recording and replay everything recorded, in order. Calls made
+     * while replaying run immediately (deferring is already off).
+     */
+    flush() {
+      this.deferring = false;
+      const pending = this.queue;
+      this.queue = [];
+      for (let i = 0; i < pending.length; i++) {
+        const [fn, self, args] = pending[i];
+        fn.apply(self, args);
+      }
+    },
+  };
+}
+
+registerContextInit((ctx) => {
+  ctx.recorder = createRecorder();
+});
+
+/**
+ * Register a callback that runs whenever this context starts recording
+ * (precheck.js re-seeds its shadow there).
+ *
+ * @param {import("../../core/context.js").BrushContext} ctx
+ * @param {() => void} fn
+ * @returns {() => boolean} unregister
+ */
+export function onArm(ctx, fn) {
+  return ctx.recorder.onArm(fn);
 }
 
 /**
- * Wrap a stateful call: recorded while deferring, direct otherwise.
+ * Start recording this context's stateful calls.
+ * @param {import("../../core/context.js").BrushContext} ctx
+ */
+export function armDeferred(ctx) {
+  ctx.recorder.arm();
+}
+
+/**
+ * Stop recording and replay this context's queue, in order.
+ * @param {import("../../core/context.js").BrushContext} ctx
+ */
+export function flushDeferred(ctx) {
+  ctx.recorder.flush();
+}
+
+/**
+ * @param {import("../../core/context.js").BrushContext} ctx
+ * @returns {boolean} true while this context is recording.
+ */
+export function isDeferring(ctx) {
+  return ctx.recorder.deferring;
+}
+
+/**
+ * Wrap a stateful call FOR ONE CONTEXT: recorded while that context is
+ * recording, direct otherwise. The recorder is read at call time, so a
+ * wrapper built before the adapter installed one still works.
+ *
  * Preserves `this` so prototype methods (Polygon#show, Plot#show) wrap too.
  * A deferred call returns undefined.
  *
@@ -80,17 +137,20 @@ export function flushDeferred() {
  * deferring, so argument errors that need no device state (unknown brush
  * or field name, bad angle mode) throw exactly where a synchronous run
  * would throw them. When not deferring, `fn` performs its own checks.
+ *
  * @template {Function} F
+ * @param {import("../../core/context.js").BrushContext} ctx
  * @param {F} fn
  * @param {(...args: unknown[]) => void} [validate]
  * @returns {F}
  */
-export function guard(fn, validate) {
+export function guardFor(ctx, fn, validate) {
   return /** @type {F} */ (
     function guarded(...args) {
-      if (deferring) {
+      const rec = ctx.recorder;
+      if (rec && rec.deferring) {
         if (validate) validate.apply(this, args);
-        queue.push([fn, this, args]);
+        rec.queue.push([fn, this, args]);
         return undefined;
       }
       return fn.apply(this, args);
@@ -99,19 +159,47 @@ export function guard(fn, validate) {
 }
 
 /**
+ * Wrap a stateful call for the DEFAULT painting — what the module-level
+ * public API is built from.
+ *
+ * @template {Function} F
+ * @param {F} fn
+ * @param {(...args: unknown[]) => void} [validate]
+ * @returns {F}
+ */
+export function guard(fn, validate) {
+  return guardFor(defaultContext, fn, validate);
+}
+
+/**
  * Wrap a call that must take effect NOW (its result is observable before
- * ready) and ALSO hold its place in the replayed sequence via `replay`.
+ * ready) and ALSO hold its place in one context's replayed sequence.
+ *
+ * @template {Function} F
+ * @param {import("../../core/context.js").BrushContext} ctx
+ * @param {F} fn
+ * @param {Function} replay called with the same arguments at flush time
+ * @returns {F}
+ */
+export function guardReplayFor(ctx, fn, replay) {
+  return /** @type {F} */ (
+    function guarded(...args) {
+      const result = fn.apply(this, args);
+      const rec = ctx.recorder;
+      if (rec && rec.deferring) rec.queue.push([replay, this, args]);
+      return result;
+    }
+  );
+}
+
+/**
+ * `guardReplayFor` bound to the default painting.
+ *
  * @template {Function} F
  * @param {F} fn
  * @param {Function} replay called with the same arguments at flush time
  * @returns {F}
  */
 export function guardReplay(fn, replay) {
-  return /** @type {F} */ (
-    function guarded(...args) {
-      const result = fn.apply(this, args);
-      if (deferring) queue.push([replay, this, args]);
-      return result;
-    }
-  );
+  return guardReplayFor(defaultContext, fn, replay);
 }

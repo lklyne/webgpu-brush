@@ -12,6 +12,17 @@ export function snapshot(): {
     height: number;
 };
 /**
+ * Context-taking implementation of snapshot().
+ *
+ * @param {import("../../core/context.js").BrushContext} ctx
+ * @returns {{__brushSnapshot: number, width: number, height: number}} opaque handle
+ */
+export function _snapshot(ctx: import("../../core/context.js").BrushContext): {
+    __brushSnapshot: number;
+    width: number;
+    height: number;
+};
+/**
  * Restores the painting from a snapshot handle and re-presents the canvas.
  *
  * Pending (uncomposited) mask work is discarded via the same flush/reset
@@ -24,13 +35,33 @@ export function restore(handle: {
     __brushSnapshot: number;
 }): void;
 /**
+ * Context-taking implementation of restore().
+ *
+ * @param {import("../../core/context.js").BrushContext} ctx
+ * @param {{__brushSnapshot: number}} handle
+ */
+export function _restore(ctx: import("../../core/context.js").BrushContext, handle: {
+    __brushSnapshot: number;
+}): void;
+/**
  * Returns a snapshot's texture to the pool. Safe to call with an already
- * freed/dropped handle (no-op, returns false).
+ * freed/dropped handle, or with one belonging to another painting (no-op,
+ * returns false).
  *
  * @param {{__brushSnapshot: number}} handle
  * @returns {boolean} true if the handle was live
  */
 export function freeSnapshot(handle: {
+    __brushSnapshot: number;
+}): boolean;
+/**
+ * Context-taking implementation of freeSnapshot().
+ *
+ * @param {import("../../core/context.js").BrushContext} ctx
+ * @param {{__brushSnapshot: number}} handle
+ * @returns {boolean} true if the handle was live
+ */
+export function _freeSnapshot(ctx: import("../../core/context.js").BrushContext, handle: {
     __brushSnapshot: number;
 }): boolean;
 /** Live snapshot bound; the oldest handle is dropped when exceeded. */

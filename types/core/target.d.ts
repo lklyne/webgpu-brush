@@ -11,16 +11,17 @@ export function setTarget(ctx: import("./context.js").BrushContext, state: {
     Density?: number;
 }): void;
 /**
- * Registers or updates host target hooks used by core modules.
+ * Registers or updates one context's host target hooks.
  *
+ * @param {import("./context.js").BrushContext} ctx
  * @param {object} hooks
  */
-export function setTargetRuntime(hooks: object): void;
-export function load(buffer: boolean, options: any): never;
+export function setTargetRuntime(ctx: import("./context.js").BrushContext, hooks: object): void;
+export function load(ctx: any, buffer: boolean, options: any): any;
 export function syncDensity(ctx: any): any;
-export function isCanvasReady(): never;
-export function instance(inst: any): void;
-export function activateInstance(inst: any): void;
-export function deactivateInstance(): void;
-export function getActiveFramebuffer(): any;
-export function isFramebufferTarget(target: any): boolean;
+export function isCanvasReady(ctx: any): any;
+export function instance(inst: any): any;
+export function activateInstance(inst: any): any;
+export function deactivateInstance(): any;
+export function getActiveFramebuffer(ctx: any): any;
+export function isFramebufferTarget(ctx: any, target: any): any;

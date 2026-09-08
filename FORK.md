@@ -1904,3 +1904,155 @@ and gl_draw.js's `initWalkRouter` / `_setUseCpuWalk` defaults — which is step
 5's `buildApi(ctx)` / `createBrush()` work, together with the `owner` field on
 `Polygon`/`Plot`/`Position` and the one-live-attachment fence in
 `brush-gpu/three`.
+
+### Step 4b — the recorder, the adapter's target, snapshots and the frame
+
+Section 7 of the plan (recorder and prechecks) plus the adapter-level
+per-painting singletons, so step 5 has nothing left to untangle except
+building the public surface. Still a pure refactor of the single-context
+path: every gate number below is bit-identical to step 4a's, geomHash and
+the deferred-replay pixel hash included.
+
+**One recorder per painting.** `createRecorder()` (deferred.js) returns
+`{deferring, queue, onArm, arm, flush}` and the adapter installs one on every
+context through `registerContextInit`, so `ctx.recorder` is a real object
+rather than the module's `deferring` / `queue` / `armListeners` triple.
+`setRecorder()` is gone from core/context.js — the context owns the field and
+the adapter fills it, the way the compositor and target hooks are installed.
+
+`guardFor(ctx, fn, validate)` is the wrapper: it closes over the CONTEXT, not
+over a recorder, and reads `ctx.recorder` at call time, so a wrapper built
+before the adapter is imported still records. `guard(fn, validate)` is
+`guardFor(defaultContext, …)` and `guardReplay` is `guardReplayFor(defaultContext, …)`,
+which is why `src/index.standalone.js` still reads `guard(prim.rect)` and its
+declarations are untouched; step 5's `buildApi(ctx)` builds the same wrappers
+around any context. `armDeferred(ctx)` / `flushDeferred(ctx)` / `isDeferring(ctx)`
+take the painting they act on, and `onArm(ctx, fn)` registers on its recorder.
+Two paintings coming up at different times therefore cannot swallow each
+other's calls: arming one leaves the other's calls immediate, and flushing
+one replays only its own queue.
+
+**The precheck shadow follows the recorder.** `createPrecheck(ctx)` builds one
+validator table per painting over `ctx.precheckShadow` (installed by
+precheck.js's own `registerContextInit`, which runs after deferred.js's
+because it imports it); `precheck` — the table `index.standalone.js` wraps the
+public API with — is `createPrecheck(defaultContext)`. The shadow is seeded
+from `ctx.state` when THAT context's recorder arms, through
+`onArm(ctx, …)`. Upstream's eleven call-site errors are unchanged, messages
+verbatim, and still throw synchronously pre-ready.
+
+**The adapter's target is per painting.** `activeTarget` / `activeRenderer` /
+`activeWidth` / `activeHeight` / `activeDensity` / `activeReady` / `isLoaded`
+became `ctx.target` (`{canvas, renderer, isLoaded, ready, width, height,
+density}`), installed by target.js's `registerContextInit`.
+`applyLoadedTarget(ctx, …)` and `startReady(ctx)` are internal;
+`_ready(ctx)`, `_readPixels(ctx)`, `_gpu(ctx)`, `_createCanvas(ctx, …)`,
+`_loadTarget(ctx, …)`, `syncDensity(ctx)` and `isCanvasReady(ctx)` are the
+ctx-taking implementations, and the public `ready` / `readPixels` / `gpu` /
+`createCanvas` / `load` bind `defaultContext` exactly as the drawing functions
+do — same names, same signatures, so `types/index.standalone.d.ts` and
+`types/three/index.d.ts` are byte-identical.
+
+**The target hook table is per context too.** `core/target.js`'s module-level
+`targetRuntime` became `ctx.targetHooks`, with neutral defaults installed by a
+`registerContextInit` in core/target.js itself and the host's table installed
+by the adapter's (`setTargetRuntime(ctx, hooks)`, mirroring
+`setCompositorRuntime`). `load(ctx, buffer, options)`,
+`isCanvasReady(ctx)`, `syncDensity(ctx)`, `getActiveFramebuffer(ctx)` and
+`isFramebufferTarget(ctx, target)` take the context; the two that are handed
+to compositor hooks as callbacks are passed as one-line closures over `ctx`
+(`(t) => isFramebufferTarget(ctx, t)`), since the hooks call them with a
+target only. `load()` in core/color.js reaches the adapter through the
+context, so a second painting loads its own canvas. The `instance` /
+`activateInstance` / `deactivateInstance` no-ops keep their argument shapes
+and bind the default painting, so the public `instance` export is unchanged.
+
+**Snapshots belong to their painting.** `live` / `order` / `spare` became
+`ctx.snapshots`, installed by snapshot.js's `registerContextInit`; `nextId`
+stays module-global because ids are opaque and never compared across
+paintings. A handle records the context that took it in a module-level
+`WeakMap` (weak, so a dropped handle costs nothing), and `_restore(ctx, …)`
+throws *"this snapshot was taken from a different painting"* when they
+disagree — the pooled textures match the size and format of the painting they
+were copied from, so restoring one elsewhere would blit foreign pixels.
+`_freeSnapshot` returns false for a foreign handle rather than returning
+another painting's texture to this one's pool. A handle rebuilt by hand
+(`{__brushSnapshot: n}`) has no owner entry and still falls through to the
+old "unknown or freed snapshot handle" error.
+
+**The render reminder is per painting.** frame.js's `_hasPendingDraw` /
+`_warnScheduled` became `ctx.frame`, and the `notifyDraw` hook each context
+gets is `() => onDraw(ctx)`. `render()` / `clear()` delegate to `_render(ctx)`
+/ `_clear(ctx, …)`. A painting that is being rendered no longer silences the
+warning for one that is not.
+
+**Brush scaling stops mutating the definitions.** `scaleBrushes()` multiplied
+`weight` / `scatter` / `spacing` in place on the shared brush definitions, so
+one painting's scale was every painting's. `_scaleBrushes(ctx, f)` now copies
+each definition into `ctx.scaledBrushes` the first time that painting scales
+it and multiplies the COPY in place — cumulative in exactly upstream's order,
+`(w × f₁) × f₂` and not `w × (f₁ × f₂)`, so the arithmetic is bit-identical
+(the goldens harness and `visual_suite.js` both scale). `_getBrushParams(ctx,
+name)` is the single read point: `saveState()`, `tryGpuWalk()` and mass.js's
+scatter go through it, and it returns the definition itself while a painting
+has not scaled, so an unscaled context allocates nothing. A copy records the
+definition object it was made from, so re-registering a brush drops back to
+the fresh (unscaled) definition, exactly as one shared registry did; a brush
+added after a `scaleBrushes()` is unscaled, also as before.
+
+**`brush.add()` invalidates every painting's tip.** Brush definitions are a
+global registry but each painting uploads its own tip texture, so re-adding a
+custom brush now runs `forEachContext((c) => invalidateTexEntry(c, key))`.
+`forEachContext` (core/context.js) walks a `Set<WeakRef<BrushContext>>` filled
+by `createContext()`, pruning collected entries as it goes — nothing has to
+announce a painting's death, and step 5's `dispose()` has nothing to
+unregister.
+
+**Test changes.** `deferred.test.js` and `precheck.test.js` pass
+`defaultContext` to `armDeferred` / `flushDeferred` / `isDeferring`, and gain
+three cases: each context records into its own queue (arming one leaves the
+other immediate, flushing replays only its own), `guardReplayFor` replays into
+the context it was built for, and one shadow per context (a brush and an open
+shape on one are invisible to the other, and re-arming re-seeds only that
+one). `context.test.js` +1: scaling one context's brushes leaves another's —
+and a context built afterwards — on the pristine definition. New
+`test/unit/snapshot.test.js` (2 cases, node only): a handle taken by one
+context is refused by another for both restore and free while staying live in
+its own, and an unrecognized handle keeps the old error. `mass.test.js`'s
+stroke.js mock renamed `getBrushParams` to `_getBrushParams`.
+
+Verification (all identical to step 4a): `pnpm exec vitest run` 123/123 (was
+117; +6), three consecutive runs; `pnpm build` clean (rollup + tsc, no cycle
+warnings); `git diff --stat types/index.standalone.d.ts types/three/index.d.ts`
+empty; `pnpm test:smoke` 3/3 PASS (its eleven pre-ready error tests still
+throw at the call site); `pnpm test:goldens` 54 tiles · worst 4.7957 · mean
+1.2771 · failing 2 (edge-subpixel 3.7466, edge-self-intersect 4.7957);
+`assert-structure --identity` PASS with geomHash `3878505443` (captured
+twice); `oracle-w8.mjs` 7/7 with pixel hash `2970327761` (3937 inked px);
+`oracle-w4b.mjs` 4/4; `oracle-w5.mjs` 4/4. `grep -rn '\bW[0-9]' src` matches
+nothing. Bundle: `dist/brush.esm.js` 244 616 → 246 694 bytes (+0.85%).
+
+**Left for step 5** — and this is the whole list:
+
+- `buildApi(ctx)`, `createBrush()` and the module-level default instance:
+  every module's exported public name still binds `defaultContext`
+  (`rect`, `line`, `render`, `clear`, `snapshot`, `ready`, `readPixels`,
+  `gpu`, `createCanvas`, `load`, `scaleBrushes`, `getBrushParams`, `clip`,
+  inspect.js's `stream` / `onGeometry` / `beginGeometry` / `endGeometry` /
+  `readGeometry`, gl_draw.js's `initWalkRouter` / `_setUseCpuWalk` defaults,
+  core/target.js's `instance` / `activateInstance` / `deactivateInstance`),
+  and `guard` / `guardReplay` / `precheck` are the default painting's
+  wrappers of those.
+- `Polygon` / `Plot` / `Position` owners: the `owner` field exists and every
+  prototype patch already resolves `this.owner ?? defaultContext`, but nothing
+  sets it — the instance factory methods do.
+- The one-live-attachment fence in `brush-gpu/three` (`src/three/index.js`).
+- Docs and types: README, `docs/standalone.md`, `llms.txt` and the generated
+  declarations describe a module singleton.
+
+Deliberately global, not step-5 work: brush definitions and the image-tip
+cache `T`, field definitions, `STREAM`, the trig tables, `pipeline.js`'s
+`nextId`, snapshot.js's `nextId` and its handle-owner `WeakMap`,
+`webgpu/spectral.js`'s color memo, `stroke/runtime.js`'s tip hooks,
+`adapters/standalone/runtime.js`'s CSS color parser, gl_draw.js's per-DEVICE
+walker slice, and the weak live-context registry itself.

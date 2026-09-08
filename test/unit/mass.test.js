@@ -34,7 +34,7 @@ vi.mock("../../src/hatch/hatch.js", () => ({
 vi.mock("../../src/stroke/stroke.js", () => ({
   BrushState: () => ({}),
   BrushSetState,
-  getBrushParams: () => ({ scatter: 1 }),
+  _getBrushParams: () => ({ scatter: 1 }),
   _set: set,
 }));
 

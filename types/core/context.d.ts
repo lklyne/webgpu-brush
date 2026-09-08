@@ -1,4 +1,13 @@
 /**
+ * Runs `fn` against every context still alive, pruning collected ones.
+ *
+ * For global registries with per-painting caches only — a definition changed
+ * in one place has to invalidate what every painting derived from it.
+ *
+ * @param {(ctx: BrushContext) => void} fn
+ */
+export function forEachContext(fn: (ctx: BrushContext) => void): void;
+/**
  * Creates a drawing context that owns its own state.
  *
  * @param {object} [options]
@@ -21,14 +30,6 @@ export function createContext({ rng }?: {
  * @param {(ctx: BrushContext) => void} init
  */
 export function registerContextInit(init: (ctx: BrushContext) => void): void;
-/**
- * Installs the host's deferred-call recorder on a context. Core never imports
- * an adapter, so the adapter registers itself here instead.
- *
- * @param {BrushContext} ctx
- * @param {object} recorder
- */
-export function setRecorder(ctx: BrushContext, recorder: object): void;
 /**
  * The context the module-level API draws into. Every public wrapper binds
  * this one, and classes built without an explicit owner fall back to it.
@@ -104,7 +105,8 @@ export type BrushContext = {
      */
     stateStack: object[];
     /**
-     * Host deferred-call recorder, or null.
+     * This painting's deferred-call recorder,
+     * installed by the host adapter (adapters/standalone/deferred.js).
      */
     recorder: object | null;
 };

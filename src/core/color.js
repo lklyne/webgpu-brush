@@ -38,7 +38,7 @@ export const registerFillComposite = (composite) => {
  * @param {object} target - Render target to clear.
  */
 const clearTarget = (ctx, target) => {
-  ctx.compositor.clearTarget(ctx.renderer, target, isFramebufferTarget);
+  ctx.compositor.clearTarget(ctx.renderer, target, (t) => isFramebufferTarget(ctx, t));
 };
 
 // =============================================================================
@@ -136,7 +136,7 @@ const withScissor = (ctx, gl, rect, draw, flipY = true) => {
  */
 export const isMixReady = (ctx) => {
   if (!ctx.renderer?.loaded) {
-    isCanvasReady();
+    isCanvasReady(ctx);
     ctx.mix.load(ctx);
   }
 };
@@ -192,7 +192,7 @@ function createMix() {
       const composite = isBrushMask ? strokeComposite : fillComposite;
       return composite?.getCompositeRect?.(
         target,
-        getActiveFramebuffer,
+        () => getActiveFramebuffer(ctx),
         () => getFullDirtyRect(ctx),
         expandDirtyRect,
         (rect) => normalizeDirtyRect(ctx, rect),
@@ -321,13 +321,13 @@ function createMix() {
       const renderer = ctx.renderer;
       const gl = renderer.drawingContext;
       const shader = renderer.shaderProgram;
-      const activeFramebuffer = getActiveFramebuffer();
+      const activeFramebuffer = getActiveFramebuffer(ctx);
       const source = ctx.compositor.blitSourceToFramebuffer({
         renderer,
         sourceTarget: activeFramebuffer ?? renderer,
         sourceFramebuffer: renderer.blendSourceFramebuffer,
         dirtyRect,
-        isFramebufferTarget,
+        isFramebufferTarget: (t) => isFramebufferTarget(ctx, t),
         Cwidth: ctx.width,
         Cheight: ctx.height,
         getTargetPixelSize: () => getTargetPixelSize(ctx),
@@ -406,6 +406,6 @@ export const load = (buffer = false, options) => _load(defaultContext, buffer, o
  * @param {object} [options] - Host options forwarded to the target adapter.
  */
 export const _load = (ctx, buffer = false, options) => {
-  loadTarget(buffer, options);
+  loadTarget(ctx, buffer, options);
   if (ctx.renderer.loaded) ctx.mix.load(ctx);
 };

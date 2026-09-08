@@ -5,6 +5,12 @@
  */
 export function render(): void;
 /**
+ * Context-taking implementation of render().
+ *
+ * @param {import("../../core/context.js").BrushContext} ctx
+ */
+export function _render(ctx: import("../../core/context.js").BrushContext): void;
+/**
  * Clears the active standalone target.
  *
  * With no arguments, clears to transparent white.
@@ -13,3 +19,10 @@ export function render(): void;
  * @param {...*} args
  */
 export function clear(...args: any[]): void;
+/**
+ * Context-taking implementation of clear().
+ *
+ * @param {import("../../core/context.js").BrushContext} ctx
+ * @param {...*} args
+ */
+export function _clear(ctx: import("../../core/context.js").BrushContext, ...args: any[]): void;

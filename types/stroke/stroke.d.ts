@@ -38,10 +38,30 @@ export function add(name: any, params: any): Promise<any>;
 export function box(): Array<string>;
 export function getBrushParams(brushName: any): any;
 /**
+ * Context-taking implementation of getBrushParams(): the parameters this
+ * painting draws `brushName` with, scaled if it called scaleBrushes().
+ *
+ * @param {import("../core/context.js").BrushContext} ctx
+ * @param {string} brushName
+ * @returns {object|null}
+ */
+export function _getBrushParams(ctx: import("../core/context.js").BrushContext, brushName: string): object | null;
+/**
  * Scales standard brush parameters by the provided factor.
  * @param {number} scaleFactor - The scaling factor to apply.
  */
 export function scaleBrushes(scaleFactor: number): void;
+/**
+ * Context-taking implementation of scaleBrushes().
+ *
+ * The brush definitions themselves stay pristine: this painting gets its own
+ * copy of each one and scales that, so two paintings can work at different
+ * scales. Cumulative, as upstream is — the copies are multiplied in place.
+ *
+ * @param {import("../core/context.js").BrushContext} ctx
+ * @param {number} scaleFactor - The scaling factor to apply.
+ */
+export function _scaleBrushes(ctx: import("../core/context.js").BrushContext, scaleFactor: number): void;
 /**
  * Sets the current brush type by name.
  * @param {string} brushName - The name of the brush.
