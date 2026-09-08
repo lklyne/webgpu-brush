@@ -1481,3 +1481,39 @@ geometry path, or the standalone API.
 Verification: `vitest` 109/109, `pnpm build` clean (rollup + tsc),
 `pnpm test:smoke` 3/3.
 
+
+## W11 — Instance API
+
+Turning the module singleton into `createBrush()` instances
+(`docs/plans/brush-gpu-instance-api.md` in the host repo). Step 1 of the
+plan's order of work, shipped ahead of the instance work as a plain bug fix.
+
+- **Flow-field grid latch fixed.** `isFieldReady()` built the grid geometry
+  (`resolution`, `left_x`, `top_y`, `num_columns`, `num_rows`) once from
+  `Cwidth`/`Cheight` and never again, and the generated grids were cached on
+  the registry entries — so the first canvas to touch a field fixed the grid
+  for the whole module, and a later `createCanvas()`/`load()` of a different
+  size silently inherited it (wrong cell indices, wrong `isIn()` bounds, and
+  a stale field uploaded to the strokewalk compute shader).
+  `flowfield.js` now exports `_onTargetResized(width, height)`, which the
+  standalone adapter calls from `applyLoadedTarget()` right after
+  `setTargetState()`. A size change drops the geometry latch, nulls every
+  entry's cached grid (definitions and generators are kept) and bumps
+  `_fieldEpoch` so `gl_draw.js`'s `envState` re-uploads; the next
+  `isFieldReady()` rebuilds the geometry and regenerates the active field's
+  grid. A same-size reload does nothing at all — no grid discarded, no epoch
+  bump, no draw from the shared `rng2` stream, so the goldens (which reuse
+  one canvas) are untouched. Regenerating after a real resize consumes
+  stream draws exactly as a fresh page would. The call direction keeps the
+  dependency one-way: core never imports an adapter.
+- Two cases added to `test/unit/flowfield.test.js`: two target sizes get
+  different grid geometry (800×600 → resolution 8 / 150 rows; 400×400 →
+  resolution 4 / 200 rows, epoch bumped, definitions surviving), and a
+  same-size reload calls no generator and leaves the epoch alone. The
+  target mock's `Cwidth`/`Cheight` became getters over a mutable size.
+
+Verification: `vitest` 111/111 (was 109; +2), `pnpm build` clean (rollup +
+tsc), `pnpm test:smoke` 3/3 PASS, `pnpm test:goldens` 54 tiles · worst
+4.7957 · mean 1.2771 · failing 2 (edge-subpixel 3.7466, edge-self-intersect
+4.7957) — every number bit-identical to before, `assert-structure
+--identity` PASS with geomHash `3878505443` (the W1b/W4a value).

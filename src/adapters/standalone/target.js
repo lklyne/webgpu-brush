@@ -13,6 +13,7 @@ import {
   setTargetRuntime,
   setTargetState,
 } from "../../core/target.js";
+import { _onTargetResized } from "../../core/flowfield.js";
 import { createGpuHost } from "./gpu.js";
 import { armDeferred, flushDeferred } from "./deferred.js";
 
@@ -72,6 +73,9 @@ function applyLoadedTarget(target, width, height, density, gpuOptions = {}) {
     Cheight: height,
     Density: density,
   });
+  // The flow-field grid is derived from the target size; a target of a
+  // different size needs a new one. Same size: nothing is discarded.
+  _onTargetResized(width, height);
   isLoaded = true;
   // Record stateful calls until the device is ready, then replay them.
   // ready() starts now so a sketch that never awaits it still runs; the

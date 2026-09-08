@@ -4,6 +4,20 @@
  */
 export function isFieldReady(): void;
 /**
+ * Discards the field grid when the draw target's logical size changes.
+ *
+ * Grid geometry and every generated grid are derived from the target size, so
+ * a target of a different size needs both rebuilt — otherwise the first canvas
+ * to touch a field would fix the grid for every canvas after it. Field
+ * definitions (generator and angle mode) survive; only the generated grids go.
+ * A reload at the same size changes nothing, and in particular draws nothing
+ * from the random stream.
+ *
+ * @param {number} width - The new logical target width.
+ * @param {number} height - The new logical target height.
+ */
+export function _onTargetResized(width: number, height: number): void;
+/**
  * Regenerates the current vector field using its associated generator function.
  * @param {number} [t=0] - An optional time parameter that can affect field generation.
  */

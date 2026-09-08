@@ -27,10 +27,17 @@ let isLoaded = false;
  * If the field is not loaded, it initializes the mixing system and creates the field.
  */
 export function isFieldReady() {
-  if (!isLoaded) {
-    isMixReady(); // Ensure the mixing system is ready
-    createField(); // Initialize the field
-    isLoaded = true;
+  if (isLoaded) return;
+  isMixReady(); // Ensure the mixing system is ready
+  createField(); // Initialize the field
+  isLoaded = true;
+  // The grid was just built against the current target size. If a field is
+  // already active its cached grid was sized for the previous target and has
+  // been discarded, so regenerate it before anything reads it.
+  if (State.field.isActive && State.field.current) {
+    const entry = list.get(State.field.current);
+    entry.field = generateField(entry, 0);
+    _fieldEpoch++;
   }
 }
 
@@ -262,6 +269,8 @@ State.field = {
 // Internal variables for field configuration
 let list = new Map();
 let resolution, left_x, top_y, num_columns, num_rows;
+// Logical target size the current grid geometry was derived from.
+let gridWidth, gridHeight;
 const FIELD_ANGLE_MODES = new Set(["degrees", "radians"]);
 
 // Register the standard field generators now (definitions only; grids are
@@ -279,7 +288,31 @@ function createField() {
   top_y = -0.5 * Cheight; // Top boundary of the field
   num_columns = Math.round((2 * Cwidth) / resolution); // Number of columns in the grid
   num_rows = Math.round((2 * Cheight) / resolution); // Number of columns in the grid
+  gridWidth = Cwidth;
+  gridHeight = Cheight;
   addStandard(); // Add default vector field
+}
+
+/**
+ * Discards the field grid when the draw target's logical size changes.
+ *
+ * Grid geometry and every generated grid are derived from the target size, so
+ * a target of a different size needs both rebuilt — otherwise the first canvas
+ * to touch a field would fix the grid for every canvas after it. Field
+ * definitions (generator and angle mode) survive; only the generated grids go.
+ * A reload at the same size changes nothing, and in particular draws nothing
+ * from the random stream.
+ *
+ * @param {number} width - The new logical target width.
+ * @param {number} height - The new logical target height.
+ */
+export function _onTargetResized(width, height) {
+  // No grid yet: the next isFieldReady() already builds it at the new size.
+  if (!isLoaded) return;
+  if (width === gridWidth && height === gridHeight) return;
+  isLoaded = false;
+  for (const entry of list.values()) entry.field = null;
+  _fieldEpoch++; // Make the GPU stroke walker re-upload the field.
 }
 
 /**
@@ -330,6 +363,7 @@ export function refreshField(t = 0) {
       "No field is currently active. Call brush.field('name') to activate one before refreshing.",
     );
   }
+  isFieldReady(); // Rebuild the grid first if the target was resized.
   const currentField = list.get(State.field.current);
   currentField.field = generateField(currentField, t);
   _fieldEpoch++;

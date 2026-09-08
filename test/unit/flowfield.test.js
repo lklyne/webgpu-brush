@@ -9,11 +9,16 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // ---- Hoisted mock state ----
-const { currentAngleMode, mockState, plotInstances } = vi.hoisted(() => ({
-  currentAngleMode: { value: "radians" },
-  mockState: {},
-  plotInstances: [],
-}));
+const { currentAngleMode, mockState, plotInstances, canvasSize } = vi.hoisted(
+  () => ({
+    currentAngleMode: { value: "radians" },
+    mockState: {},
+    plotInstances: [],
+    // Mutable so the field-grid tests can swap the target size the way a
+    // second createCanvas() would.
+    canvasSize: { width: 800, height: 600 },
+  }),
+);
 
 vi.mock("../../src/core/color.js", () => ({
   Mix: {},
@@ -42,8 +47,12 @@ vi.mock("../../src/core/target.js", () => ({
       },
     },
   },
-  Cwidth: 800,
-  Cheight: 600,
+  get Cwidth() {
+    return canvasSize.width;
+  },
+  get Cheight() {
+    return canvasSize.height;
+  },
 }));
 
 vi.mock("../../src/stroke/stroke.js", () => ({
@@ -70,7 +79,17 @@ vi.mock("../../src/core/plot.js", () => ({
   },
 }));
 
-import { Position, addField, field as activateField, noField } from "../../src/core/flowfield.js";
+import {
+  Position,
+  addField,
+  field as activateField,
+  noField,
+  isFieldReady,
+  listFields,
+  _onTargetResized,
+  _fieldSnapshot,
+  _fieldEpochNow,
+} from "../../src/core/flowfield.js";
 
 // Canvas is 800×600 (mocked in target.js).
 // isInCanvas margin = 0.5
@@ -283,5 +302,69 @@ describe("Position.moveTo() — with active constant field", () => {
     // field=90°, dir=0°: angle = 90 - 0 = 90 → cossin(90°) = [0, 1] → +y only
     expect(pos.x).toBeCloseTo(400, 1);
     expect(pos.y).toBeCloseTo(310, 1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 6. Field grid follows the target size
+// ---------------------------------------------------------------------------
+describe("field grid — target size", () => {
+  let generations = 0;
+
+  addField(
+    "resize-probe",
+    (_t, field) => {
+      generations++;
+      return field;
+    },
+    { angleMode: "degrees" },
+  );
+
+  beforeEach(() => {
+    // Normalize to the default 800×600 target before each case.
+    canvasSize.width = 800;
+    canvasSize.height = 600;
+    _onTargetResized(800, 600);
+    isFieldReady();
+  });
+
+  it("rebuilds the geometry for a target of a different size", () => {
+    activateField("resize-probe");
+    const small = _fieldSnapshot();
+    expect(small.resolution).toBe(8); // 800 * 0.01
+    expect(small.leftX).toBe(-400);
+    expect(small.topY).toBe(-300);
+    expect(small.numColumns).toBe(200);
+    expect(small.numRows).toBe(150);
+    expect(small.data.length).toBe(200 * 150);
+
+    canvasSize.width = 400;
+    canvasSize.height = 400;
+    _onTargetResized(400, 400);
+    isFieldReady();
+
+    const square = _fieldSnapshot();
+    expect(square.resolution).toBe(4); // 400 * 0.01
+    expect(square.leftX).toBe(-200);
+    expect(square.topY).toBe(-200);
+    expect(square.numRows).toBe(200);
+    expect(square.data.length).toBe(200 * 200);
+    // The GPU stroke walker keys its upload on the epoch.
+    expect(square.epoch).toBeGreaterThan(small.epoch);
+    // Definitions survive; only the generated grids are discarded.
+    expect(listFields()).toContain("resize-probe");
+  });
+
+  it("regenerates nothing when the target size is unchanged", () => {
+    activateField("resize-probe");
+    const before = generations;
+    const epochBefore = _fieldEpochNow();
+
+    _onTargetResized(800, 600);
+    isFieldReady();
+
+    expect(generations).toBe(before);
+    expect(_fieldEpochNow()).toBe(epochBefore);
+    expect(_fieldSnapshot().resolution).toBe(8);
   });
 });
