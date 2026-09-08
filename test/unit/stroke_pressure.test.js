@@ -18,7 +18,6 @@ vi.mock("../../src/core/utils.js", () => ({
   toDegrees: (v) => v,
   gaussian: () => 0,
   noise: () => 0,
-  _onSeed: () => {},
 }));
 
 vi.mock("../../src/core/flowfield.js", () => ({

@@ -125,6 +125,7 @@ export function createGpuFillDriver(gpu: import("./device.js").GpuContext, cache
      * @param {number} o.sizeY
      * @param {Float32Array} o.polygonVerts original polygon, flat xy
      * @param {{minX,minY,maxX,maxY}} o.polygonBBox
+     * @param {number} o.seed the painting's hash-stream seed word
      * @param {number} o.fillId
      * @param {number} o.opCounter
      * @param {number} o.bleedStrength
@@ -150,6 +151,7 @@ export function createGpuFillDriver(gpu: import("./device.js").GpuContext, cache
             maxX: any;
             maxY: any;
         };
+        seed: number;
         fillId: number;
         opCounter: number;
         bleedStrength: number;

@@ -25,6 +25,7 @@
 // =============================================================================
 
 import { isMixReady } from "../core/color.js";
+import { defaultContext, registerContextInit } from "../core/context.js";
 import { _fieldSnapshot, _fieldEpochNow } from "../core/flowfield.js";
 import { Stats } from "../core/stats.js";
 import {
@@ -35,10 +36,9 @@ import {
 import { createUniformRing } from "../webgpu/pipeline.js";
 import { STAMP_BLEND } from "../webgpu/stamps.js";
 import { WALK_RASTER_WGSL } from "../webgpu/wgsl/walkraster.wgsl.js";
-// Inspection/manipulation seam — every call below is `_iflag.active`-
+// Inspection/manipulation seam — every call below is `ctx.inspect.active`-
 // guarded (one boolean test when no hooks/captures exist; see inspect.js).
 import {
-  _iflag,
   _tapDisc,
   _tapImage,
   _drainStroke,
@@ -51,45 +51,135 @@ import {
 // Section: Initialization and Setup
 // =============================================================================
 
-let isLoaded = false;
-let host = null; // Renderer.host once loaded
-let loadedWidth = 0,
-  loadedHeight = 0,
-  loadedDensity = 1;
+/**
+ * The stroke batcher of one painting: which target it is loaded against, the
+ * per-stroke matrix snapshot, the CPU stamp dirty rects, the GPU-walk
+ * super-batch and the environment cache. Two paintings batch independently,
+ * even on one device — what they SHARE is the walker and the raster
+ * pipeline, which are device-level (see deviceSlice()).
+ *
+ * @returns {object} The `ctx.batch` object.
+ */
+function createStrokeBatch() {
+  return {
+    isLoaded: false,
+    /** @type {object|null} ctx.renderer.host once loaded */
+    host: null,
+    loadedWidth: 0,
+    loadedHeight: 0,
+    loadedDensity: 1,
 
-// Cached matrix values — snapshotted once per stroke in snapshotMatrix()
-let _ma = 1,
-  _mb = 0,
-  _mc = 0,
-  _md = 1,
-  _mx = 0,
-  _my = 0,
-  _halfW = 0,
-  _halfH = 0,
-  _scale = 1,
-  _density = 1;
+    // Cached matrix values — snapshotted once per stroke in snapshotMatrix()
+    ma: 1,
+    mb: 0,
+    mc: 0,
+    md: 1,
+    mx: 0,
+    my: 0,
+    halfW: 0,
+    halfH: 0,
+    scale: 1,
+    density: 1,
+
+    // CPU stamp dirty rects (device px), accumulated until the flush.
+    circleDirtyRect: null,
+    imgDirtyRect: null,
+
+    /** descriptor builder, rebuilt whenever the environment changes */
+    builder: null,
+    // Environment cache — re-upload only when any input changed.
+    envState: {
+      seed: -1,
+      fieldEpoch: -1,
+      fieldName: null,
+      w: 0,
+      h: 0,
+      density: 0,
+      pool: null,
+    },
+
+    // Pending super-batch (see the comment above queueWalkStroke()).
+    /** @type {object[]} */
+    pending: [],
+    /** @type {object[]} { start, end, key: {mx, my, r, g, b}, color, immediate } */
+    groups: [],
+    /** @type {object|null} */
+    openGroup: null,
+
+    /** brush.cpuGeometry(): force the retained CPU walk and CPU fill DAG. */
+    useCpuWalk: false,
+  };
+}
+
+registerContextInit((ctx) => {
+  ctx.batch = createStrokeBatch();
+});
+
+/**
+ * The walker, its uniform ring and the raster pipeline belong to the DEVICE,
+ * not to a painting: two contexts sharing one device must share one walker
+ * (one compute submit for both) rather than compiling a second copy. The
+ * GpuContext is created per host — a shared device gets one per canvas — so
+ * the device itself is the key.
+ *
+ * @type {WeakMap<GPUDevice, object>}
+ */
+const deviceSlices = new WeakMap();
+
+/**
+ * @param {object} host the adapter's GPU host
+ * @returns {object|null} the device's shared walk objects, null before the
+ *   device resolves
+ */
+function deviceSlice(host) {
+  const device = host?.gpu?.device;
+  if (!device) return null;
+  let slice = deviceSlices.get(device);
+  if (!slice) {
+    slice = {
+      walker: null,
+      walkerReady: false,
+      rasterPipeline: null,
+      rasterLayout: null,
+      rasterRing: null,
+      /**
+       * The context whose environment (seed word, field, pools) the walker
+       * currently holds. Uploads are per context, so a second context taking
+       * the walker must re-upload even when its own envState looks current.
+       */
+      envOwner: null,
+    };
+    deviceSlices.set(device, slice);
+  }
+  return slice;
+}
 
 /**
  * Snapshots the current runtime affine transform. Call once at the start of each stroke.
  * @param {import("../core/context.js").BrushContext} ctx
  */
 export function snapshotMatrix(ctx) {
+  const b = ctx.batch;
   const m = ctx.getAffineMatrix();
-  _ma = m.a;
-  _mb = m.b;
-  _mc = m.c;
-  _md = m.d;
-  _mx = m.x;
-  _my = m.y;
-  _halfW = ctx.width / 2;
-  _halfH = ctx.height / 2;
-  _scale = Math.sqrt(_ma * _ma + _mb * _mb);
-  _density = ctx.density;
+  b.ma = m.a;
+  b.mb = m.b;
+  b.mc = m.c;
+  b.md = m.d;
+  b.mx = m.x;
+  b.my = m.y;
+  b.halfW = ctx.width / 2;
+  b.halfH = ctx.height / 2;
+  b.scale = Math.sqrt(b.ma * b.ma + b.mb * b.mb);
+  b.density = ctx.density;
 }
 
-/** True when the snapshotted matrix is a pure translation (GPU-walk gate). */
-export function matrixIsTranslation() {
-  return _ma === 1 && _mb === 0 && _mc === 0 && _md === 1;
+/**
+ * True when the snapshotted matrix is a pure translation (GPU-walk gate).
+ * @param {import("../core/context.js").BrushContext} ctx
+ */
+export function matrixIsTranslation(ctx) {
+  const b = ctx.batch;
+  return b.ma === 1 && b.mb === 0 && b.mc === 0 && b.md === 1;
 }
 
 /**
@@ -113,27 +203,28 @@ export function isReady(ctx) {
   isMixReady(ctx);
   ensureBrushMaskTarget(ctx);
 
+  const b = ctx.batch;
   const nextHost = ctx.renderer.host;
   nextHost.requireReady();
   const needsRefresh =
-    !isLoaded ||
-    host !== nextHost ||
-    loadedWidth !== ctx.width ||
-    loadedHeight !== ctx.height ||
-    loadedDensity !== ctx.density;
+    !b.isLoaded ||
+    b.host !== nextHost ||
+    b.loadedWidth !== ctx.width ||
+    b.loadedHeight !== ctx.height ||
+    b.loadedDensity !== ctx.density;
   if (!needsRefresh) return;
 
-  host = nextHost;
-  loadedWidth = ctx.width;
-  loadedHeight = ctx.height;
-  loadedDensity = ctx.density;
-  host.stamps.setSize(
+  b.host = nextHost;
+  b.loadedWidth = ctx.width;
+  b.loadedHeight = ctx.height;
+  b.loadedDensity = ctx.density;
+  b.host.stamps.setSize(
     Math.max(1, Math.round(ctx.width * ctx.density)),
     Math.max(1, Math.round(ctx.height * ctx.density)),
     { flipY: true },
   );
-  initWalker();
-  isLoaded = true;
+  initWalker(b.host);
+  b.isLoaded = true;
 }
 
 function accumulateDirtyRect(currentRect, minX, minY, maxX, maxY) {
@@ -145,9 +236,6 @@ function accumulateDirtyRect(currentRect, minX, minY, maxX, maxY) {
   return currentRect;
 }
 
-let circleDirtyRect = null;
-let imgDirtyRect = null;
-
 // =============================================================================
 // Section: Drawing Primitives (CPU walk producers)
 // =============================================================================
@@ -157,27 +245,28 @@ let imgDirtyRect = null;
  * x/y in position space (user coords + Cwidth/2, Cheight/2), diameter in
  * user units, alpha in [0..255]. Applies the snapshotted affine transform.
  */
-export function circle(x, y, diameter, alpha) {
+export function circle(ctx, x, y, diameter, alpha) {
   if (Stats.enabled) {
     Stats.countStamp();
     Stats.hashNums(x, y, diameter, alpha);
   }
-  const px = x - _halfW;
-  const py = y - _halfH;
+  const b = ctx.batch;
+  const px = x - b.halfW;
+  const py = y - b.halfH;
 
-  const screenX = _ma * px + _mc * py + _mx + _halfW;
-  const screenY = _mb * px + _md * py + _my + _halfH;
-  const radius = (_density * diameter * _scale) / 2;
+  const screenX = b.ma * px + b.mc * py + b.mx + b.halfW;
+  const screenY = b.mb * px + b.md * py + b.my + b.halfH;
+  const radius = (b.density * diameter * b.scale) / 2;
 
-  const dScreenX = screenX * _density;
-  const dScreenY = screenY * _density;
+  const dScreenX = screenX * b.density;
+  const dScreenY = screenY * b.density;
   // Inspection hooks: hooked-stream strokes stage into inspect.js instead
   // (replayed — possibly mutated — at glDraw); captures record without
   // diverting.
-  if (_iflag.active && _tapDisc(dScreenX, dScreenY, radius, alpha / 255)) return;
-  host.stamps.disc(dScreenX, dScreenY, radius, alpha / 255);
-  circleDirtyRect = accumulateDirtyRect(
-    circleDirtyRect,
+  if (ctx.inspect.active && _tapDisc(ctx, dScreenX, dScreenY, radius, alpha / 255)) return;
+  b.host.stamps.disc(dScreenX, dScreenY, radius, alpha / 255);
+  b.circleDirtyRect = accumulateDirtyRect(
+    b.circleDirtyRect,
     dScreenX - radius - 1,
     dScreenY - radius - 1,
     dScreenX + radius + 1,
@@ -189,30 +278,31 @@ export function circle(x, y, diameter, alpha) {
  * Queue an image stamp. Same contract as circle(); size is the full stamp
  * diameter in user units, angle in radians.
  */
-export function stampImage(x, y, size, angle, alpha, extraPadding = 0) {
+export function stampImage(ctx, x, y, size, angle, alpha, extraPadding = 0) {
   if (Stats.enabled) {
     Stats.countStamp();
     Stats.hashNums(x, y, size, angle, alpha);
   }
-  const px = x - _halfW;
-  const py = y - _halfH;
-  const screenX = _ma * px + _mc * py + _mx + _halfW;
-  const screenY = _mb * px + _md * py + _my + _halfH;
-  const halfSize = (_density * size * _scale) / 2;
-  const extraRadius = _density * extraPadding * _scale;
+  const b = ctx.batch;
+  const px = x - b.halfW;
+  const py = y - b.halfH;
+  const screenX = b.ma * px + b.mc * py + b.mx + b.halfW;
+  const screenY = b.mb * px + b.md * py + b.my + b.halfH;
+  const halfSize = (b.density * size * b.scale) / 2;
+  const extraRadius = b.density * extraPadding * b.scale;
 
-  const dScreenX = screenX * _density;
-  const dScreenY = screenY * _density;
+  const dScreenX = screenX * b.density;
+  const dScreenY = screenY * b.density;
   if (
-    _iflag.active &&
-    _tapImage(dScreenX, dScreenY, halfSize, angle, alpha / 255, extraRadius)
+    ctx.inspect.active &&
+    _tapImage(ctx, dScreenX, dScreenY, halfSize, angle, alpha / 255, extraRadius)
   ) {
     return;
   }
-  host.stamps.image(dScreenX, dScreenY, halfSize, angle, alpha / 255, extraRadius);
+  b.host.stamps.image(dScreenX, dScreenY, halfSize, angle, alpha / 255, extraRadius);
   const boundsRadius = halfSize * 1.42 + extraRadius;
-  imgDirtyRect = accumulateDirtyRect(
-    imgDirtyRect,
+  b.imgDirtyRect = accumulateDirtyRect(
+    b.imgDirtyRect,
     dScreenX - boundsRadius - 1,
     dScreenY - boundsRadius - 1,
     dScreenX + boundsRadius + 1,
@@ -227,17 +317,18 @@ export function stampImage(x, y, size, angle, alpha, extraPadding = 0) {
  * @param {string} src - The image src string / tip key, texture cache key.
  */
 export function glDrawImages(ctx, p5img, src) {
+  const b = ctx.batch;
   // Inspection hooks: replay this stroke's staged (hooked) image stamps into
   // the queue, recomputing the dirty rect from post-hook positions.
-  if (_iflag.active && host) {
-    const staged = _drainStroke("image");
+  if (ctx.inspect.active && b.host) {
+    const staged = _drainStroke(ctx, "image");
     if (staged) {
       const v = staged.vertices;
       for (let i = 0; i < v.length; i += 5) {
-        host.stamps.image(v[i], v[i + 1], v[i + 2], v[i + 3], v[i + 4], staged.pad);
+        b.host.stamps.image(v[i], v[i + 1], v[i + 2], v[i + 3], v[i + 4], staged.pad);
         const br = v[i + 2] * 1.42 + staged.pad;
-        imgDirtyRect = accumulateDirtyRect(
-          imgDirtyRect,
+        b.imgDirtyRect = accumulateDirtyRect(
+          b.imgDirtyRect,
           v[i] - br - 1,
           v[i + 1] - br - 1,
           v[i] + br + 1,
@@ -246,8 +337,8 @@ export function glDrawImages(ctx, p5img, src) {
       }
     }
   }
-  if (host?.stamps.imageCount === 0 || !p5img) {
-    if (host && host.stamps.imageCount > 0 && !p5img) {
+  if (b.host?.stamps.imageCount === 0 || !p5img) {
+    if (b.host && b.host.stamps.imageCount > 0 && !p5img) {
       throw new Error(`brush-gpu: no tip surface for image brush "${src}"`);
     }
     return;
@@ -257,24 +348,26 @@ export function glDrawImages(ctx, p5img, src) {
   Mix.glMask.isDrawn = true;
 
   const color = ctx.state.stroke.color._array;
-  host.stamps.drawImages(null, {
+  b.host.stamps.drawImages(null, {
     view: Mix.glMask.view,
     color,
     src,
     source: p5img.canvas,
   });
 
-  if (imgDirtyRect) {
-    Mix.markDirtyRect(ctx, Mix.glMask, imgDirtyRect);
-    imgDirtyRect = null;
+  if (b.imgDirtyRect) {
+    Mix.markDirtyRect(ctx, Mix.glMask, b.imgDirtyRect);
+    b.imgDirtyRect = null;
   }
 }
 
 /**
  * Removes a cached tip texture by key, forcing re-upload on next draw.
+ * @param {import("../core/context.js").BrushContext} ctx
+ * @param {string} key
  */
-export function invalidateTexEntry(key) {
-  host?.stamps.invalidateTip(key);
+export function invalidateTexEntry(ctx, key) {
+  ctx.batch.host?.stamps.invalidateTip(key);
 }
 
 /**
@@ -282,16 +375,17 @@ export function invalidateTexEntry(key) {
  * @param {import("../core/context.js").BrushContext} ctx
  */
 export function glDraw(ctx) {
+  const b = ctx.batch;
   // Inspection hooks: replay this stroke's staged (hooked) disc stamps into
   // the queue, recomputing the dirty rect from post-hook positions.
-  if (_iflag.active && host) {
-    const staged = _drainStroke("disc");
+  if (ctx.inspect.active && b.host) {
+    const staged = _drainStroke(ctx, "disc");
     if (staged) {
       const v = staged.vertices;
       for (let i = 0; i < v.length; i += 4) {
-        host.stamps.disc(v[i], v[i + 1], v[i + 2], v[i + 3]);
-        circleDirtyRect = accumulateDirtyRect(
-          circleDirtyRect,
+        b.host.stamps.disc(v[i], v[i + 1], v[i + 2], v[i + 3]);
+        b.circleDirtyRect = accumulateDirtyRect(
+          b.circleDirtyRect,
           v[i] - v[i + 2] - 1,
           v[i + 1] - v[i + 2] - 1,
           v[i] + v[i + 2] + 1,
@@ -300,17 +394,17 @@ export function glDraw(ctx) {
       }
     }
   }
-  if (!host || host.stamps.discCount === 0) return;
+  if (!b.host || b.host.stamps.discCount === 0) return;
   flushWalkBatch(ctx, true); // preserve stamp order (gotcha #10); same-color group joins
   const Mix = ctx.mix;
   Mix.glMask.isDrawn = true;
 
   const color = ctx.state.stroke.color._array;
-  host.stamps.drawDiscs(null, { view: Mix.glMask.view, color });
+  b.host.stamps.drawDiscs(null, { view: Mix.glMask.view, color });
 
-  if (circleDirtyRect) {
-    Mix.markDirtyRect(ctx, Mix.glMask, circleDirtyRect);
-    circleDirtyRect = null;
+  if (b.circleDirtyRect) {
+    Mix.markDirtyRect(ctx, Mix.glMask, b.circleDirtyRect);
+    b.circleDirtyRect = null;
   }
 }
 
@@ -318,20 +412,13 @@ export function glDraw(ctx) {
 // Section: GPU walk router (strokewalk-compute integration)
 // =============================================================================
 
-let walker = null;
-let walkerReady = false;
-let builder = null;
-let rasterPipeline = null;
-let rasterLayout = null;
-let rasterRing = null;
+// Per-flush scratch for the raster uniforms; never read across calls.
 const rasterUniform = new Float32Array(16);
 
-// Environment cache — re-upload only when any input changed.
-const envState = { seed: -1, fieldEpoch: -1, fieldName: null, w: 0, h: 0, density: 0, pool: null };
-
-// Pending super-batch: descriptors from MANY color/translation groups, walked
-// together in one dispatch at flush time. Each group is a contiguous range of
-// `pending` that shares translation + stroke color, in draw order.
+// The pending super-batch (ctx.batch.pending / groups / openGroup):
+// descriptors from MANY color/translation groups, walked together in one
+// dispatch at flush time. Each group is a contiguous range of `pending` that
+// shares translation + stroke color, in draw order.
 //
 // Two group modes, decided when the group opens:
 //   deferred  — the brush mask held no CPU stamps, so the group's composite
@@ -346,33 +433,41 @@ const envState = { seed: -1, fieldEpoch: -1, fieldName: null, w: 0, h: 0, densit
 //               getStrokeShaderMask pulls it in via flushWalkBatch().
 // A group never mixes modes; a CPU stamp flush drains deferred groups first
 // (draw order, gotcha #10) and a composite clears isDrawn after immediates.
-let pending = [];
-let groups = []; // { start, end, key: {mx, my, r, g, b}, color, immediate }
-let openGroup = null;
 
-/** Allow tests / users to force the retained CPU walk. */
-let useCpuWalk = false;
-export function _setUseCpuWalk(v) {
-  useCpuWalk = !!v;
+/**
+ * Allow tests / users to force the retained CPU walk.
+ * @param {boolean} v
+ * @param {import("../core/context.js").BrushContext} [ctx]
+ */
+export function _setUseCpuWalk(v, ctx = defaultContext) {
+  ctx.batch.useCpuWalk = !!v;
 }
-/** brush.cpuGeometry() is one switch: it also forces the CPU fill DAG. */
-export function _getUseCpuWalk() {
-  return useCpuWalk;
+/**
+ * brush.cpuGeometry() is one switch: it also forces the CPU fill DAG.
+ * @param {import("../core/context.js").BrushContext} [ctx]
+ */
+export function _getUseCpuWalk(ctx = defaultContext) {
+  return ctx.batch.useCpuWalk;
 }
 
-function initWalker() {
-  if (walker || !host?.gpu) return;
-  walker = createStrokeWalker(host.gpu);
-  walker.ensureReady().then(
+/**
+ * Compiles the device's stroke walker once, whichever painting asks first.
+ * @param {object} host the adapter's GPU host
+ */
+function initWalker(host) {
+  const slice = deviceSlice(host);
+  if (!slice || slice.walker) return;
+  slice.walker = createStrokeWalker(host.gpu);
+  slice.walker.ensureReady().then(
     () => {
-      walkerReady = true;
+      slice.walkerReady = true;
     },
     (err) => {
       console.warn("brush-gpu: GPU stroke walk unavailable, using CPU walk:", err);
-      walker = null;
+      slice.walker = null;
     },
   );
-  rasterRing = createUniformRing(host.gpu, { slots: 64 });
+  slice.rasterRing = createUniformRing(host.gpu, { slots: 64 });
 }
 
 /**
@@ -381,16 +476,23 @@ function initWalker() {
  * walker must be compiled BEFORE the first draw call or every stroke of
  * that block falls back to the CPU walk.
  * @param {object} rendererHost the adapter's GPU host
+ * @param {import("../core/context.js").BrushContext} [ctx] the painting the
+ *   host belongs to (the standalone adapter drives the default one)
  */
-export async function initWalkRouter(rendererHost) {
-  host = rendererHost;
-  initWalker();
-  if (walker) await walker.ensureReady();
+export async function initWalkRouter(rendererHost, ctx = defaultContext) {
+  ctx.batch.host = rendererHost;
+  initWalker(rendererHost);
+  const slice = deviceSlice(rendererHost);
+  if (slice?.walker) await slice.walker.ensureReady();
 }
 
-function ensureRasterPipeline() {
-  if (rasterPipeline) return;
-  rasterPipeline = host.cache.getRenderPipeline({
+/**
+ * @param {object} host the adapter's GPU host
+ * @param {object} slice that device's shared walk objects
+ */
+function ensureRasterPipeline(host, slice) {
+  if (slice.rasterPipeline) return;
+  slice.rasterPipeline = host.cache.getRenderPipeline({
     code: WALK_RASTER_WGSL,
     vertexEntry: "vs",
     fragmentEntry: "fs",
@@ -399,7 +501,7 @@ function ensureRasterPipeline() {
     topology: "triangle-strip",
     label: "walk-raster",
   });
-  rasterLayout = rasterPipeline.getBindGroupLayout(0);
+  slice.rasterLayout = slice.rasterPipeline.getBindGroupLayout(0);
 }
 
 /**
@@ -410,21 +512,23 @@ function ensureRasterPipeline() {
  * function-curve pressure, rotated/scaled transforms, Stats capture runs —
  * takes the retained CPU walk (a first-class producer, not a fallback).
  */
-export function walkEligible(param) {
-  if (useCpuWalk || Stats.enabled) return false;
+export function walkEligible(ctx, param) {
+  const b = ctx.batch;
+  if (b.useCpuWalk || Stats.enabled) return false;
   // A hooked stream forfeits the GPU walk (documented honest cost) —
   // its strokes take the retained CPU producer so the hook can run on
   // CPU-resident arrays with zero readback. Scoped: other streams keep
   // the GPU walk untouched.
-  if (_iflag.active && _strokeHookActive()) return false;
-  if (!walker || !walkerReady || !host?.gpu) return false;
+  if (ctx.inspect.active && _strokeHookActive(ctx)) return false;
+  const slice = deviceSlice(b.host);
+  if (!slice || !slice.walker || !slice.walkerReady) return false;
   if (!param) return false;
   const type = param.type ?? "default";
   if (type !== "default" && type !== "marker" && type !== "spray") return false;
   const pr = param.pressure;
   if (!pr) return false;
   if (pr.type === "custom" && !Array.isArray(pr.points)) return false;
-  if (!matrixIsTranslation()) return false;
+  if (!matrixIsTranslation(ctx)) return false;
   return true;
 }
 
@@ -433,11 +537,17 @@ export function walkEligible(param) {
  * @param {ArrayLike<number>} gaussPool
  */
 function ensureEnvironment(ctx, gaussPool) {
+  const b = ctx.batch;
+  const envState = b.envState;
+  const slice = deviceSlice(b.host);
   const seed = ctx.rng.seedU32();
   const fieldEpoch = _fieldEpochNow(ctx);
   const field = _fieldSnapshot(ctx);
   const fieldName = field?.name ?? null;
   if (
+    // The walker is shared per device: another painting's upload replaced
+    // ours, so a matching envState is not enough.
+    slice.envOwner === ctx &&
     envState.seed === seed &&
     envState.fieldEpoch === fieldEpoch &&
     envState.fieldName === fieldName &&
@@ -452,7 +562,7 @@ function ensureEnvironment(ctx, gaussPool) {
   // descriptors were built against the CURRENT environment and must walk
   // under it, not the new one.
   flushWalkBatch(ctx);
-  walker.setEnvironment({
+  slice.walker.setEnvironment({
     seedU32: seed,
     width: ctx.width,
     height: ctx.height,
@@ -460,7 +570,8 @@ function ensureEnvironment(ctx, gaussPool) {
     field,
     density: ctx.density,
   });
-  builder = createDescriptorBuilder({ seedU32: seed, width: ctx.width, height: ctx.height });
+  b.builder = createDescriptorBuilder({ seedU32: seed, width: ctx.width, height: ctx.height });
+  slice.envOwner = ctx;
   envState.seed = seed;
   envState.fieldEpoch = fieldEpoch;
   envState.fieldName = fieldName;
@@ -476,7 +587,7 @@ function ensureEnvironment(ctx, gaussPool) {
  *
  * @param {import("../core/context.js").BrushContext} ctx
  * @param {object} o
- * @param {number} o.strokeId sequential stroke id (stroke.js _strokeId)
+ * @param {number} o.strokeId sequential stroke id (ctx.rng.scopes.stroke.id)
  * @param {"default"|"marker"|"spray"} o.kind
  * @param {number} o.x user-space start x
  * @param {number} o.y user-space start y
@@ -491,33 +602,34 @@ function ensureEnvironment(ctx, gaussPool) {
  * @returns {{pc, cached}} updated pressure-cache chain
  */
 export function queueWalkStroke(ctx, o) {
-  _noteGpuStroke(); // inspection routing counter (per stroke, trivial)
+  _noteGpuStroke(ctx); // inspection routing counter (per stroke, trivial)
   ensureEnvironment(ctx, o.gaussPool);
 
+  const b = ctx.batch;
   const Mix = ctx.mix;
   const color = ctx.state.stroke.color._array;
   const immediate = Mix.glMask.isDrawn === true;
   if (
-    openGroup &&
-    (openGroup.immediate !== immediate ||
-      openGroup.key.mx !== _mx || openGroup.key.my !== _my ||
-      openGroup.key.r !== color[0] || openGroup.key.g !== color[1] ||
-      openGroup.key.b !== color[2])
+    b.openGroup &&
+    (b.openGroup.immediate !== immediate ||
+      b.openGroup.key.mx !== b.mx || b.openGroup.key.my !== b.my ||
+      b.openGroup.key.r !== color[0] || b.openGroup.key.g !== color[1] ||
+      b.openGroup.key.b !== color[2])
   ) {
-    sealGroup();
+    sealGroup(b);
   }
-  if (!openGroup) {
-    openGroup = {
-      start: pending.length,
-      end: pending.length,
-      key: { mx: _mx, my: _my, r: color[0], g: color[1], b: color[2] },
+  if (!b.openGroup) {
+    b.openGroup = {
+      start: b.pending.length,
+      end: b.pending.length,
+      key: { mx: b.mx, my: b.my, r: color[0], g: color[1], b: color[2] },
       color: [color[0], color[1], color[2], color[3] ?? 1],
       immediate,
     };
   }
 
-  builder.setChain(o.chain);
-  const desc = builder.build({
+  b.builder.setChain(o.chain);
+  const desc = b.builder.build({
     kind: o.kind,
     x: o.x,
     y: o.y,
@@ -525,13 +637,13 @@ export function queueWalkStroke(ctx, o) {
     length: o.length,
     brush: o.brush,
     strokeWeight: o.strokeWeight,
-    matrix: { x: _mx, y: _my },
+    matrix: { x: b.mx, y: b.my },
     fieldActive: o.fieldActive,
     wiggle: o.wiggle,
     strokeId: o.strokeId,
   });
-  desc.group = groups.length; // index openGroup takes when sealed
-  pending.push(desc);
+  desc.group = b.groups.length; // index openGroup takes when sealed
+  b.pending.push(desc);
   ctx.notifyDraw();
 
   // Conservative CPU dirty rect (device px), used only when the group joins
@@ -561,24 +673,25 @@ export function queueWalkStroke(ctx, o) {
       minY = Math.min(y0, ey) - margin;
       maxY = Math.max(y0, ey) + margin;
     }
-    const d = _density;
+    const d = b.density;
     desc.cpuRect = {
-      minX: (minX + _mx) * d,
-      minY: (minY + _my) * d,
-      maxX: (maxX + _mx) * d,
-      maxY: (maxY + _my) * d,
+      minX: (minX + b.mx) * d,
+      minY: (minY + b.my) * d,
+      maxX: (maxX + b.mx) * d,
+      maxY: (maxY + b.my) * d,
     };
   }
   if (immediate) Mix.markDirtyRect(ctx, Mix.glMask, desc.cpuRect);
 
-  return builder.getChain();
+  return b.builder.getChain();
 }
 
-function sealGroup() {
-  if (!openGroup) return;
-  openGroup.end = pending.length;
-  groups.push(openGroup);
-  openGroup = null;
+/** @param {object} b the painting's batch (ctx.batch) */
+function sealGroup(b) {
+  if (!b.openGroup) return;
+  b.openGroup.end = b.pending.length;
+  b.groups.push(b.openGroup);
+  b.openGroup = null;
 }
 
 const rasterUniformU32 = new Uint32Array(rasterUniform.buffer);
@@ -601,20 +714,21 @@ const rasterUniformU32 = new Uint32Array(rasterUniform.buffer);
  *   stamps would be spectrally mixed twice.
  */
 export function flushWalkBatch(ctx, joinMask = false) {
-  sealGroup();
-  if (pending.length === 0) return;
+  const b = ctx.batch;
+  sealGroup(b);
+  if (b.pending.length === 0) return;
   const Mix = ctx.mix;
-  const descs = pending;
-  const gs = groups;
-  pending = [];
-  groups = [];
+  const descs = b.pending;
+  const gs = b.groups;
+  b.pending = [];
+  b.groups = [];
 
   if (joinMask) {
     const last = gs[gs.length - 1];
     const c = ctx.state.stroke.color._array;
     if (
       !last.immediate &&
-      last.key.mx === _mx && last.key.my === _my &&
+      last.key.mx === b.mx && last.key.my === b.my &&
       last.key.r === c[0] && last.key.g === c[1] && last.key.b === c[2]
     ) {
       last.immediate = true;
@@ -625,21 +739,25 @@ export function flushWalkBatch(ctx, joinMask = false) {
     }
   }
 
-  const batch = walker.walk(
+  const host = b.host;
+  const slice = deviceSlice(host);
+  const batch = slice.walker.walk(
     descs,
     gs.map((g) => ({ start: g.start, end: g.end })),
   ); // submits its own compute encoder
   // An open geometry capture retains the batch (no readback here — it is
   // mapped only when readGeometry() is awaited, out-of-band).
-  const captured = _iflag.active && _captureWalkBatch(walker, batch, descs, ctx.density);
-  ensureRasterPipeline();
+  const captured =
+    ctx.inspect.active &&
+    _captureWalkBatch(ctx, slice.walker, batch, descs, ctx.density);
+  ensureRasterPipeline(host, slice);
   isMixReady(ctx); // blend-source framebuffer for deferred composites
 
   const device = host.gpu.device;
   const W = Math.max(1, Math.round(ctx.width * ctx.density));
   const H = Math.max(1, Math.round(ctx.height * ctx.density));
   const deferredCount = gs.reduce((n, g) => n + (g.immediate ? 0 : 1), 0);
-  rasterRing.reserve(gs.length);
+  slice.rasterRing.reserve(gs.length);
   host.reserveBlendSlots(deferredCount);
 
   const enc = device.createCommandEncoder({ label: "walk-flush" });
@@ -661,12 +779,12 @@ export function flushWalkBatch(ctx, joinMask = false) {
     rasterUniformU32[13] = 0;
     rasterUniformU32[14] = 0;
     rasterUniformU32[15] = 0;
-    const slot = rasterRing.write(rasterUniform);
+    const slot = slice.rasterRing.write(rasterUniform);
     // Per-batch buffers churn, so bypass the bind-group cache (its own
     // documented guidance for churning resources).
     const bind = device.createBindGroup({
       label: "walk-raster-bg",
-      layout: rasterLayout,
+      layout: slice.rasterLayout,
       entries: [
         { binding: 0, resource: { buffer: slot.buffer, offset: slot.offset, size: slot.size } },
         { binding: 1, resource: { buffer: batch.stampsBuffer } },
@@ -688,7 +806,7 @@ export function flushWalkBatch(ctx, joinMask = false) {
         },
       ],
     });
-    pass.setPipeline(rasterPipeline);
+    pass.setPipeline(slice.rasterPipeline);
     pass.setBindGroup(0, bind);
     pass.drawIndirect(batch.indirectBuffer, gi * 16);
     pass.end();
@@ -718,7 +836,7 @@ export function flushWalkBatch(ctx, joinMask = false) {
   }
   if (deferredCount > 0) host.present(enc);
   device.queue.submit([enc.finish()]);
-  rasterRing.reset(); // writeBuffer is queue-ordered — safe post-submit
+  slice.rasterRing.reset(); // writeBuffer is queue-ordered — safe post-submit
   host.resetBlendSlots();
   if (!captured) batch.destroy(); // deferred by WebGPU until execution completes
 }

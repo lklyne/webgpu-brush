@@ -43,7 +43,6 @@ vi.mock("../../src/core/flowfield.js", () => ({
 }));
 
 vi.mock("../../src/core/utils.js", () => ({
-  rr2: (min = 0, max = 1) => (min + max) / 2,
   dist: (x1, y1, x2, y2) => Math.hypot(x2 - x1, y2 - y1),
   calcAngle: (x1, y1, x2, y2) => {
     const deg = (Math.atan2(-(y2 - y1), x2 - x1) * 180) / Math.PI;
@@ -66,11 +65,14 @@ import { createMass as createMassCtx, createMassArray, mass } from "../../src/ha
 import { defaultContext } from "../../src/core/context.js";
 
 // The state and the host hooks are context fields now. flowfield.js is mocked
-// away, so its state slice is set here.
+// away, so its state slice is set here. mass() draws through `ctx.rng`, so the
+// midpoint stub that used to mock utils.rr2 goes on the context's rng — the
+// arc/segment assertions below expect a fixed draw.
 Object.assign(defaultContext, {
   fromDegrees: (angle) => angle,
   usesRadians: () => false,
 });
+defaultContext.rng.rr2 = (min = 0, max = 1) => (min + max) / 2;
 const mockState = defaultContext.state;
 import { Polygon } from "../../src/core/polygon.js";
 

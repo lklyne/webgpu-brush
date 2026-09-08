@@ -42,46 +42,62 @@
 //
 // Ownership: this file owns the mechanism; gl_draw.js/stroke.js carry only the
 // minimal insertion points that call into it, every one guarded by
-// `_iflag.active` so the seam is a no-op when unused.
+// `ctx.inspect.active` so the seam is a no-op when unused.
+//
+// Hooks, streams, staging and captures are all per painting — they describe
+// what is being drawn — so the whole mechanism lives on `ctx.inspect`.
 // =============================================================================
+
+import { defaultContext, registerContextInit } from "../core/context.js";
 
 const DISC_STRIDE = 4;
 const IMG_STRIDE = 5;
 
 /**
- * Hot-path guard. gl_draw.js/stroke.js test `_iflag.active` before calling
+ * A painting's inspection state.
+ *
+ * `active` is the hot-path guard: gl_draw.js/stroke.js test it before calling
  * anything else here, so the per-stamp cost with no hooks and no capture is
- * one property read. Kept in an object so the flag can be imported once.
+ * one property read on an object those call sites already hold.
+ *
+ * @returns {object} The `ctx.inspect` object.
  */
-export const _iflag = { active: false };
+function createInspectState() {
+  return {
+    active: false,
+    /** @type {Map<string, Function>} streamId -> hook fn */
+    hooks: new Map(),
+    currentStream: "default",
 
-/** @type {Map<string, Function>} streamId -> hook fn */
-const hooks = new Map();
-let currentStream = "default";
+    // --- per-stroke staging (hooked CPU-walk strokes) ---------------------
+    diverting: false,
+    curStrokeId: 0,
+    curStreamId: "default",
+    discStage: new Float32Array(2048 * DISC_STRIDE),
+    discStageN: 0,
+    imgStage: new Float32Array(512 * IMG_STRIDE),
+    imgStageN: 0,
+    imgStagePad: 0,
 
-// --- per-stroke staging (hooked CPU-walk strokes) --------------------------
-let diverting = false;
-let curStrokeId = 0;
-let curStreamId = "default";
-let discStage = new Float32Array(2048 * DISC_STRIDE);
-let discStageN = 0;
-let imgStage = new Float32Array(512 * IMG_STRIDE);
-let imgStageN = 0;
-let imgStagePad = 0;
+    /** @type {null | {active: boolean, segments: Array, batchRefs: Array}} */
+    capture: null,
 
-/** @type {null | {active: boolean, segments: Array, batchRefs: Array}} */
-let capture = null;
+    stats: {
+      gpuStrokes: 0,
+      cpuStrokes: 0,
+      hookedStrokes: 0,
+      hookCalls: 0,
+      capturedBatches: 0,
+    },
+  };
+}
 
-const stats = {
-  gpuStrokes: 0,
-  cpuStrokes: 0,
-  hookedStrokes: 0,
-  hookCalls: 0,
-  capturedBatches: 0,
-};
+registerContextInit((ctx) => {
+  ctx.inspect = createInspectState();
+});
 
-function syncFlag() {
-  _iflag.active = hooks.size > 0 || (capture !== null && capture.active);
+function syncFlag(ins) {
+  ins.active = ins.hooks.size > 0 || (ins.capture !== null && ins.capture.active);
 }
 
 // =============================================================================
@@ -96,8 +112,19 @@ function syncFlag() {
  * @returns {string} the current stream id
  */
 export function stream(id) {
-  if (id !== undefined) currentStream = String(id);
-  return currentStream;
+  return _stream(defaultContext, id);
+}
+
+/**
+ * Context-taking implementation of stream().
+ * @param {import("../core/context.js").BrushContext} ctx
+ * @param {string|number} [id]
+ * @returns {string}
+ */
+export function _stream(ctx, id) {
+  const ins = ctx.inspect;
+  if (id !== undefined) ins.currentStream = String(id);
+  return ins.currentStream;
 }
 
 /**
@@ -121,20 +148,32 @@ export function stream(id) {
  * @returns {() => void} dispose function
  */
 export function onGeometry(streamId, fn) {
+  return _onGeometry(defaultContext, streamId, fn);
+}
+
+/**
+ * Context-taking implementation of onGeometry().
+ * @param {import("../core/context.js").BrushContext} ctx
+ * @param {string|number} streamId
+ * @param {Function|null} fn
+ * @returns {() => void}
+ */
+export function _onGeometry(ctx, streamId, fn) {
+  const ins = ctx.inspect;
   const id = String(streamId);
   if (fn == null) {
-    hooks.delete(id);
-    syncFlag();
+    ins.hooks.delete(id);
+    syncFlag(ins);
     return () => {};
   }
   if (typeof fn !== "function") {
     throw new Error("brush.onGeometry(streamId, fn): fn must be a function or null");
   }
-  hooks.set(id, fn);
-  syncFlag();
+  ins.hooks.set(id, fn);
+  syncFlag(ins);
   return () => {
-    if (hooks.get(id) === fn) hooks.delete(id);
-    syncFlag();
+    if (ins.hooks.get(id) === fn) ins.hooks.delete(id);
+    syncFlag(ins);
   };
 }
 
@@ -148,12 +187,22 @@ export function onGeometry(streamId, fn) {
  * @returns {object} opaque handle for readGeometry()/endGeometry()
  */
 export function beginGeometry() {
-  if (capture && capture.active) {
+  return _beginGeometry(defaultContext);
+}
+
+/**
+ * Context-taking implementation of beginGeometry().
+ * @param {import("../core/context.js").BrushContext} ctx
+ * @returns {object}
+ */
+export function _beginGeometry(ctx) {
+  const ins = ctx.inspect;
+  if (ins.capture && ins.capture.active) {
     throw new Error("brush.beginGeometry(): a capture is already active — readGeometry() or endGeometry() it first.");
   }
-  capture = { active: true, segments: [], batchRefs: [] };
-  syncFlag();
-  return capture;
+  ins.capture = { active: true, segments: [], batchRefs: [] };
+  syncFlag(ins);
+  return ins.capture;
 }
 
 /**
@@ -163,10 +212,20 @@ export function beginGeometry() {
  * @param {object} handle from beginGeometry()
  */
 export function endGeometry(handle) {
-  if (!handle || handle !== capture) return;
+  return _endGeometry(defaultContext, handle);
+}
+
+/**
+ * Context-taking implementation of endGeometry().
+ * @param {import("../core/context.js").BrushContext} ctx
+ * @param {object} handle
+ */
+export function _endGeometry(ctx, handle) {
+  const ins = ctx.inspect;
+  if (!handle || handle !== ins.capture) return;
   handle.active = false;
-  capture = null;
-  syncFlag();
+  ins.capture = null;
+  syncFlag(ins);
   for (const b of handle.batchRefs) b.batch.destroy();
   handle.batchRefs.length = 0;
   handle.segments.length = 0;
@@ -187,18 +246,27 @@ export function endGeometry(handle) {
  *   captured (5 floats per stamp), else null.
  */
 export async function readGeometry(handle) {
-  if (!handle || handle !== capture || !handle.active) {
+  return _readGeometry(defaultContext, handle);
+}
+
+/**
+ * Context-taking implementation of readGeometry().
+ * @param {import("../core/context.js").BrushContext} ctx
+ * @param {object} handle
+ */
+export async function _readGeometry(ctx, handle) {
+  const ins = ctx.inspect;
+  if (!handle || handle !== ins.capture || !handle.active) {
     throw new Error("brush.readGeometry(handle): handle is not the active capture — pass the value returned by beginGeometry().");
   }
   // Flush any GPU-walk descriptors still pending so their batch is captured.
   // Dynamic import avoids a module cycle (gl_draw.js imports this module).
   const { flushWalkBatch } = await import("../stroke/gl_draw.js");
-  const { defaultContext } = await import("../core/context.js");
-  flushWalkBatch(defaultContext);
+  flushWalkBatch(ctx);
 
   handle.active = false;
-  capture = null;
-  syncFlag();
+  ins.capture = null;
+  syncFlag(ins);
 
   const segs = handle.segments.map((s) => ({
     strokeId: s.strokeId,
@@ -261,10 +329,16 @@ export async function readGeometry(handle) {
 }
 
 /** Test instrumentation, not API (oracle-w4b asserts routing with these). */
-export function _geometryStats() {
-  return { ...stats, hookedStreams: hooks.size, captureActive: !!(capture && capture.active) };
+export function _geometryStats(ctx = defaultContext) {
+  const ins = ctx.inspect;
+  return {
+    ...ins.stats,
+    hookedStreams: ins.hooks.size,
+    captureActive: !!(ins.capture && ins.capture.active),
+  };
 }
-export function _resetGeometryStats() {
+export function _resetGeometryStats(ctx = defaultContext) {
+  const stats = ctx.inspect.stats;
   stats.gpuStrokes = 0;
   stats.cpuStrokes = 0;
   stats.hookedStrokes = 0;
@@ -273,34 +347,37 @@ export function _resetGeometryStats() {
 }
 
 // =============================================================================
-// Section: Seam calls (gl_draw.js / stroke.js only — all _iflag-guarded)
+// Section: Seam calls (gl_draw.js / stroke.js only — all ctx.inspect-guarded)
 // =============================================================================
 
 /** walkEligible() gate: current stream has a hook -> CPU producer. */
-export function _strokeHookActive() {
-  return hooks.size > 0 && hooks.has(currentStream);
+export function _strokeHookActive(ctx) {
+  const ins = ctx.inspect;
+  return ins.hooks.size > 0 && ins.hooks.has(ins.currentStream);
 }
 
 /** queueWalkStroke() counter (per stroke, unconditional, trivial). */
-export function _noteGpuStroke() {
-  stats.gpuStrokes++;
+export function _noteGpuStroke(ctx) {
+  ctx.inspect.stats.gpuStrokes++;
 }
 
 /**
  * stroke.js saveState(): a CPU-walked stroke is beginning. Latches the
  * stream/hook decision for the whole stroke (stream changes mid-stroke are
  * impossible — draw calls are synchronous).
- * @param {number} strokeId stroke.js _strokeId
+ * @param {import("../core/context.js").BrushContext} ctx
+ * @param {number} strokeId the stroke scope counter (ctx.rng.scopes.stroke.id)
  */
-export function _notifyStrokeBegin(strokeId) {
-  stats.cpuStrokes++;
-  curStrokeId = strokeId;
-  curStreamId = currentStream;
-  diverting = hooks.size > 0 && hooks.has(currentStream);
-  if (diverting) stats.hookedStrokes++;
-  discStageN = 0;
-  imgStageN = 0;
-  imgStagePad = 0;
+export function _notifyStrokeBegin(ctx, strokeId) {
+  const ins = ctx.inspect;
+  ins.stats.cpuStrokes++;
+  ins.curStrokeId = strokeId;
+  ins.curStreamId = ins.currentStream;
+  ins.diverting = ins.hooks.size > 0 && ins.hooks.has(ins.currentStream);
+  if (ins.diverting) ins.stats.hookedStrokes++;
+  ins.discStageN = 0;
+  ins.imgStageN = 0;
+  ins.imgStagePad = 0;
 }
 
 function growStage(stage, needed) {
@@ -310,8 +387,8 @@ function growStage(stage, needed) {
   return next;
 }
 
-function recordCapture(kind, strokeId, values, from, to) {
-  const segments = capture.segments;
+function recordCapture(ins, kind, strokeId, values, from, to) {
+  const segments = ins.capture.segments;
   let seg = segments.length > 0 ? segments[segments.length - 1] : null;
   if (!seg || seg.strokeId !== strokeId || seg.kind !== kind) {
     seg = { strokeId, kind, data: [] };
@@ -326,19 +403,21 @@ function recordCapture(kind, strokeId, values, from, to) {
  * @param {number} x device px  @param {number} y device px
  * @param {number} radius device px  @param {number} alpha [0..1]
  */
-export function _tapDisc(x, y, radius, alpha) {
-  if (diverting) {
-    const base = discStageN * DISC_STRIDE;
-    discStage = growStage(discStage, base + DISC_STRIDE);
-    discStage[base] = x;
-    discStage[base + 1] = y;
-    discStage[base + 2] = radius;
-    discStage[base + 3] = alpha;
-    discStageN++;
+export function _tapDisc(ctx, x, y, radius, alpha) {
+  const ins = ctx.inspect;
+  if (ins.diverting) {
+    const base = ins.discStageN * DISC_STRIDE;
+    const stage = growStage(ins.discStage, base + DISC_STRIDE);
+    ins.discStage = stage;
+    stage[base] = x;
+    stage[base + 1] = y;
+    stage[base + 2] = radius;
+    stage[base + 3] = alpha;
+    ins.discStageN++;
     return true;
   }
-  if (capture && capture.active) {
-    recordCapture("disc", curStrokeId, [x, y, radius, alpha], 0, DISC_STRIDE);
+  if (ins.capture && ins.capture.active) {
+    recordCapture(ins, "disc", ins.curStrokeId, [x, y, radius, alpha], 0, DISC_STRIDE);
   }
   return false;
 }
@@ -347,21 +426,23 @@ export function _tapDisc(x, y, radius, alpha) {
  * gl_draw.stampImage() seam — like _tapDisc for image-tip stamps.
  * @param {number} pad extra dirty-rect padding (device px, per stroke)
  */
-export function _tapImage(x, y, halfSize, angle, alpha, pad) {
-  if (diverting) {
-    const base = imgStageN * IMG_STRIDE;
-    imgStage = growStage(imgStage, base + IMG_STRIDE);
-    imgStage[base] = x;
-    imgStage[base + 1] = y;
-    imgStage[base + 2] = halfSize;
-    imgStage[base + 3] = angle;
-    imgStage[base + 4] = alpha;
-    imgStageN++;
-    if (pad > imgStagePad) imgStagePad = pad;
+export function _tapImage(ctx, x, y, halfSize, angle, alpha, pad) {
+  const ins = ctx.inspect;
+  if (ins.diverting) {
+    const base = ins.imgStageN * IMG_STRIDE;
+    const stage = growStage(ins.imgStage, base + IMG_STRIDE);
+    ins.imgStage = stage;
+    stage[base] = x;
+    stage[base + 1] = y;
+    stage[base + 2] = halfSize;
+    stage[base + 3] = angle;
+    stage[base + 4] = alpha;
+    ins.imgStageN++;
+    if (pad > ins.imgStagePad) ins.imgStagePad = pad;
     return true;
   }
-  if (capture && capture.active) {
-    recordCapture("image", curStrokeId, [x, y, halfSize, angle, alpha], 0, IMG_STRIDE);
+  if (ins.capture && ins.capture.active) {
+    recordCapture(ins, "image", ins.curStrokeId, [x, y, halfSize, angle, alpha], 0, IMG_STRIDE);
   }
   return false;
 }
@@ -376,43 +457,44 @@ export function _tapImage(x, y, halfSize, angle, alpha, pad) {
  * @param {"disc"|"image"} kind
  * @returns {{vertices: Float32Array, pad: number}|null}
  */
-export function _drainStroke(kind) {
+export function _drainStroke(ctx, kind) {
+  const ins = ctx.inspect;
   const stride = kind === "disc" ? DISC_STRIDE : IMG_STRIDE;
-  const n = kind === "disc" ? discStageN : imgStageN;
+  const n = kind === "disc" ? ins.discStageN : ins.imgStageN;
   if (n === 0) return null;
-  const stage = kind === "disc" ? discStage : imgStage;
+  const stage = kind === "disc" ? ins.discStage : ins.imgStage;
   let vertices = stage.slice(0, n * stride);
-  const pad = kind === "disc" ? 0 : imgStagePad;
-  if (kind === "disc") discStageN = 0;
+  const pad = kind === "disc" ? 0 : ins.imgStagePad;
+  if (kind === "disc") ins.discStageN = 0;
   else {
-    imgStageN = 0;
-    imgStagePad = 0;
+    ins.imgStageN = 0;
+    ins.imgStagePad = 0;
   }
 
-  const fn = hooks.get(curStreamId);
+  const fn = ins.hooks.get(ins.curStreamId);
   if (fn) {
-    stats.hookCalls++;
+    ins.stats.hookCalls++;
     const geo = {
-      streamId: curStreamId,
+      streamId: ins.curStreamId,
       kind,
       stride,
       vertices,
       counts: Uint32Array.of(n),
-      strokeIds: Uint32Array.of(curStrokeId),
+      strokeIds: Uint32Array.of(ins.curStrokeId),
     };
     const ret = fn(geo);
     const replacement = ret && ret.vertices ? ret.vertices : geo.vertices;
     if (replacement.length % stride !== 0) {
       throw new Error(
-        `brush.onGeometry("${curStreamId}"): replacement vertices length ${replacement.length} is not a multiple of stride ${stride}`,
+        `brush.onGeometry("${ins.curStreamId}"): replacement vertices length ${replacement.length} is not a multiple of stride ${stride}`,
       );
     }
     vertices =
       replacement instanceof Float32Array ? replacement : Float32Array.from(replacement);
   }
 
-  if (capture && capture.active && vertices.length > 0) {
-    recordCapture(kind, curStrokeId, vertices, 0, vertices.length);
+  if (ins.capture && ins.capture.active && vertices.length > 0) {
+    recordCapture(ins, kind, ins.curStrokeId, vertices, 0, vertices.length);
   }
   return { vertices, pad };
 }
@@ -423,15 +505,17 @@ export function _drainStroke(kind) {
  * caller must then NOT destroy it — readGeometry()/endGeometry() will).
  * No readback happens here.
  *
+ * @param {import("../core/context.js").BrushContext} ctx
  * @param {object} walker createStrokeWalker() instance (readBatch owner)
  * @param {object} batch walker.walk() return value
  * @param {Array} descs the built descriptors of this batch (salt -> id, mx/my)
  * @param {number} density device pixel density at flush time
  * @returns {boolean}
  */
-export function _captureWalkBatch(walker, batch, descs, density) {
-  if (!capture || !capture.active) return false;
-  stats.capturedBatches++;
-  capture.batchRefs.push({ walker, batch, descs, density });
+export function _captureWalkBatch(ctx, walker, batch, descs, density) {
+  const ins = ctx.inspect;
+  if (!ins.capture || !ins.capture.active) return false;
+  ins.stats.capturedBatches++;
+  ins.capture.batchRefs.push({ walker, batch, descs, density });
   return true;
 }

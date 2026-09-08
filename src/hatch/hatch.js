@@ -46,12 +46,13 @@ function createHatchScratch() {
 registerContextInit((ctx) => {
   ctx.state.hatch = createHatchState();
   ctx.hatchScratch = createHatchScratch();
-});
-
-// Hash-stream scope counter: one id per getHatchLines() invocation.
-let _hatchId = 0;
-defaultContext.rng.onSeed(() => {
-  _hatchId = 0;
+  // Hash-stream scope counter: one id per getHatchLines() invocation. It is
+  // keyed to the seed, so it lives on the context's rng and resets with it.
+  const scope = { id: 0 };
+  ctx.rng.scopes.hatch = scope;
+  ctx.rng.onSeed(() => {
+    scope.id = 0;
+  });
 });
 
 /**
@@ -351,8 +352,7 @@ export function getHatchLines(ctx, polygons) {
   const { dist, options, segs } = getActiveHatchConfig(ctx, polygons);
   const r = options.rand || 0;
   const lines = [];
-  _hatchId++;
-  const salt = _hatchId;
+  const salt = ++ctx.rng.scopes.hatch.id;
 
   for (let j = 0; j < segs.length; j++) {
     const s = segs[j];
@@ -425,7 +425,7 @@ export function _createHatch(ctx, polygons) {
   const rh = ctx.rng.rh;
   renderHatchSegments(ctx, polygons, (x1, y1, x2, y2, j) => {
     const hBrush = ctx.state.hatch.hBrush;
-    if (hBrush) _set(ctx, hBrush.brush, hBrush.color, hBrush.weight * rh(STREAM.HATCH_WEIGHT, _hatchId, j, 0.9, 1.1));
+    if (hBrush) _set(ctx, hBrush.brush, hBrush.color, hBrush.weight * rh(STREAM.HATCH_WEIGHT, ctx.rng.scopes.hatch.id, j, 0.9, 1.1));
     _line(ctx, x1, y1, x2, y2);
   });
 }

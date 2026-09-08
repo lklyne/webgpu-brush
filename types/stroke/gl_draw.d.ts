@@ -3,8 +3,11 @@
  * @param {import("../core/context.js").BrushContext} ctx
  */
 export function snapshotMatrix(ctx: import("../core/context.js").BrushContext): void;
-/** True when the snapshotted matrix is a pure translation (GPU-walk gate). */
-export function matrixIsTranslation(): boolean;
+/**
+ * True when the snapshotted matrix is a pure translation (GPU-walk gate).
+ * @param {import("../core/context.js").BrushContext} ctx
+ */
+export function matrixIsTranslation(ctx: import("../core/context.js").BrushContext): boolean;
 /**
  * Ensures the WebGPU stamp path is ready. Mirrors the old isReady():
  * (re)binds the mask target and refreshes size-dependent state.
@@ -16,12 +19,12 @@ export function isReady(ctx: import("../core/context.js").BrushContext): void;
  * x/y in position space (user coords + Cwidth/2, Cheight/2), diameter in
  * user units, alpha in [0..255]. Applies the snapshotted affine transform.
  */
-export function circle(x: any, y: any, diameter: any, alpha: any): void;
+export function circle(ctx: any, x: any, y: any, diameter: any, alpha: any): void;
 /**
  * Queue an image stamp. Same contract as circle(); size is the full stamp
  * diameter in user units, angle in radians.
  */
-export function stampImage(x: any, y: any, size: any, angle: any, alpha: any, extraPadding?: number): void;
+export function stampImage(ctx: any, x: any, y: any, size: any, angle: any, alpha: any, extraPadding?: number): void;
 /**
  * Flush all queued image stamps in one instanced draw.
  * @param {import("../core/context.js").BrushContext} ctx
@@ -31,24 +34,36 @@ export function stampImage(x: any, y: any, size: any, angle: any, alpha: any, ex
 export function glDrawImages(ctx: import("../core/context.js").BrushContext, p5img: object, src: string): void;
 /**
  * Removes a cached tip texture by key, forcing re-upload on next draw.
+ * @param {import("../core/context.js").BrushContext} ctx
+ * @param {string} key
  */
-export function invalidateTexEntry(key: any): void;
+export function invalidateTexEntry(ctx: import("../core/context.js").BrushContext, key: string): void;
 /**
  * Flush all queued circle stamps in one instanced draw.
  * @param {import("../core/context.js").BrushContext} ctx
  */
 export function glDraw(ctx: import("../core/context.js").BrushContext): void;
-export function _setUseCpuWalk(v: any): void;
-/** brush.cpuGeometry() is one switch: it also forces the CPU fill DAG. */
-export function _getUseCpuWalk(): boolean;
+/**
+ * Allow tests / users to force the retained CPU walk.
+ * @param {boolean} v
+ * @param {import("../core/context.js").BrushContext} [ctx]
+ */
+export function _setUseCpuWalk(v: boolean, ctx?: import("../core/context.js").BrushContext): void;
+/**
+ * brush.cpuGeometry() is one switch: it also forces the CPU fill DAG.
+ * @param {import("../core/context.js").BrushContext} [ctx]
+ */
+export function _getUseCpuWalk(ctx?: import("../core/context.js").BrushContext): any;
 /**
  * Awaitable walker warmup, called from brush.ready(): a whole sketch can
  * render in one synchronous block right after ready() resolves, so the
  * walker must be compiled BEFORE the first draw call or every stroke of
  * that block falls back to the CPU walk.
  * @param {object} rendererHost the adapter's GPU host
+ * @param {import("../core/context.js").BrushContext} [ctx] the painting the
+ *   host belongs to (the standalone adapter drives the default one)
  */
-export function initWalkRouter(rendererHost: object): Promise<void>;
+export function initWalkRouter(rendererHost: object, ctx?: import("../core/context.js").BrushContext): Promise<void>;
 /**
  * Router gate: can this stroke take the GPU walk?
  * Coverage (recorded in FORK.md): line/flowLine strokes with
@@ -57,14 +72,14 @@ export function initWalkRouter(rendererHost: object): Promise<void>;
  * function-curve pressure, rotated/scaled transforms, Stats capture runs —
  * takes the retained CPU walk (a first-class producer, not a fallback).
  */
-export function walkEligible(param: any): boolean;
+export function walkEligible(ctx: any, param: any): boolean;
 /**
  * Queue one stroke for the GPU walk. Caller (stroke.js) has already run
  * Mix.blend and owns strokeId sequencing and the pressure-cache chain.
  *
  * @param {import("../core/context.js").BrushContext} ctx
  * @param {object} o
- * @param {number} o.strokeId sequential stroke id (stroke.js _strokeId)
+ * @param {number} o.strokeId sequential stroke id (ctx.rng.scopes.stroke.id)
  * @param {"default"|"marker"|"spray"} o.kind
  * @param {number} o.x user-space start x
  * @param {number} o.y user-space start y

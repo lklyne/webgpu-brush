@@ -9,12 +9,15 @@
 // with their module-level dependencies injected:
 //
 //   ctx                             → a drawing context (core/context.js)
-//                                     whose rng is the real core/utils.js
-//                                     hash stream and whose state is the
-//                                     oracle-controlled fill state
+//                                     shape: the real core/utils.js hash
+//                                     stream as its rng, the oracle's fill
+//                                     state, and the fill cursor + gaussian
+//                                     pools the methods read (grow cap and
+//                                     grow scratch live on ctx.fillCursor,
+//                                     the pools on ctx.rng.scopes.fill)
 //   STREAM / cossin                 → the real exports of core/utils.js
-//   GROW_CAP / _gaussians / nextOpSalt → oracle-controlled
-//   _grow* scratch arrays / _fillGaussianPools → fresh locals / noop
+//   nextOpSalt                      → oracle-controlled
+//   _fillGaussianPools              → noop
 //
 // So the reference EXECUTES the shipped CPU implementation. If fill.js
 // refactors the method signatures, extraction throws and the oracle
@@ -69,9 +72,9 @@ function bindContext(src) {
  * @param {Object} opts
  * @param {string} opts.source        text of src/fill/fill.js
  * @param {Object} opts.state         { fill: { direction, bleed_strength } }
- * @param {number} opts.growCap       fill.js GROW_CAP for this fill
+ * @param {number} opts.growCap       fill.js grow cap for this fill
  * @param {[number[], number[]]} opts.gaussians  the two 512-entry pools
- * @param {{value: number}} opts.op   shared op counter (fill.js _fillOp)
+ * @param {{value: number}} opts.op   shared op counter (the fill scope's op)
  * @param {number} opts.fillId
  */
 export function buildFillPolyRef({ source, state, growCap, gaussians, op, fillId }) {
@@ -79,21 +82,19 @@ export function buildFillPolyRef({ source, state, growCap, gaussians, op, fillId
   const growSrc = extractMethod(source, "grow");
 
   const nextOpSalt = () => (((fillId << 10) + op.value++) >>> 0);
-  // The context the extracted bodies read: the real hash streams plus the
-  // oracle's fill state.
-  const ctx = { rng: { rh, hashU32 }, state };
+  // The context the extracted bodies read: the real hash streams, the
+  // oracle's fill state, its grow cap and scratch, and its gaussian pools.
+  const ctx = {
+    rng: { rh, hashU32, scopes: { fill: { poolA: gaussians[0], poolB: gaussians[1] } } },
+    state,
+    fillCursor: { growCap, insX: [], insY: [], mods: [], dirs: [] },
+  };
   const factory = new Function(
     "ctx",
     "STREAM",
     "cossin",
-    "GROW_CAP",
-    "_gaussians",
     "_fillGaussianPools",
     "nextOpSalt",
-    "_growInsX",
-    "_growInsY",
-    "_growMods",
-    "_growDirs",
     `"use strict";
 class FillPoly {
   constructor(v, m, center, dir = [], isFirst = false, sx, sy) {
@@ -111,13 +112,7 @@ return FillPoly;`,
     ctx,
     STREAM,
     cossin,
-    growCap,
-    gaussians,
     () => {}, // pools are prefilled by the oracle; refill hook is a noop
     nextOpSalt,
-    [],
-    [],
-    [],
-    [],
   );
 }

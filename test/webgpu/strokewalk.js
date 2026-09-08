@@ -140,7 +140,8 @@ function buildGaussPool(seed, trig) {
     cached = true;
     return r * trig[idx] * stdev + mean; // cos
   };
-  // seed() fires _onSeed callbacks: fill.js _fillGaussianPools eagerly draws
+  // seed() fires the rng's reseed callbacks: fill.js _fillGaussianPools
+  // eagerly draws
   // its 2x512 pools from the same sequential stream BEFORE the stroke pool
   // is lazily filled at the first saveState(). Replicate that burn exactly
   // (the pair cache is shared across mean/stdev variants).

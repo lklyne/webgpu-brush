@@ -37,19 +37,12 @@ initFillComposite(); // Register the fill composite with the core color module
 // Fill State and helpers
 // =============================================================================
 
-// Vertex cap for grow() — set to 0 or false to disable. Still module-level,
-// with the fill-id/op counters and the gaussian pools below: they are the
-// randomness scope, which moves onto the context with the seed. The oracle in
-// test/webgpu/grow-cpu-ref.js injects all of them as free variables of the
-// extracted trim()/grow() source.
+// Vertex cap for grow(): the cap itself lives on `ctx.fillCursor` (fill()
+// computes it from that painting's bleed strength), this is only the constant
+// it scales. Set the cap to 0 or false to disable. The oracle in
+// test/webgpu/grow-cpu-ref.js reads the cap and the grow scratch off the
+// context it injects into the extracted trim()/grow() source.
 const GROW_MAX_VERTS = 2024;
-let GROW_CAP;
-
-// Reusable scratch arrays for grow() — avoids 4 allocations per call (~15× per fill)
-let _growInsX = [];
-let _growInsY = [];
-let _growMods = [];
-let _growDirs = [];
 
 /**
  * A context's fill state.
@@ -82,12 +75,56 @@ function createFillCursor() {
     bbMinY: Infinity,
     bbMaxX: -Infinity,
     bbMaxY: -Infinity,
+    /** vertex cap for grow(), set by fill() from the bleed strength */
+    growCap: undefined,
+    // Reusable scratch arrays for grow() — avoids 4 allocations per call
+    // (~15× per fill). One set per context, so two paintings cannot grow
+    // into each other's scratch.
+    insX: [],
+    insY: [],
+    mods: [],
+    dirs: [],
+  };
+}
+
+/**
+ * The fill randomness scope. `id` increments per createFill(); every
+ * randomized FillPoly operation (constructor setup, trim, grow, scatter,
+ * erase, fill-level draws) grabs the next op salt. The op ORDER is fixed
+ * control flow inside fill(), so (fillId, opId) is reproducible and is what
+ * the grow-compute dispatch receives as a uniform.
+ *
+ * The gaussian pools sit here too: they are drawn by the sequential seeded
+ * generator, so a reseed refills them.
+ *
+ * @returns {object} The `ctx.rng.scopes.fill` object.
+ */
+function createFillScope() {
+  return {
+    id: 0,
+    op: 0,
+    /** @type {number[]} */
+    poolA: [],
+    /** @type {number[]} */
+    poolB: [],
+    /**
+     * Bumped whenever the pools are refilled, so the GPU producer can
+     * re-upload them exactly once per seed() instead of once per fill.
+     */
+    poolsVersion: 0,
   };
 }
 
 registerContextInit((ctx) => {
   ctx.state.fill = createFillState();
   ctx.fillCursor = createFillCursor();
+  const scope = createFillScope();
+  ctx.rng.scopes.fill = scope;
+  ctx.rng.onSeed(() => {
+    scope.id = 0;
+    scope.op = 0;
+  });
+  ctx.rng.onSeed(() => _fillGaussianPools(ctx));
 });
 
 // Cache the current state
@@ -198,38 +235,29 @@ export function _noFill(ctx) {
 // Fill Manager Functions
 // ---------------------------------------------------------------------------
 
-// Hash-stream scope counters. Each createFill() gets a fresh fill id;
-// each randomized FillPoly operation (constructor setup, trim, grow, scatter,
-// erase, fill-level draws) grabs the next op salt. The op ORDER is fixed
-// control flow inside fill(), so (fillId, opId) is reproducible and is what
-// the grow-compute dispatch receives as a uniform.
-let _fillId = 0;
-let _fillOp = 0;
-const nextOpSalt = () => (((_fillId << 10) + _fillOp++) >>> 0);
-
-defaultContext.rng.onSeed(() => {
-  _fillId = 0;
-  _fillOp = 0;
-});
+/**
+ * The next op salt of this painting's fill scope.
+ * @param {import("../core/context.js").BrushContext} ctx
+ */
+const nextOpSalt = (ctx) => {
+  const scope = ctx.rng.scopes.fill;
+  return (((scope.id << 10) + scope.op++) >>> 0);
+};
 
 // Pre-compute gaussians for reuse
 const GAUSSIAN_POOL_SIZE = 512;
-const _gaussians = [[], []]; // [a, b]
-// Bumped whenever the pools are refilled, so the GPU producer can re-upload
-// them exactly once per seed() instead of once per fill.
-let _poolsVersion = 0;
 /**
  * @param {import("../core/context.js").BrushContext} ctx
  */
 function _fillGaussianPools(ctx) {
+  const scope = ctx.rng.scopes.fill;
   const gaussian = ctx.rng.gaussian;
   for (let i = 0; i < GAUSSIAN_POOL_SIZE; i++) {
-    _gaussians[0][i] = gaussian(0.5, 0.2);
-    _gaussians[1][i] = gaussian(0, 0.02);
+    scope.poolA[i] = gaussian(0.5, 0.2);
+    scope.poolB[i] = gaussian(0, 0.02);
   }
-  _poolsVersion++;
+  scope.poolsVersion++;
 }
-defaultContext.rng.onSeed(() => _fillGaussianPools(defaultContext));
 
 function _fillStartIndex(pts, angle) {
   const cs = cossin(angle);
@@ -301,9 +329,10 @@ export function createFill(ctx, polygon) {
     if (a.y < fc.bbMinY) fc.bbMinY = a.y;
     if (a.y > fc.bbMaxY) fc.bbMaxY = a.y;
   }
-  _fillId++;
-  _fillOp = 0;
-  const salt = nextOpSalt();
+  const scope = ctx.rng.scopes.fill;
+  scope.id++;
+  scope.op = 0;
+  const salt = nextOpSalt(ctx);
   const v = [...polygon.vertices];
   const _wr = rh(STREAM.FILL_WR, salt, 0, 0, 75);
   const fluid = ~~(v.length * 0.25 * (_wr < 5 ? 1 : _wr < 15 ? 2 : 3));
@@ -419,7 +448,7 @@ class FillPoly {
 
       // Randomize center (single calculation)
       const rh = ctx.rng.rh;
-      const csalt = nextOpSalt();
+      const csalt = nextOpSalt(ctx);
       const rx = rh(STREAM.FILL_CENTER_X, csalt, 0, -0.6, 0.6) * maxX;
       const ry = rh(STREAM.FILL_CENTER_Y, csalt, 0, -0.6, 0.6) * maxY;
       this.midP = { x: center.x + rx, y: center.y + ry };
@@ -453,7 +482,7 @@ class FillPoly {
     const evx = eEnd.x - eStart.x, evy = eEnd.y - eStart.y;
     const edgeLen = Math.hypot(evx, evy);
 
-    const salt = nextOpSalt();
+    const salt = nextOpSalt(ctx);
     const rh = ctx.rng.rh;
 
     // Estimate typical vertex spacing from one random kept vertex pair,
@@ -514,7 +543,7 @@ class FillPoly {
     const fc = ctx.fillCursor;
     const sides = fc.polygon.sides;
 
-    const salt = nextOpSalt();
+    const salt = nextOpSalt(ctx);
     for (let i = 0; i < keep; i++) {
       const j = ~~(i * step + rh(STREAM.SCATTER_PICK, salt, i, 0, stepRand)) % L;
       let p = this.v[j];
@@ -568,33 +597,35 @@ class FillPoly {
     const len = tr_v.length;
 
     const outLen = len * 2;
-    if (_growInsX.length < len) { _growInsX = new Array(len); _growInsY = new Array(len); }
-    if (_growMods.length < outLen) { _growMods = new Array(outLen); _growDirs = new Array(outLen); }
-    const insertedX = _growInsX;
-    const insertedY = _growInsY;
-    const newMods = _growMods;
-    const newDirs = _growDirs;
+    const fc = ctx.fillCursor;
+    if (fc.insX.length < len) { fc.insX = new Array(len); fc.insY = new Array(len); }
+    if (fc.mods.length < outLen) { fc.mods = new Array(outLen); fc.dirs = new Array(outLen); }
+    const insertedX = fc.insX;
+    const insertedY = fc.insY;
+    const newMods = fc.mods;
+    const newDirs = fc.dirs;
     const bleedDirDeg = ctx.state.fill.direction === "out" ? -90 : 90;
 
-    if (_gaussians[0].length === 0) _fillGaussianPools(ctx);
-    const gPool = _gaussians[0],
+    const pools = ctx.rng.scopes.fill;
+    if (pools.poolA.length === 0) _fillGaussianPools(ctx);
+    const gPool = pools.poolA,
       gPoolLen = gPool.length;
-    const g2Pool = _gaussians[1],
+    const g2Pool = pools.poolB,
       g2PoolLen = g2Pool.length;
 
-    const salt = nextOpSalt();
+    const salt = nextOpSalt(ctx);
     let idx = 0;
     let insertedIdx = 0;
     let mod = f === 999 ? rh(STREAM.GROW_MOD999, salt, 0, 0.6, 0.8) : ctx.state.fill.bleed_strength;
 
-    // Pre-compute GROW_CAP step — if even step (step=2,4,...), all odd-indexed inserted
+    // Pre-compute the cap step — if even step (step=2,4,...), all odd-indexed inserted
     // vertices will be discarded by downsampling. Skip cossin+rotation.
     // (Counter-based RNG: nothing to consume to keep sequences aligned.)
-    const preStep = GROW_CAP && len * 2 > GROW_CAP ? Math.ceil(len * 2 / GROW_CAP) : 1;
+    const preStep = fc.growCap && len * 2 > fc.growCap ? Math.ceil(len * 2 / fc.growCap) : 1;
     const skipInserted = preStep >= 2 && (preStep & 1) === 0;
 
     if (skipInserted) {
-      // Fast path: inserted vertices will be discarded by GROW_CAP step=2.
+      // Fast path: inserted vertices will be discarded by cap step=2.
       // Result is exactly the trimmed polygon — skip all array writes.
       return new FillPoly(ctx, tr_v, tr_m, this.midP, tr_dir, false, this.sizeX, this.sizeY);
     } else {
@@ -650,8 +681,8 @@ class FillPoly {
       fm,
       fd;
     
-    if (GROW_CAP && idx > GROW_CAP) {
-      const step = Math.ceil(idx / GROW_CAP);
+    if (fc.growCap && idx > fc.growCap) {
+      const step = Math.ceil(idx / fc.growCap);
       const kept = Math.ceil(idx / step);
       fv = new Array(kept);
       fm = new Array(kept);
@@ -726,9 +757,10 @@ class FillPoly {
       e: density * (m.x + ctx.width / 2),
       f: density * (m.y + ctx.height / 2),
     };
-    GROW_CAP = GROW_MAX_VERTS * Math.max(0.2, 2 * ctx.state.fill.bleed_strength);
+    ctx.fillCursor.growCap =
+      GROW_MAX_VERTS * Math.max(0.2, 2 * ctx.state.fill.bleed_strength);
     const size = Math.max(this.sizeX, this.sizeY);
-    const darker = ctx.rng.rh(STREAM.FILL_DARKER, nextOpSalt(), 0, 0.15, 0.7);
+    const darker = ctx.rng.rh(STREAM.FILL_DARKER, nextOpSalt(ctx), 0, 0.15, 0.7);
 
     // `root` is either `this` (the retained CPU producer) or a
     // GpuFillPoly handle. Everything below is producer-agnostic — one
@@ -830,7 +862,7 @@ class FillPoly {
    */
   erase(ctx, texture, intensity, matrix) {
     const { rh, nh } = ctx.rng;
-    const salt = nextOpSalt();
+    const salt = nextOpSalt(ctx);
     const p = this._eraseParams(texture, intensity);
     const numCircles = ~~(rh(STREAM.ERASE_COUNT, salt, 0, 80, 110) * p.countFactor);
     const halfSizeX = p.halfSizeX;
@@ -938,16 +970,17 @@ class GpuFillPoly {
  * @param {import("../core/context.js").BrushContext} ctx
  */
 function _tryGpuFill(ctx, poly, matrix, size) {
-  if (Stats.enabled || _getUseCpuWalk()) return null;
+  if (Stats.enabled || _getUseCpuWalk(ctx)) return null;
   const surface = ctx.mix.ctx;
   const driver = surface?.gpuFill;
   if (!driver || typeof surface.beginGpuFill !== "function") return null;
   const n = poly.v.length;
   if (n < 3 || n > driver.capacity) return null;
-  if (_gaussians[0].length === 0) _fillGaussianPools(ctx);
+  const scope = ctx.rng.scopes.fill;
+  if (scope.poolA.length === 0) _fillGaussianPools(ctx);
   // The gaussian pools are DATA (drawn by the seeded sequential generator at
   // seed() time); the shader only hashes an INDEX into them.
-  driver.uploadPoolsIfStale(_poolsVersion, _gaussians[0], _gaussians[1]);
+  driver.uploadPoolsIfStale(scope.poolsVersion, scope.poolA, scope.poolB);
   const fc = ctx.fillCursor;
   const polyVerts = fc.polygon.vertices;
   const rootVerts = new Float32Array(2 * n);
@@ -969,11 +1002,12 @@ function _tryGpuFill(ctx, poly, matrix, size) {
     sizeY: poly.sizeY,
     polygonVerts: sides,
     polygonBBox: { minX: fc.bbMinX, minY: fc.bbMinY, maxX: fc.bbMaxX, maxY: fc.bbMaxY },
-    fillId: _fillId,
-    opCounter: _fillOp,
+    seed: ctx.rng.seedU32(),
+    fillId: scope.id,
+    opCounter: scope.op,
     bleedStrength: ctx.state.fill.bleed_strength,
     direction: ctx.state.fill.direction,
-    growCap: GROW_CAP,
+    growCap: ctx.fillCursor.growCap,
     matrix,
     // The border is widest at layer 0 — that sets the dirty-rect padding.
     maxLineWidth: (size / 25) * ctx.state.fill.border_strength,
@@ -984,9 +1018,9 @@ function _tryGpuFill(ctx, poly, matrix, size) {
 // ---------------------------------------------------------------------------
 // Test-only exports. grow-cpu-ref.js currently rebuilds FillPoly by
 // extracting trim()/grow() source text; this export lets the oracle move
-// to the real class. setScope wires the module-level randomness scope the
-// methods read (fill id / op counter / GROW_CAP / gaussian pools).
-// Not public API.
+// to the real class. setScope wires the randomness scope the methods read
+// (fill id / op counter / grow cap / gaussian pools) on a context, the
+// default one unless another is passed. Not public API.
 // ---------------------------------------------------------------------------
 
 /**
@@ -1001,16 +1035,17 @@ export const _test = {
   get FillPoly() {
     return FillPoly;
   },
-  setScope({ fillId, op, growCap, gaussians } = {}) {
-    if (fillId !== undefined) _fillId = fillId;
-    if (op !== undefined) _fillOp = op;
-    if (growCap !== undefined) GROW_CAP = growCap;
+  setScope({ fillId, op, growCap, gaussians } = {}, ctx = defaultContext) {
+    const scope = ctx.rng.scopes.fill;
+    if (fillId !== undefined) scope.id = fillId;
+    if (op !== undefined) scope.op = op;
+    if (growCap !== undefined) ctx.fillCursor.growCap = growCap;
     if (gaussians !== undefined) {
-      _gaussians[0] = [...gaussians[0]];
-      _gaussians[1] = [...gaussians[1]];
+      scope.poolA = [...gaussians[0]];
+      scope.poolB = [...gaussians[1]];
     }
   },
-  getOp: () => _fillOp,
+  getOp: (ctx = defaultContext) => ctx.rng.scopes.fill.op,
 };
 
 // ---------------------------------------------------------------------------

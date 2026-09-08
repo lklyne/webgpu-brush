@@ -1,14 +1,3 @@
-/**
- * Generates a random number or picks a random element from an array.
- * - random()        → float in [0, 1)
- * - random(max)     → float in [0, max)
- * - random(min,max) → float in [min, max)
- * - random(array)   → random element from array
- * @param {number|Array} [e=0]
- * @param {number} [r=1]
- * @returns {number}
- */
-export function random(e?: number | any[], r?: number, ...args: any[]): number;
 export namespace STREAM {
     let STROKE_SETUP: number;
     let STROKE_ALPHA_NOISE: number;
@@ -58,30 +47,8 @@ export namespace STREAM {
     let HATCH_JIT_Y2: number;
     let HATCH_WEIGHT: number;
 }
-export function _getSeedU32(): number;
-export function hashU32(streamId: number, salt: number, index: number): number;
-export function hash01(streamId: any, salt: any, index: any): number;
-export function rh(streamId: number, salt: number, index: number, min?: number, max?: number): number;
-export function nh(streamId: any, salt: any, index: any, mean?: number, stdev?: number): number;
-export function _onSeed(cb: Function): number;
-export function seed(s: number | string): void;
-/**
- * Simplex‐noise 2D function.
- * @type {function(number, number): number}
- */
-export let noise: (arg0: number, arg1: number) => number;
-export let noise2: import("simplex-noise").NoiseFunction2D;
-export function noiseSeed(s: number | string): void;
-export function rr2(e?: number, r?: number): number;
-export function rArray(array: T[]): T;
-export function randInt2(e: any, r: any): number;
-export function gaussian(mean?: number, stdev?: number): number;
-export function weightedRand(weights: any): string | number;
 export function map(value: number, a: number, b: number, c: number, d: number, withinBounds?: boolean): number;
 export function constrain(n: number, low: number, high: number): number;
-export function cos(angle: number): number;
-export function sin(angle: number): number;
-export function cossin(angle: any): Float32Array<ArrayBuffer>;
 export function toDegrees(ctx: import("./context.js").BrushContext, rad: number, isRad?: boolean): number;
 export function toDegreesSigned(ctx: import("./context.js").BrushContext, angle: number, isRad?: boolean): number;
 export function rotate(cx: number, cy: number, x: number, y: number, angle: number): {
@@ -106,7 +73,5 @@ export function intersectLines(s1a: {
     x: number;
     y: number;
 } | false;
-/**
- * A uniform PRNG function. Returns a float in [0,1).
- */
-export type RNG = () => number;
+export { createRng, hashU32From, hash01From, random, rr2, randInt2, rArray, gaussian, weightedRand, noise, noise2, hashU32, hash01, rh, nh, seed, noiseSeed, _getSeedU32 } from "./rng.js";
+export { cos, sin, cossin } from "./trig.js";

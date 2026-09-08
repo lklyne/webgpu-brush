@@ -98,6 +98,7 @@ export function createGpuFillDriver(gpu, cache, fillR, opts = {}) {
      * @param {number} o.sizeY
      * @param {Float32Array} o.polygonVerts original polygon, flat xy
      * @param {{minX,minY,maxX,maxY}} o.polygonBBox
+     * @param {number} o.seed the painting's hash-stream seed word
      * @param {number} o.fillId
      * @param {number} o.opCounter
      * @param {number} o.bleedStrength
@@ -114,6 +115,7 @@ export function createGpuFillDriver(gpu, cache, fillR, opts = {}) {
       circleCursor = 0;
       stats.fills++;
       gc.setState({
+        seed: o.seed,
         bleedStrength: o.bleedStrength,
         direction: o.direction,
         growCap: o.growCap,

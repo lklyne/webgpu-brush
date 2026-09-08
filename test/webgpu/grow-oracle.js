@@ -138,7 +138,7 @@ function comparePoly(name, gpuP, cpuP) {
 async function main() {
   // Deterministic CPU state: seeds the hash streams AND the sequential
   // generator feeding the gaussian pools. No other brush module is
-  // imported here, so no _onSeed callbacks perturb the pool draws.
+  // imported here, so no reseed callbacks perturb the pool draws.
   seed(FIXTURE_SEED);
   const pools = [[], []];
   for (let i = 0; i < POOL_SIZE; i++) {

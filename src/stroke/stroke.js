@@ -42,8 +42,8 @@ import {
   walkEligible,
   queueWalkStroke,
 } from "./gl_draw.js";
-// Inspection seam (guarded by _iflag.active — no-op when unused)
-import { _iflag, _notifyStrokeBegin } from "../webgpu/inspect.js";
+// Inspection seam (guarded by ctx.inspect.active — no-op when unused)
+import { _notifyStrokeBegin } from "../webgpu/inspect.js";
 
 initStrokeComposite(); // Register the stroke composite system for offscreen mask rendering and compositing.
 
@@ -89,9 +89,41 @@ function createStrokeCursor() {
   };
 }
 
+// Fixed-size gaussian pool, hash-picked per stamp.
+const GAUSS_POOL_N = 512;
+
+/**
+ * The stroke randomness scope: the per-stroke id the stamp salts are built
+ * from, and the fixed-size gaussian pool the stamps hash-pick out of. Both
+ * are keyed to the seed, so they live on the context's rng and `seed()`
+ * resets them — this context's, and no other's.
+ *
+ * @returns {object} The `ctx.rng.scopes.stroke` object.
+ */
+function createStrokeScope() {
+  return {
+    /**
+     * Per-stroke scope counter for the hash streams. The stamp salt reserves
+     * the low 2 bits for the draw phase: 0 = main stamp loop, 1 = markerTip
+     * at stroke start, 2 = markerTip at stroke end.
+     */
+    id: 0,
+    /** @type {number[]} hash-picked gaussian pool */
+    pool: new Array(GAUSS_POOL_N),
+    /** filled lazily at the first stroke after a reseed */
+    poolReady: false,
+  };
+}
+
 registerContextInit((ctx) => {
   ctx.state.stroke = createStrokeState();
   ctx.strokeCursor = createStrokeCursor();
+  const scope = createStrokeScope();
+  ctx.rng.scopes.stroke = scope;
+  ctx.rng.onSeed(() => {
+    scope.poolReady = false;
+    scope.id = 0;
+  });
 });
 
 let list = new Map();
@@ -220,7 +252,9 @@ export function add(name, params) {
     // Users draw in a 100×100 coordinate space (origin at centre);
     // dark fills/strokes → high opacity, light/white → transparent.
     const key = `custom::${name}`;
-    invalidateTexEntry(key); // discard stale GPU texture if tip changed
+    // Discard a stale GPU texture if the tip changed. Brush definitions are
+    // a global registry, so this reaches the default painting's tip cache.
+    invalidateTexEntry(defaultContext, key);
     const g = createTipSurface(500, 500);
     g.pixelDensity(1);
     g.background(255);
@@ -421,40 +455,24 @@ function initializeDrawingState(ctx, x, y, length, plot = false) {
   if (sc.plot) sc.plot.calcIndex(0);
 }
 
-// Fixed-size gaussian pool, hash-picked per stamp. Filled with the
-// sequential seeded generator at first use / reseed — the pool contents are
-// CPU-side data the GPU compute shaders receive as a buffer; only the PICK is
-// counter-based.
-const GAUSS_POOL_N = 512;
-const gaussians = new Array(GAUSS_POOL_N);
-let _gaussPoolReady = false;
-
 /**
+ * Fills the context's gaussian pool with the sequential seeded generator —
+ * the pool contents are CPU-side data the GPU compute shaders receive as a
+ * buffer; only the PICK is counter-based.
  * @param {import("../core/context.js").BrushContext} ctx
  */
 function fillGaussPool(ctx) {
+  const scope = ctx.rng.scopes.stroke;
   const gaussian = ctx.rng.gaussian;
-  for (let i = 0; i < GAUSS_POOL_N; i++) gaussians[i] = gaussian();
-  _gaussPoolReady = true;
+  for (let i = 0; i < GAUSS_POOL_N; i++) scope.pool[i] = gaussian();
+  scope.poolReady = true;
 }
 
 /** Hash-picked gaussian pool sample. */
 const gaussPick = (ctx, streamId, salt, index) =>
-  gaussians[ctx.rng.hashU32(streamId, salt, index) % GAUSS_POOL_N];
-
-// Per-stroke scope counter for the hash streams. The stamp salt reserves the
-// low 2 bits for the draw phase: 0 = main stamp loop, 1 = markerTip at stroke
-// start, 2 = markerTip at stroke end.
-//
-// Still module-level, along with the gaussian pool above: both are keyed to
-// the seed, and the seed and its reset callbacks have not moved onto the
-// context yet. The cursor they are bumped alongside has (`ctx.strokeCursor`).
-let _strokeId = 0;
-
-defaultContext.rng.onSeed(() => {
-  _gaussPoolReady = false;
-  _strokeId = 0;
-});
+  ctx.rng.scopes.stroke.pool[
+    ctx.rng.hashU32(streamId, salt, index) % GAUSS_POOL_N
+  ];
 
 /**
  * Executes the drawing operation.
@@ -509,10 +527,11 @@ function tryGpuWalk(ctx, dirDegrees) {
   const State = ctx.state;
   const Mix = ctx.mix;
   const param = list.get(State.stroke.type)?.param;
-  if (!walkEligible(param)) return false;
+  if (!walkEligible(ctx, param)) return false;
 
-  if (!_gaussPoolReady) fillGaussPool(ctx); // same lazy fill point as saveState
-  _strokeId++;
+  const scope = ctx.rng.scopes.stroke;
+  if (!scope.poolReady) fillGaussPool(ctx); // same lazy fill point as saveState
+  scope.id++;
 
   isReady(ctx);
   const switchingToBrush = Mix.isBrush !== true;
@@ -521,7 +540,7 @@ function tryGpuWalk(ctx, dirDegrees) {
   Mix.blend(ctx, State.stroke.color);
 
   const chain = queueWalkStroke(ctx, {
-    strokeId: _strokeId,
+    strokeId: scope.id,
     kind: param.type === "marker" || param.type === "spray" ? param.type : "default",
     x: sc.position.x - ctx.width / 2,
     y: sc.position.y - ctx.height / 2,
@@ -531,7 +550,7 @@ function tryGpuWalk(ctx, dirDegrees) {
     strokeWeight: State.stroke.weight,
     fieldActive: State.field?.isActive ?? false,
     wiggle: State.field?.wiggle ?? 1,
-    gaussPool: gaussians,
+    gaussPool: scope.pool,
     chain: { pc: cur.pressureCount, cached: cur.cachedPressure },
   });
   cur.pressureCount = chain.pc;
@@ -550,12 +569,13 @@ function saveState(ctx) {
   const Mix = ctx.mix;
   const { rh, nh, hash01 } = ctx.rng;
   if (Stats.enabled) Stats.beginStroke();
-  if (!_gaussPoolReady) fillGaussPool(ctx);
-  _strokeId++;
+  const scope = ctx.rng.scopes.stroke;
+  if (!scope.poolReady) fillGaussPool(ctx);
+  scope.id++;
   // Inspection seam: latch the stream/hook decision for this CPU-walked stroke.
-  if (_iflag.active) _notifyStrokeBegin(_strokeId);
+  if (ctx.inspect.active) _notifyStrokeBegin(ctx, scope.id);
   // Stamp salt: low 2 bits reserved for draw phase (0 loop, 1 start, 2 end).
-  cur.salt = (_strokeId << 2) >>> 0;
+  cur.salt = (scope.id << 2) >>> 0;
   cur.phase = 0;
   const salt = cur.salt;
   cur.seed = hash01(STREAM.STROKE_SETUP, salt, 6) * 999999;
@@ -779,6 +799,7 @@ function drawSpray(ctx, pressure, idx) {
     const yRandomFactor = rh(STREAM.SPRAY_DOT_Y, salt, dotIdx, -1, 1);
     const sqrtPart = Math.sqrt((r * vibration) ** 2 - rX ** 2);
     circle(
+      ctx,
       sc.position.x + rX,
       sc.position.y + yRandomFactor * sqrtPart,
       sw,
@@ -809,6 +830,7 @@ function drawMarker(
   const rx = vibrate ? vibration * rh(STREAM.MARKER_VIB_X, salt, idx, -1, 1) : 0;
   const ry = vibrate ? vibration * rh(STREAM.MARKER_VIB_Y, salt, idx, -1, 1) : 0;
   circle(
+    ctx,
     sc.position.x + rx,
     sc.position.y + ry,
     weight * cur.p.weight * pressure,
@@ -846,6 +868,7 @@ function drawImageTip(
     angle = ((sc.plot ? -sc.cachedPlotAngle : -sc.dir) + sc.position.angle()) * (Math.PI / 180);
   }
   stampImage(
+    ctx,
     sc.position.x + rx,
     sc.position.y + ry,
     size,
@@ -895,6 +918,7 @@ function drawDefault(ctx, pressure, idx) {
       weight;
     const alpha = Math.max(0.9, pressure) * cur.alpha * rh(STREAM.DEFAULT_ALPHA, salt, idx, 0.75, 1.1);
     circle(
+      ctx,
       sc.position.x + dx,
       sc.position.y + dy,
       diameter,

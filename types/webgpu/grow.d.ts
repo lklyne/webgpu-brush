@@ -13,13 +13,16 @@ export function buildGrowPrelude(): string;
  */
 export function fetchGrowWgsl(): Promise<string>;
 /**
- * The library's hash-stream seed word. utils.js exports it directly
- * (_getSeedU32); the finalizer inversion below survives purely as
- * a cross-check that the hash construction and the export stay in
- * agreement — it fails loudly if either changes.
+ * Checks a painting's hash-stream seed word against the hash construction and
+ * returns it. The word itself is handed over by the caller (fill.js reads it
+ * off `ctx.rng`); the finalizer inversion survives purely as a cross-check
+ * that the construction this module was built against still holds — it fails
+ * loudly if core/rng.js changes it. Defaults to the DEFAULT painting's word,
+ * which is what the component's initial state uses.
+ * @param {number} [seedWord]
  * @returns {number} u32
  */
-export function deriveSeedU32(): number;
+export function deriveSeedU32(seedWord?: number): number;
 /**
  * Decomposes a positive fraction g <= 1 into { mHi, mLo, shift } with
  * g === (mHi * 2^32 + mLo) * 2^-shift exactly. shift === 0 is the
@@ -67,7 +70,8 @@ export function createGrowCompute(gpu: import("./device.js").GpuContext, cache: 
     /**
      * @param {{seed?: number, bleedStrength?: number,
      *          direction?: string, growCap?: number}} s
-     * seed defaults to re-deriving from core/utils (call after brush seed()).
+     * seed is the drawing painting's hash-stream word (fill.js passes
+     * `ctx.rng.seedU32()`); it falls back to the default painting's.
      * growCap defaults to the fill.js formula from bleedStrength.
      */
     setState(s?: {
@@ -257,7 +261,8 @@ export function createGrowComputeSync(gpu: any, cache: any, opts?: {}): {
     /**
      * @param {{seed?: number, bleedStrength?: number,
      *          direction?: string, growCap?: number}} s
-     * seed defaults to re-deriving from core/utils (call after brush seed()).
+     * seed is the drawing painting's hash-stream word (fill.js passes
+     * `ctx.rng.seedU32()`); it falls back to the default painting's.
      * growCap defaults to the fill.js formula from bleedStrength.
      */
     setState(s?: {

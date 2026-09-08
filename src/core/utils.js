@@ -1,79 +1,41 @@
-
 // =============================================================================
-// Section: Randomness & Noise
+// Module: Utilities
 // =============================================================================
-
-import { createNoise2D } from "simplex-noise";
-
-// ---------------------------------------------------------------------------
-// Mulberry32 PRNG — ~4x faster than prng_alea (Alea), full statistical quality
-// Passes PractRand and BigCrush; suitable for visual simulation.
-// ---------------------------------------------------------------------------
-
 /**
- * Maps any seed value (number or string) to a non-zero uint32.
- * Uses a finalizer from SplitMix64 for good avalanche behavior.
- * @param {number|string} seed
- * @returns {number} uint32
+ * Numeric mapping, trigonometry and geometry helpers, plus the STREAM map
+ * that names every counter-based randomness stream.
+ *
+ * The generators themselves live in core/rng.js (one set per painting) and
+ * the trig tables in core/trig.js; both are re-exported here so this module
+ * keeps the surface every consumer — and the public `random` / `noise` /
+ * `wRand` exports of the standalone entry — already imports from it. The
+ * re-exported functions all drive the DEFAULT painting's rng; internal code
+ * draws through `ctx.rng` instead.
  */
-function _hashSeed(seed) {
-  let h = 0;
-  const s = String(seed);
-  for (let i = 0; i < s.length; i++) {
-    h = Math.imul(h ^ s.charCodeAt(i), 0x9e3779b9) | 0;
-    h ^= h >>> 15;
-  }
-  // Finalizer
-  h = Math.imul(h ^ h >>> 16, 0x85ebca6b) | 0;
-  h = Math.imul(h ^ h >>> 13, 0xc2b2ae35) | 0;
-  return (h ^ h >>> 16) >>> 0 || 1;
-}
 
-/**
- * Creates a Mulberry32 PRNG seeded from an arbitrary value.
- * Returns a function that yields uniform floats in [0, 1).
- * @param {number|string} seed
- * @returns {() => number}
- */
-function _makePRNG(seed) {
-  let s = _hashSeed(seed);
-  return () => {
-    s = s + 0x6D2B79F5 | 0;
-    let t = Math.imul(s ^ s >>> 15, s | 1);
-    t ^= t + Math.imul(t ^ t >>> 7, t | 61);
-    return ((t ^ t >>> 14) >>> 0) * 2.3283064365386963e-10;
-  };
-}
+export {
+  createRng,
+  hashU32From,
+  hash01From,
+  random,
+  rr2,
+  randInt2,
+  rArray,
+  gaussian,
+  weightedRand,
+  noise,
+  noise2,
+  hashU32,
+  hash01,
+  rh,
+  nh,
+  seed,
+  noiseSeed,
+  _getSeedU32,
+} from "./rng.js";
+export { cos, sin, cossin } from "./trig.js";
 
-/**
- * A uniform PRNG function. Returns a float in [0,1).
- * @callback RNG
- * @returns {number}
- */
-/** @type {RNG} */
-let rng = _makePRNG(Math.random());
-let rng2 = _makePRNG(Math.random() + ':2');
-
-// ---------------------------------------------------------------------------
-// Counter-based hash RNG — replaces upstream's sequential rr() stream.
-//
-// Internal geometry randomness no longer draws from an implicit sequential
-// stream: every draw is hash(seed, streamId, salt, index), so any consumer
-// (including the GPU compute shaders) can reproduce any single value
-// from its coordinates alone, in any order, in parallel.
-//
-// Construction: multiply-xor input combiner + the lowbias32 finalizer
-// (Chris Wellons, "Prospecting for Hash Functions", 2018 — bias 0.107).
-// Cost is 5 imul + 6 xor/shift per draw, stateless — on par with one
-// Mulberry32 step and trivially portable to WGSL (u32 ops only).
-// Chosen over PCG: no 64-bit state/multiplies to emulate in either JS or
-// WGSL; over wang_hash: fewer rounds for measurably lower bias.
-//
-// This intentionally breaks same-seed reproduction of upstream p5.brush
-// sketches (settled plan decision). Run-to-run reproducibility per seed is
-// preserved: seed() resets _seedU32 and every module stream counter (via
-// _onSeed).
-// ---------------------------------------------------------------------------
+import { cossin } from "./trig.js";
 
 /**
  * Stream identifiers — one per randomness purpose. GPU compute shaders must
@@ -141,186 +103,6 @@ export const STREAM = {
   HATCH_WEIGHT: 47,
 };
 
-/** Global seed word for the hash streams; reset by seed(). */
-let _seedU32 = _hashSeed(Math.random());
-
-/**
- * The current hash-stream seed word. GPU compute components
- * (grow-compute, strokewalk-compute) hand this to their shaders so WGSL
- * hashU32 reproduces the CPU streams bit-exactly. Test/internal use —
- * grow.js previously recovered it by inverting the lowbias32 finalizer.
- * @returns {number} uint32
- */
-export const _getSeedU32 = () => _seedU32;
-
-/**
- * Counter-based hash: (seed, streamId, salt, index) → uint32.
- * @param {number} streamId - STREAM.* purpose id.
- * @param {number} salt - Per-scope word (strokeSalt / fillSalt / hatchId).
- * @param {number} index - Loop counter at the call site.
- * @returns {number} uint32
- */
-export const hashU32 = (streamId, salt, index) => {
-  let h =
-    (_seedU32 ^
-      Math.imul(streamId, 0x9e3779b1) ^
-      Math.imul(salt, 0x85ebca77) ^
-      Math.imul(index, 0xc2b2ae3d)) |
-    0;
-  h = Math.imul(h ^ (h >>> 16), 0x21f0aaad);
-  h = Math.imul(h ^ (h >>> 15), 0x735a2d97);
-  return (h ^ (h >>> 15)) >>> 0;
-};
-
-/**
- * Counter-based uniform float in [0,1).
- */
-export const hash01 = (streamId, salt, index) =>
-  hashU32(streamId, salt, index) * 2.3283064365386963e-10;
-
-/**
- * Counter-based uniform float in [min, max). The rr() replacement.
- * @param {number} streamId - STREAM.* purpose id.
- * @param {number} salt - Per-scope word.
- * @param {number} index - Loop counter at the call site.
- * @param {number} [min=0]
- * @param {number} [max=1]
- */
-export const rh = (streamId, salt, index, min = 0, max = 1) =>
-  min + hash01(streamId, salt, index) * (max - min);
-
-/**
- * Counter-based gaussian N(mean, stdev²) via Box-Muller on two hash draws
- * (index*2, index*2+1).
- */
-export const nh = (streamId, salt, index, mean = 0, stdev = 1) => {
-  const u = 1 - hash01(streamId, salt, index * 2);
-  const v = hash01(streamId, salt, index * 2 + 1);
-  return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v) * stdev + mean;
-};
-
-const _seedCallbacks = [];
-
-/**
- * Register a callback to be called whenever seed() is invoked.
- * Used internally by modules that maintain gaussian pools.
- * @param {Function} cb
- */
-export const _onSeed = (cb) => _seedCallbacks.push(cb);
-
-/**
- * Seed the random number generator.
- * @param {number|string} s – The seed value.
- * @returns {void}
- */
-export const seed = (s) => {
-  rng = _makePRNG(s);
-  rng2 = _makePRNG(`${s}:2`);
-  _seedU32 = _hashSeed(s);
-  _gaussCached = false; // reset cached gaussian on reseed
-  for (const callback of _seedCallbacks) {
-    callback();
-  }
-};
-
-/**
- * Simplex‐noise 2D function.
- * @type {function(number, number): number}
- */
-export let noise = createNoise2D(_makePRNG(Math.random()));
-export let noise2 = createNoise2D(_makePRNG(Math.random() + ':2'));
-
-/**
- * Seed the noise generator.
- * @param {number|string} s - The seed value.
- * @returns {void}
- */
-export const noiseSeed = (s) => {
-  noise = createNoise2D(_makePRNG(s));
-  noise2 = createNoise2D(_makePRNG(`${s}:2`));
-};
-
-/**
- * Generates a random number or picks a random element from an array.
- * - random()        → float in [0, 1)
- * - random(max)     → float in [0, max)
- * - random(min,max) → float in [min, max)
- * - random(array)   → random element from array
- * @param {number|Array} [e=0]
- * @param {number} [r=1]
- * @returns {number}
- */
-export function random(e = 0, r = 1) {
-  if (Array.isArray(e)) return rArray(e);
-  if (arguments.length === 1) return rng2() * e;
-  return rr2(e, r);
-}
-export const rr2 = (e = 0, r = 1) => e + rng2() * (r - e);
-
-/**
- * Selects a random element from an array.
- * @param {T[]} array - Input array.
- * @returns {T}
- */
-export const rArray = (array) => array[~~(rng() * array.length)];
-
-/**
- * Returns a random integer in [min, max) from the user-facing stream.
- * @param {number} min
- * @param {number} max
- * @returns {number}
- */
-export const randInt2 = (e, r) => ~~rr2(e, r);
-
-/**
- * Gaussian (normal) random sample N(mean, stdev²).
- * @param {number} [mean=0]
- * @param {number} [stdev=1]
- * @returns {number}
- */
-// Box-Muller with cached second value — halves Math.sqrt/Math.log calls.
-let _gaussCached = false;
-let _gaussZ1 = 0;
-export const gaussian = (mean = 0, stdev = 1) => {
-  if (_gaussCached) {
-    _gaussCached = false;
-    return _gaussZ1 * stdev + mean;
-  }
-  const u = 1 - rng();
-  const v = rng();
-  const r = Math.sqrt(-2.0 * Math.log(u));
-  const angle = 360 * v;
-  _gaussZ1 = r * sin(angle);
-  _gaussCached = true;
-  return r * cos(angle) * stdev + mean;
-};
-
-/**
- * Picks a key from an object according to weighted probabilities.
- * @param {Object<string|number, number>} weights
- * @returns {string|number}
- */
-export const weightedRand = (weights) => {
-  let totalWeight = 0;
-  const entries = [];
-
-  // Build cumulative weights array
-  for (const key in weights) {
-    totalWeight += weights[key];
-    entries.push({ key, cumulative: totalWeight });
-  }
-
-  // Get a random number between 0 and totalWeight
-  const rnd = rng() * totalWeight;
-
-  // Pick the first entry where rnd is less than the cumulative weight
-  for (const { key, cumulative } of entries) {
-    if (rnd < cumulative) {
-      return isNaN(key) ? key : parseInt(key);
-    }
-  }
-};
-
 // =============================================================================
 // Section: Numeric Mapping & Constraints
 // =============================================================================
@@ -352,69 +134,8 @@ export const map = (value, a, b, c, d, withinBounds = false) => {
 export const constrain = (n, low, high) => Math.max(Math.min(n, high), low);
 
 // =============================================================================
-// Section: Trigonometry
+// Section: Angles
 // =============================================================================
-
-// number of discrete steps (360° × 4 samples per degree)
-const totalDegrees = 1440;
-const radiansPerIndex = (2 * Math.PI) / totalDegrees;
-
-// Pre-warmed lookup tables — filled at module load, no lazy-init overhead
-const cLookup = new Float32Array(totalDegrees);
-const sLookup = new Float32Array(totalDegrees);
-for (let _i = 0; _i < totalDegrees; _i++) {
-  cLookup[_i] = Math.cos(_i * radiansPerIndex);
-  sLookup[_i] = Math.sin(_i * radiansPerIndex);
-}
-
-/**
- * Normalize an angle in degrees to a lookup-table index [0, 1440).
- * Avoids the % operator for the common range [-360, 720) found in the library.
- * @param {number} angle
- * @returns {number} integer index in [0, 1440)
- */
-const angleToIdx = (angle) => {
-  if (angle < 0) {
-    if (angle >= -360) return ~~((angle + 360) * 4);
-    angle = angle % 360;
-    return ~~((angle < 0 ? angle + 360 : angle) * 4);
-  }
-  if (angle < 360) return ~~(angle * 4);
-  if (angle < 720) return ~~((angle - 360) * 4);
-  if (angle < 1080) return ~~((angle - 720) * 4);
-  angle = angle % 360;
-  return ~~((angle < 0 ? angle + 360 : angle) * 4);
-};
-
-/**
- * Cosine of an angle (degrees), via a pre-warmed lookup table.
- * @param {number} angle
- * @returns {number}
- */
-export const cos = (angle) => cLookup[angleToIdx(angle)];
-
-/**
- * Sine of an angle (degrees), via a pre-warmed lookup table.
- * @param {number} angle
- * @returns {number}
- */
-export const sin = (angle) => sLookup[angleToIdx(angle)];
-
-/**
- * Returns [cos(angle), sin(angle)] via a single index computation.
- * Use when both values are needed for the same angle — avoids computing
- * angleToIdx() twice (once per separate cos/sin call).
- * Returns a reusable Float32Array — use values immediately, do not store the reference.
- * @param {number} angle
- * @returns {Float32Array} [cos, sin]
- */
-const _cosSinBuf = new Float32Array(2);
-export const cossin = (angle) => {
-  const idx = angleToIdx(angle);
-  _cosSinBuf[0] = cLookup[idx];
-  _cosSinBuf[1] = sLookup[idx];
-  return _cosSinBuf;
-};
 
 /**
  * Radians to degrees, wrapped into [0,360). No angle mode involved.

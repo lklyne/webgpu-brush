@@ -50,12 +50,12 @@
 //   - buildTrigTables(): utils.js's 1440-entry f32 cos/sin LUT, rebuilt
 //     with the identical expression and verified against the exported
 //     cos()/sin() at load.
-//   - deriveSeedU32(): recovers the private _seedU32 by inverting the
-//     lowbias32 finalizer on hashU32(0,0,0) — no utils.js edit needed,
-//     and it fails loudly if the hash construction ever changes.
+//   - deriveSeedU32(): cross-checks the painting's seed word by inverting
+//     the lowbias32 finalizer on hashU32(seed,0,0,0) — it fails loudly if
+//     the hash construction ever changes.
 // =============================================================================
 
-import { STREAM, hashU32, _getSeedU32, cos as utilCos, sin as utilSin } from "../core/utils.js";
+import { STREAM, hashU32From, _getSeedU32, cos as utilCos, sin as utilSin } from "../core/utils.js";
 import { GROW_WGSL } from "./wgsl/grow.wgsl.js";
 
 // --------------------------------------------------------------------------
@@ -174,15 +174,18 @@ function lowbias32(x) {
 }
 
 /**
- * The library's hash-stream seed word. utils.js exports it directly
- * (_getSeedU32); the finalizer inversion below survives purely as
- * a cross-check that the hash construction and the export stay in
- * agreement — it fails loudly if either changes.
+ * Checks a painting's hash-stream seed word against the hash construction and
+ * returns it. The word itself is handed over by the caller (fill.js reads it
+ * off `ctx.rng`); the finalizer inversion survives purely as a cross-check
+ * that the construction this module was built against still holds — it fails
+ * loudly if core/rng.js changes it. Defaults to the DEFAULT painting's word,
+ * which is what the component's initial state uses.
+ * @param {number} [seedWord]
  * @returns {number} u32
  */
-export function deriveSeedU32() {
-  const direct = _getSeedU32();
-  const out = hashU32(0, 0, 0);
+export function deriveSeedU32(seedWord = _getSeedU32()) {
+  const direct = seedWord >>> 0;
+  const out = hashU32From(direct, 0, 0, 0);
   let h = unxorshift(out, 15);
   h = Math.imul(h, INV_735A2D97) >>> 0;
   h = unxorshift(h, 15);
@@ -190,7 +193,7 @@ export function deriveSeedU32() {
   h = unxorshift(h, 16);
   if (lowbias32(h) !== out || (h >>> 0) !== direct) {
     throw new Error(
-      "grow-compute: hash construction in core/utils.js no longer matches " +
+      "grow-compute: hash construction in core/rng.js no longer matches " +
         "the lowbias32 finalizer this module was built against",
     );
   }
@@ -534,12 +537,12 @@ export function createGrowComputeSync(gpu, cache, opts = {}) {
     /**
      * @param {{seed?: number, bleedStrength?: number,
      *          direction?: string, growCap?: number}} s
-     * seed defaults to re-deriving from core/utils (call after brush seed()).
+     * seed is the drawing painting's hash-stream word (fill.js passes
+     * `ctx.rng.seedU32()`); it falls back to the default painting's.
      * growCap defaults to the fill.js formula from bleedStrength.
      */
     setState(s = {}) {
-      if (s.seed !== undefined) state.seed = s.seed >>> 0;
-      else state.seed = deriveSeedU32();
+      state.seed = deriveSeedU32(s.seed);
       if (s.bleedStrength !== undefined) state.bleedStrength = s.bleedStrength;
       if (s.direction !== undefined) {
         state.bleedDirDeg = s.direction === "out" ? -90 : 90;

@@ -1746,3 +1746,161 @@ types/index.standalone.d.ts types/three/index.d.ts` empty, `pnpm test:smoke`
 --identity` PASS with geomHash `3878505443`, `oracle-w8.mjs` 7/7 with pixel
 hash `2970327761`, `oracle-grow.mjs` 8/8. Bundle: `dist/brush.esm.js`
 238 897 → 241 541 bytes (+1.1%).
+
+### Step 4a — the randomness and the stroke batcher move onto the context
+
+Section 4 (RNG, seeds, counters, pools) and section 5 (the stroke batch in
+`gl_draw.js`) of the plan. Still a pure refactor of the single-context path:
+every gate number below is bit-identical to step 3's, geomHash included.
+
+**`ctx.rng` is a real object now** (`src/core/rng.js`, new). `createRng(seed?)`
+owns, per painting: the two Mulberry32 sequential streams, the hash-stream seed
+word, the two simplex-noise fields, the Box-Muller spare, and its own reseed
+callback list. It exposes `random`, `rr2`, `randInt2`, `rArray`, `gaussian`,
+`weightedRand`, `noise`, `noise2`, `hashU32`, `hash01`, `rh`, `nh`, `seed`,
+`noiseSeed`, `onSeed`, `seedU32()` and `scopes` (below). The methods close over
+their own state and never use `this`, because the draw sites destructure them
+(`const { rh, nh } = ctx.rng`). `noise` / `noise2` are stable functions
+forwarding to the currently seeded field rather than reassigned bindings.
+
+The hash math stays a pure module function of an explicit seed word —
+`hashU32From(seedU32, streamId, salt, index)` and `hash01From` — and the rng
+object binds its own word to it. The WGSL ports are untouched: they always
+received the seed as a uniform. `webgpu/grow.js` follows: `deriveSeedU32(word)`
+takes the word (defaulting to the default painting's) and keeps its
+finalizer-inversion cross-check, `setState({seed})` runs it on whatever
+`fill.js` passed, and `fill.js` passes `ctx.rng.seedU32()` through
+`beginGpuFill` → `fillgpu.beginFill`. So a second context's fills would upload
+their own seed instead of re-deriving a module-global one.
+
+**Where the counters and pools live.** On `ctx.rng.scopes`, keyed by owning
+module, because `seed()` is what resets them; each module installs its scope
+and its reseed callback inside its existing `registerContextInit`, in the same
+order the module-level `_onSeed` calls ran, so the reseed sequence (fill's
+eager pool refill, everything else lazy) is unchanged.
+
+- `scopes.stroke` — `{id, pool, poolReady}`: the per-stroke counter the stamp
+  salt is built from (`(id << 2) | phase`) and the fixed-size 512-entry
+  gaussian pool, filled lazily at the first stroke after a reseed.
+- `scopes.fill` — `{id, op, poolA, poolB, poolsVersion}`: the fill id, the op
+  counter behind `nextOpSalt(ctx)`, and the two 512-entry pools with the
+  version the GPU driver uploads on.
+- `scopes.hatch` — `{id}`.
+
+Pure per-fill scratch went to `ctx.fillCursor` instead, next to the polygon it
+belongs to: `growCap` (`fill()` computes it from that painting's bleed
+strength) and the four reusable `grow()` arrays (`insX`, `insY`, `mods`,
+`dirs`). `GROW_MAX_VERTS` stays a module constant.
+
+**`core/utils.js` is now partly a barrel.** The generators moved to
+`core/rng.js` and the 1440-entry cos/sin tables to `core/trig.js`; utils.js
+re-exports both, so every existing import path — including
+`export { random, noise, weightedRand as wRand } from "./core/utils.js"` in the
+standalone entry, which is what keeps `types/index.standalone.d.ts`
+byte-identical — still resolves. The module-level `random` / `noise` / `wRand`
+/ `seed` / `noiseSeed` / `gaussian` / `rh` / `hashU32` … are one-line
+forwarders to the rng that `defaultContext` adopts (`_getDefaultRng()`), so the
+public API and the default painting draw from one stream exactly as before.
+Two reasons for the three-way split rather than putting `createRng` in
+utils.js: the gaussian needs the trig LUT bit-exactly, so `utils → rng → utils`
+would have been a cycle (rollup is warning-free again), and two unit suites
+mock `core/utils.js` wholesale — `createContext()` must not depend on a mocked
+module to build its rng. `_onSeed` is gone from utils.js (nothing imports it;
+`ctx.rng.onSeed` replaced it).
+
+**The stroke batcher: per context vs per device.** `ctx.batch`
+(`createStrokeBatch()` in `stroke/gl_draw.js`) holds what belongs to one
+painting: `isLoaded` / `host` / the loaded size+density latch, the per-stroke
+matrix snapshot (`ma…my`, `halfW`, `halfH`, `scale`, `density`), the two CPU
+stamp dirty rects, the descriptor `builder`, `envState`, the super-batch
+(`pending` / `groups` / `openGroup`) and `useCpuWalk`. `circle()`,
+`stampImage()`, `invalidateTexEntry()`, `matrixIsTranslation()` and
+`walkEligible()` take the context first now; `_setUseCpuWalk` / `_getUseCpuWalk`
+default to `defaultContext` so `brush.cpuGeometry()` and `fill.js`'s CPU-DAG
+check keep their call shape.
+
+The lazily created GPU objects are per DEVICE, in a `WeakMap` keyed by
+`host.gpu.device`: the stroke `walker` and its ready flag, the raster pipeline
+and layout, and the uniform ring. The key is the `GPUDevice` and not the
+`GpuContext`, because `initDevice()` builds a fresh GpuContext per host even
+when the device is injected — two paintings sharing a device must share one
+walker (one compute submit), not compile a second. The slice also carries
+`envOwner`, the context whose environment the walker currently holds:
+`ensureEnvironment()` re-uploads when the owner is not `ctx`, so two contexts
+alternating on one device cannot inherit each other's seed word, field or
+pools even though each keeps its own `envState`. `Mix.glMask` is
+`ctx.mix.glMask` (step 3) and still decides deferred vs immediate groups, which
+is now correctly per painting.
+
+**`webgpu/inspect.js` is per painting** (`ctx.inspect`, installed by its own
+`registerContextInit`): `active` (the hot-path flag, replacing the module-level
+`_iflag` — still one boolean property read at the call sites, on an object they
+already hold), `hooks`, `currentStream`, the divert/stage cursors, the staging
+buffers and `capture`, plus `stats`. The public `stream` / `onGeometry` /
+`beginGeometry` / `endGeometry` / `readGeometry` keep their names and
+signatures and delegate to `_stream(ctx, …)` and friends; `_geometryStats` /
+`_resetGeometryStats` take an optional context. `readGeometry` no longer needs
+its dynamic `core/context.js` import (inspect.js imports the context module
+directly; only the `gl_draw.js` import stays dynamic, that cycle is real).
+
+**What stayed global, and why.** `webgpu/spectral.js`'s single-entry color memo
+— it is a pure function of the color, so it is correct for any number of
+paintings and only thrashes when two alternate; two entries can wait for a
+measurement that says it matters. `webgpu/pipeline.js`'s `nextId`, `STREAM`,
+the trig tables, the brush/field registries and the tip cache keys are
+registries and host-level tables, not painting state. `brush.add()` invalidates
+a stale custom tip on the DEFAULT painting's host, because brush definitions
+are a global registry and the tip texture cache belongs to a host — step 5
+fans that out with the instance surface.
+
+**Test changes.** `test/unit/context.test.js` +2 cases (6 total): two contexts
+seeded differently produce different `rr2` sequences, each reproducible from
+its own `seed()`, unchanged by the other's reseed and unchanged when
+interleaved (hash streams too); and `seed()` on one resets that context's
+stroke/fill/hatch counters, pool-ready flag and gaussian pools while the
+other's counters, pools and `poolsVersion` stand. `mass.test.js` mocked
+`utils.rr2` to a midpoint constant for its arc assertions — mass draws through
+`ctx.rng` now, so the stub moved onto `defaultContext.rng.rr2` (left as a real
+random it is a flaky test). `stroke_pressure.test.js` dropped `_onSeed` from
+its utils mock. `test/webgpu/grow-cpu-ref.js`, which executes the extracted
+source text of `FillPoly.trim()`/`grow()`: the methods now read the grow cap,
+the grow scratch and the gaussian pools off `ctx`, which the oracle already
+injects, so four injected free variables (`GROW_CAP`, `_gaussians`, the
+`_grow*` arrays) disappeared and the fake context grew a `fillCursor` and
+`rng.scopes.fill`; `nextOpSalt` stays injected and ignores the `ctx` argument.
+Extraction itself is unchanged — the `trim(ctx, f = 1)` signature did not move.
+
+Verification (all identical to step 3): `vitest` 117/117 (was 115; +2),
+`pnpm build` clean (rollup + tsc, no cycle warnings), `git diff --stat
+types/index.standalone.d.ts types/three/index.d.ts` empty, `pnpm test:smoke`
+3/3 PASS, `pnpm test:goldens` 54 tiles · worst 4.7957 · mean 1.2771 · failing 2
+(edge-subpixel 3.7466, edge-self-intersect 4.7957), `assert-structure
+--identity` PASS with geomHash `3878505443` (captured twice), `oracle-w8.mjs`
+7/7 with pixel hash `2970327761`, `oracle-grow.mjs` 8/8,
+`oracle-strokewalk.mjs` 5/5, `oracle-w4b.mjs` 4/4, `oracle-w5.mjs` 4/4.
+`bench-strokes.mjs` (median of 3, n=320, Metal) fork-side before → after:
+cycle·gpu 153 → 150 ms total / 11 → 11 ms JS, fixed·gpu 127 → 130 / 6 → 6,
+cycle·cpu 1163 → 960 / 1143 → 943, fixed·cpu 1162 → 958 / 1147 → 944 — the GPU
+path is flat and the CPU walk came out faster (per-stamp reads now come off one
+batch object instead of a dozen module bindings). `grep -rn '\bW[0-9]' src`
+matches nothing. Bundle: `dist/brush.esm.js` 241 541 → 244 616 bytes (+1.3%).
+
+**Left for step 4b and step 5** (module-level, deliberately untouched):
+`adapters/standalone/deferred.js`'s recorder (`deferring`, `queue`,
+`armListeners`) and `precheck.js`'s `shadow`; the standalone adapter's single
+active target in `target.js` (`activeTarget`, `activeRenderer`, `activeWidth`,
+`activeHeight`, `activeDensity`, `activeReady`, `isLoaded`) and the global
+target hook table in `core/target.js`; `snapshot.js`'s texture pool;
+`frame.js`'s render-reminder flags; `webgpu/spectral.js`'s color memo (staying,
+see above); `webgpu/pipeline.js`'s `nextId` (staying); the brush definition
+registry and `scaleBrushes()`'s in-place weight mutation in `stroke.js`, the
+image tip cache `T`, and `brush.add()`'s default-context tip invalidation; the
+field definition registry in `flowfield.js` (staying) ; `stroke/runtime.js`'s
+tip hooks and `adapters/standalone/runtime.js`'s CSS color parser (staying);
+the public wrappers themselves — every module's exported name and every
+`Polygon` / `Plot` prototype patch still binds `defaultContext`, including
+inspect.js's `stream`/`onGeometry`/`beginGeometry`/`endGeometry`/`readGeometry`
+and gl_draw.js's `initWalkRouter` / `_setUseCpuWalk` defaults — which is step
+5's `buildApi(ctx)` / `createBrush()` work, together with the `owner` field on
+`Polygon`/`Plot`/`Position` and the one-live-attachment fence in
+`brush-gpu/three`.

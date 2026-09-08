@@ -2,7 +2,8 @@
 // brush-gpu – drawing context independence
 //
 // The context owns the drawing state. Two contexts must not share
-// a brush state slice, a push/pop stack, or a flow-field grid.
+// a brush state slice, a push/pop stack, a flow-field grid, or a
+// random stream — seeding one must leave the other's draws alone.
 // Run:  npx vitest run test/unit/context.test.js
 // ============================================================
 
@@ -139,6 +140,83 @@ describe("createContext() — independent state", () => {
     expect(a.fields.grids.get("ctx-probe").field).not.toBe(
       b.fields.grids.get("ctx-probe").field,
     );
+  });
+
+  it("gives each context its own random stream", () => {
+    const a = makeContext(800, 600);
+    const b = makeContext(800, 600);
+
+    a.rng.seed("seed-a");
+    b.rng.seed("seed-b");
+
+    const drawA = () => Array.from({ length: 8 }, () => a.rng.rr2(0, 1));
+    const drawB = () => Array.from({ length: 8 }, () => b.rng.rr2(0, 1));
+
+    const a1 = drawA();
+    const b1 = drawB();
+    expect(a1).not.toEqual(b1);
+
+    // Same seed, same sequence: a's stream is reproducible on its own.
+    a.rng.seed("seed-a");
+    expect(drawA()).toEqual(a1);
+
+    // …and reseeding a did not disturb b, which continues where it was.
+    b.rng.seed("seed-b");
+    expect(drawB()).toEqual(b1);
+
+    // Interleaving does not mix the streams either.
+    a.rng.seed("seed-a");
+    b.rng.seed("seed-b");
+    const interleavedA = [];
+    const interleavedB = [];
+    for (let i = 0; i < 8; i++) {
+      interleavedA.push(a.rng.rr2(0, 1));
+      interleavedB.push(b.rng.rr2(0, 1));
+    }
+    expect(interleavedA).toEqual(a1);
+    expect(interleavedB).toEqual(b1);
+
+    // The hash streams are seeded per context too.
+    expect(a.rng.seedU32()).not.toBe(b.rng.seedU32());
+    expect(a.rng.rh(1, 0, 0)).not.toBe(b.rng.rh(1, 0, 0));
+  });
+
+  it("resets one context's scope counters and pools on its own seed()", () => {
+    const a = makeContext(800, 600);
+    const b = makeContext(800, 600);
+
+    // The counters the stamp/fill/hatch salts are built from.
+    a.rng.scopes.stroke.id = 7;
+    a.rng.scopes.stroke.poolReady = true;
+    a.rng.scopes.fill.id = 3;
+    a.rng.scopes.fill.op = 11;
+    a.rng.scopes.hatch.id = 5;
+
+    b.rng.scopes.stroke.id = 9;
+    b.rng.scopes.stroke.poolReady = true;
+    b.rng.scopes.fill.id = 4;
+    b.rng.scopes.fill.op = 12;
+    b.rng.scopes.hatch.id = 6;
+
+    const poolsBefore = b.rng.scopes.fill.poolsVersion;
+
+    a.rng.seed("reset-a");
+
+    expect(a.rng.scopes.stroke.id).toBe(0);
+    expect(a.rng.scopes.stroke.poolReady).toBe(false);
+    expect(a.rng.scopes.fill.id).toBe(0);
+    expect(a.rng.scopes.fill.op).toBe(0);
+    expect(a.rng.scopes.hatch.id).toBe(0);
+    // seed() refills the fill gaussian pools of the context it reseeds.
+    expect(a.rng.scopes.fill.poolA.length).toBe(512);
+
+    expect(b.rng.scopes.stroke.id).toBe(9);
+    expect(b.rng.scopes.stroke.poolReady).toBe(true);
+    expect(b.rng.scopes.fill.id).toBe(4);
+    expect(b.rng.scopes.fill.op).toBe(12);
+    expect(b.rng.scopes.hatch.id).toBe(6);
+    expect(b.rng.scopes.fill.poolsVersion).toBe(poolsBefore);
+    expect(a.rng.scopes.stroke.pool).not.toBe(b.rng.scopes.stroke.pool);
   });
 
   it("resizing one context leaves the other's grid alone", () => {

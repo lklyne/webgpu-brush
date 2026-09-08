@@ -10,9 +10,11 @@
  * the push/pop stack, the flow-field grids and every in-flight drawing cursor.
  * Two contexts therefore paint independently.
  *
- * `ctx.rng` is still a facade over the module-level generators in
- * core/utils.js: seeds, counters and gaussian pools have not moved yet, so
- * two contexts share one random stream.
+ * `ctx.rng` (core/rng.js) is the painting's own randomness: its seed word,
+ * its sequential and noise streams, and — under `ctx.rng.scopes` — the scope
+ * counters and gaussian pools that `seed()` resets. `defaultContext` adopts
+ * the rng that backs the module-level `random()` / `seed()` / `noise()`, so
+ * those keep drawing from the same stream the default painting does.
  *
  * ## How a context is assembled
  *
@@ -29,7 +31,7 @@
  * on that: they mock whole modules away.
  */
 
-import * as utils from "./utils.js";
+import { createRng, _getDefaultRng } from "./rng.js";
 
 const identityMatrix = {
   a: 1,
@@ -39,30 +41,6 @@ const identityMatrix = {
   x: 0,
   y: 0,
 };
-
-/**
- * Seeded randomness, in one place. `noise` / `noise2` are reassigned by
- * noiseSeed(), and the hash helpers read the module seed word, so these are
- * getters rather than copied function references.
- *
- * @typedef {object} BrushRng
- * @property {typeof utils.random} random User-facing uniform draw.
- * @property {typeof utils.rr2} rr2 Uniform float in [min, max) — user stream.
- * @property {typeof utils.randInt2} randInt2 Uniform integer — user stream.
- * @property {typeof utils.rArray} rArray Uniform pick from an array.
- * @property {typeof utils.gaussian} gaussian Sequential gaussian draw.
- * @property {typeof utils.weightedRand} weightedRand Weighted key pick.
- * @property {(x: number, y: number) => number} noise Simplex noise.
- * @property {(x: number, y: number) => number} noise2 Second noise stream.
- * @property {typeof utils.hashU32} hashU32 Counter-based hash.
- * @property {typeof utils.hash01} hash01 Counter-based uniform float.
- * @property {typeof utils.rh} rh Counter-based uniform float in a range.
- * @property {typeof utils.nh} nh Counter-based gaussian.
- * @property {typeof utils.seed} seed Reseeds every stream.
- * @property {typeof utils.noiseSeed} noiseSeed Reseeds the noise streams.
- * @property {typeof utils._onSeed} onSeed Registers a reseed callback.
- * @property {typeof utils._getSeedU32} seedU32 Current hash-stream seed word.
- */
 
 /**
  * The context handed to every internal drawing function.
@@ -75,7 +53,7 @@ const identityMatrix = {
  * @property {number} height Logical target height.
  * @property {number} density Target pixel density.
  * @property {object} renderer Active renderer (host attached).
- * @property {BrushRng} rng Seeded randomness (still module-global).
+ * @property {import("./rng.js").BrushRng} rng The painting's own seeded randomness.
  * @property {() => boolean} usesRadians True when the host angle mode is radians.
  * @property {(angle: number) => number} fromDegrees Degrees → host angle units.
  * @property {(...args: unknown[]) => object} createColor Host color factory.
@@ -87,72 +65,19 @@ const identityMatrix = {
  * @property {object|null} recorder Host deferred-call recorder, or null.
  */
 
-/**
- * Builds the randomness facade over core/utils.js.
- * @returns {BrushRng}
- */
-function createRng() {
-  return {
-    get random() {
-      return utils.random;
-    },
-    get rr2() {
-      return utils.rr2;
-    },
-    get randInt2() {
-      return utils.randInt2;
-    },
-    get rArray() {
-      return utils.rArray;
-    },
-    get gaussian() {
-      return utils.gaussian;
-    },
-    get weightedRand() {
-      return utils.weightedRand;
-    },
-    get noise() {
-      return utils.noise;
-    },
-    get noise2() {
-      return utils.noise2;
-    },
-    get hashU32() {
-      return utils.hashU32;
-    },
-    get hash01() {
-      return utils.hash01;
-    },
-    get rh() {
-      return utils.rh;
-    },
-    get nh() {
-      return utils.nh;
-    },
-    get seed() {
-      return utils.seed;
-    },
-    get noiseSeed() {
-      return utils.noiseSeed;
-    },
-    get onSeed() {
-      return utils._onSeed;
-    },
-    get seedU32() {
-      return utils._getSeedU32;
-    },
-  };
-}
-
 /** @type {Array<(ctx: BrushContext) => void>} */
 const initializers = [];
 
 /**
  * Creates a drawing context that owns its own state.
  *
+ * @param {object} [options]
+ * @param {import("./rng.js").BrushRng} [options.rng] an existing rng to adopt
+ *   (`defaultContext` adopts core/rng.js's module-level one); a fresh
+ *   `createRng()` otherwise.
  * @returns {BrushContext}
  */
-export function createContext() {
+export function createContext({ rng = createRng() } = {}) {
   /** @type {BrushContext} */
   const ctx = {
     // Brush state. Slices are added by their owning modules.
@@ -165,8 +90,8 @@ export function createContext() {
     density: undefined,
     renderer: undefined,
 
-    // Seeded randomness. Still one module-global stream behind the facade.
-    rng: createRng(),
+    // Seeded randomness, counters and pools — this painting's alone.
+    rng,
 
     // Host runtime hooks. These neutral defaults are what core does with no
     // adapter registered; setRuntime() (core/runtime.js) replaces them.
@@ -197,7 +122,7 @@ export function createContext() {
  * this one, and classes built without an explicit owner fall back to it.
  * @type {BrushContext}
  */
-export const defaultContext = createContext();
+export const defaultContext = createContext({ rng: _getDefaultRng() });
 
 /**
  * Registers a per-context initializer.

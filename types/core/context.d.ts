@@ -1,9 +1,15 @@
 /**
  * Creates a drawing context that owns its own state.
  *
+ * @param {object} [options]
+ * @param {import("./rng.js").BrushRng} [options.rng] an existing rng to adopt
+ *   (`defaultContext` adopts core/rng.js's module-level one); a fresh
+ *   `createRng()` otherwise.
  * @returns {BrushContext}
  */
-export function createContext(): BrushContext;
+export function createContext({ rng }?: {
+    rng?: import("./rng.js").BrushRng;
+}): BrushContext;
 /**
  * Registers a per-context initializer.
  *
@@ -29,77 +35,6 @@ export function setRecorder(ctx: BrushContext, recorder: object): void;
  * @type {BrushContext}
  */
 export const defaultContext: BrushContext;
-/**
- * Seeded randomness, in one place. `noise` / `noise2` are reassigned by
- * noiseSeed(), and the hash helpers read the module seed word, so these are
- * getters rather than copied function references.
- */
-export type BrushRng = {
-    /**
-     * User-facing uniform draw.
-     */
-    random: typeof utils.random;
-    /**
-     * Uniform float in [min, max) — user stream.
-     */
-    rr2: typeof utils.rr2;
-    /**
-     * Uniform integer — user stream.
-     */
-    randInt2: typeof utils.randInt2;
-    /**
-     * Uniform pick from an array.
-     */
-    rArray: typeof utils.rArray;
-    /**
-     * Sequential gaussian draw.
-     */
-    gaussian: typeof utils.gaussian;
-    /**
-     * Weighted key pick.
-     */
-    weightedRand: typeof utils.weightedRand;
-    /**
-     * Simplex noise.
-     */
-    noise: (x: number, y: number) => number;
-    /**
-     * Second noise stream.
-     */
-    noise2: (x: number, y: number) => number;
-    /**
-     * Counter-based hash.
-     */
-    hashU32: typeof utils.hashU32;
-    /**
-     * Counter-based uniform float.
-     */
-    hash01: typeof utils.hash01;
-    /**
-     * Counter-based uniform float in a range.
-     */
-    rh: typeof utils.rh;
-    /**
-     * Counter-based gaussian.
-     */
-    nh: typeof utils.nh;
-    /**
-     * Reseeds every stream.
-     */
-    seed: typeof utils.seed;
-    /**
-     * Reseeds the noise streams.
-     */
-    noiseSeed: typeof utils.noiseSeed;
-    /**
-     * Registers a reseed callback.
-     */
-    onSeed: typeof utils._onSeed;
-    /**
-     * Current hash-stream seed word.
-     */
-    seedU32: typeof utils._getSeedU32;
-};
 /**
  * The context handed to every internal drawing function.
  */
@@ -130,9 +65,9 @@ export type BrushContext = {
      */
     renderer: object;
     /**
-     * Seeded randomness (still module-global).
+     * The painting's own seeded randomness.
      */
-    rng: BrushRng;
+    rng: import("./rng.js").BrushRng;
     /**
      * True when the host angle mode is radians.
      */
@@ -173,4 +108,3 @@ export type BrushContext = {
      */
     recorder: object | null;
 };
-import * as utils from "./utils.js";

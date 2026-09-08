@@ -73,8 +73,8 @@ export namespace _test {
     const FillPoly: {
         new (ctx: import("../core/context.js").BrushContext, v: any[], m: number[], center: any, dir: boolean[], isFirst: boolean, sx: any, sy: any): FillPoly;
     };
-    function setScope({ fillId, op, growCap, gaussians }?: {}): void;
-    function getOp(): number;
+    function setScope({ fillId, op, growCap, gaussians }?: {}, ctx?: import("../core/context.js").BrushContext): void;
+    function getOp(ctx?: import("../core/context.js").BrushContext): any;
 }
 import { Polygon } from "../core/polygon.js";
 /**
