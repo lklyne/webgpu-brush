@@ -1,8 +1,8 @@
-// W3: canonical WGSL source, unified to the .wgsl.js string-export convention
-// (was strokewalk.wgsl, fetched at runtime pre-W3). Bundled by rollup like any module.
+// WGSL ships as a string export so rollup bundles it like any module (no
+// runtime fetch).
 export const STROKEWALK_WGSL = /* wgsl */ `
 // =============================================================================
-// strokewalk-compute (W2) — the flow-field walk on the GPU.
+// strokewalk-compute — the flow-field walk on the GPU.
 //
 // Two entry points over one shared function set:
 //   countStamps — one thread per stroke; evaluates the exact number of stamps
@@ -357,8 +357,8 @@ fn countStamps(@builtin(global_invocation_id) gid: vec3u) {
 // Pass 3: the walk. Sequential along the stroke, parallel across strokes.
 // One thread per stroke — do NOT parallelize within a stroke (each step's
 // position depends on the previous). Warp divergence across stroke lengths is
-// the accepted W2 risk; the per-step restructure is W4a's call and would
-// reuse the same count/scan machinery.
+// an accepted cost; a per-step restructure, if ever needed, would reuse the
+// same count/scan machinery.
 // ---------------------------------------------------------------------------
 @compute @workgroup_size(64)
 fn walkStrokes(@builtin(global_invocation_id) gid: vec3u) {

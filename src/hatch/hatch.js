@@ -20,7 +20,7 @@ State.hatch = {
   hBrush: false,
 };
 
-// Hash-stream scope counter (W1b): one id per getHatchLines() invocation.
+// Hash-stream scope counter: one id per getHatchLines() invocation.
 let _hatchId = 0;
 _onSeed(() => {
   _hatchId = 0;

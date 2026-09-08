@@ -1,10 +1,12 @@
 // =============================================================================
-// Adapter: Standalone Target Hooks (WebGPU, W3)
+// Adapter: Standalone Target Hooks (WebGPU)
 //
-// The standalone target is now WebGPU-backed. brush.load()/createCanvas()
-// synchronously create the renderer and START async device acquisition;
-// callers must `await brush.ready()` before drawing (the WebGPU device
-// request has no synchronous form — recorded as a divergence in FORK.md).
+// The standalone target is WebGPU-backed. brush.load()/createCanvas()
+// synchronously create the renderer and START async device acquisition
+// (the WebGPU device request has no synchronous form — recorded as a
+// divergence in FORK.md). Awaiting `brush.ready()` before drawing is
+// optional: stateful calls made before the device resolves are recorded
+// and replayed in program order (see deferred.js).
 // =============================================================================
 
 import {
@@ -12,6 +14,7 @@ import {
   setTargetState,
 } from "../../core/target.js";
 import { createGpuHost } from "./gpu.js";
+import { armDeferred, flushDeferred } from "./deferred.js";
 
 let activeTarget = null;
 let isLoaded = false;
@@ -19,6 +22,8 @@ let activeDensity = 1;
 let activeWidth = 0;
 let activeHeight = 0;
 let activeRenderer = null;
+/** The active target's ready promise (device + walker + deferred replay). */
+let activeReady = null;
 
 function isCanvasTarget(target) {
   return (
@@ -38,8 +43,8 @@ function isSupportedTarget(target) {
   return isCanvasTarget(target) || isOffscreenCanvasTarget(target);
 }
 
-function createRenderer(target, width, height, density) {
-  const host = createGpuHost(target, width, height, density);
+function createRenderer(target, width, height, density, gpuOptions) {
+  const host = createGpuHost(target, width, height, density, gpuOptions);
 
   return {
     canvas: target,
@@ -54,13 +59,13 @@ function createRenderer(target, width, height, density) {
   };
 }
 
-function applyLoadedTarget(target, width, height, density) {
+function applyLoadedTarget(target, width, height, density, gpuOptions = {}) {
   activeTarget = target;
   activeWidth = width;
   activeHeight = height;
   activeDensity = density;
 
-  activeRenderer = createRenderer(target, width, height, density);
+  activeRenderer = createRenderer(target, width, height, density, gpuOptions);
   setTargetState({
     Renderer: activeRenderer,
     Cwidth: width,
@@ -68,22 +73,43 @@ function applyLoadedTarget(target, width, height, density) {
     Density: density,
   });
   isLoaded = true;
+  // Record stateful calls until the device is ready, then replay them.
+  // ready() starts now so a sketch that never awaits it still runs; the
+  // catch only silences the unhandled-rejection report — the same promise
+  // is what ready() and readPixels() hand back, so failures stay observable.
+  armDeferred();
+  activeReady = null;
+  startReady().catch(() => {});
+}
+
+function startReady() {
+  if (activeReady) return activeReady;
+  const renderer = activeRenderer;
+  activeReady = (async () => {
+    await renderer.host.ready;
+    // Warm up the GPU stroke walker BEFORE replaying, so deferred strokes
+    // route to strokewalk-compute exactly as post-ready strokes do.
+    const { initWalkRouter } = await import("../../stroke/gl_draw.js");
+    await initWalkRouter(renderer.host);
+    flushDeferred();
+  })();
+  return activeReady;
 }
 
 /**
- * Resolves when the active target's WebGPU device is initialized and
- * drawing may begin. Callable any time after load()/createCanvas().
+ * Resolves when the active target's WebGPU device is initialized, the GPU
+ * stroke walker is warm, and every call recorded before that point has
+ * been replayed. Optional — drawing before ready is recorded and
+ * replayed in order — but awaiting it is still the way to know the
+ * painting is current before an out-of-band read. Callable any time after
+ * load()/createCanvas().
  * @returns {Promise<void>}
  */
 export async function ready() {
   if (!activeRenderer) {
     throw new Error("brush.ready(): no target loaded — call brush.load()/createCanvas() first.");
   }
-  await activeRenderer.host.ready;
-  // Warm up the GPU stroke walker so synchronous drawing right after
-  // ready() can route eligible strokes to strokewalk-compute.
-  const { initWalkRouter } = await import("../../stroke/gl_draw.js");
-  await initWalkRouter(activeRenderer.host);
+  return startReady();
 }
 
 /**
@@ -98,8 +124,9 @@ export async function readPixels() {
   if (!activeRenderer) {
     throw new Error("brush.readPixels(): no target loaded.");
   }
+  // Includes the deferred replay: pixels reflect every call made so far.
+  await ready();
   const host = activeRenderer.host;
-  await host.ready;
   host.requireReady();
   const { readTexture } = await import("../../webgpu/readback.js");
   const raw = await readTexture(host.gpu, host.painting);
@@ -116,18 +143,60 @@ export async function readPixels() {
 }
 
 /**
+ * Shared-device interop handle for the active target. Lets a host
+ * renderer that lives on the SAME GPUDevice (three.js `WebGPURenderer`
+ * constructed with `{ device }`, then `new ExternalTexture(painting)`)
+ * sample the painting with zero copies: same device, same queue, so the
+ * fork's submissions land before the host's in submission order — no
+ * fences. Synchronous; requires `await brush.ready()` first (the device
+ * has no synchronous form). `painting` is the LIVE texture — it is
+ * recreated on resize; subscribe with `onPaintingChanged` to re-wrap.
+ * Image convention: row 0 is the top of the canvas, colors are
+ * premultiplied in `format` (the preferred canvas format, not sRGB-typed).
+ *
+ * @returns {{
+ *   device: GPUDevice,
+ *   adapter: GPUAdapter|null,
+ *   format: GPUTextureFormat,
+ *   painting: GPUTexture,
+ *   onPaintingChanged: (fn: (painting: GPUTexture) => void) => () => void,
+ * }}
+ */
+export function gpu() {
+  if (!activeRenderer) {
+    throw new Error("brush.gpu(): no target loaded — call brush.load()/createCanvas() first.");
+  }
+  const host = activeRenderer.host;
+  host.requireReady();
+  return {
+    device: host.gpu.device,
+    adapter: host.gpu.adapter,
+    format: host.gpu.format,
+    get painting() {
+      return host.painting;
+    },
+    onPaintingChanged: host.onPaintingChanged,
+  };
+}
+
+/**
  * Loads a standalone draw target from a DOM canvas or OffscreenCanvas.
  *
  * @param {HTMLCanvasElement|OffscreenCanvas} target
+ * @param {{device?: GPUDevice, adapter?: GPUAdapter|null}} [options]
+ *   adopt an externally owned device (see `gpu()`).
  */
-export function load(target = activeTarget) {
+export function load(target = activeTarget, options = {}) {
   if (!isSupportedTarget(target)) {
     throw new Error(
       "Standalone brush.load(target) requires an HTMLCanvasElement or OffscreenCanvas.",
     );
   }
 
-  applyLoadedTarget(target, target.width, target.height, 1);
+  applyLoadedTarget(target, target.width, target.height, 1, {
+    device: options.device,
+    adapter: options.adapter,
+  });
 }
 
 /**
@@ -137,7 +206,14 @@ export function load(target = activeTarget) {
  *
  * @param {number} width Logical canvas width.
  * @param {number} height Logical canvas height.
- * @param {{pixelDensity?: number, parent?: string|Element|null, id?: string}} [options]
+ * @param {{
+ *   pixelDensity?: number,
+ *   parent?: string|Element|null,
+ *   id?: string,
+ *   device?: GPUDevice,
+ *   adapter?: GPUAdapter|null,
+ * }} [options] `device`/`adapter`: adopt an externally owned device
+ *   instead of requesting one — see `gpu()`.
  * @returns {HTMLCanvasElement}
  */
 export function createCanvas(width, height, options = {}) {
@@ -168,7 +244,10 @@ export function createCanvas(width, height, options = {}) {
     parent.appendChild(canvas);
   }
 
-  applyLoadedTarget(canvas, logicalWidth, logicalHeight, density);
+  applyLoadedTarget(canvas, logicalWidth, logicalHeight, density, {
+    device: options.device,
+    adapter: options.adapter,
+  });
   return canvas;
 }
 

@@ -1,9 +1,9 @@
 // =============================================================================
-// Fill compositor (WebGPU, W3)
+// Fill compositor (WebGPU)
 //
 // The canvas2d fill-mask path is GONE: no CPU mask canvas, no
 // FillMaskUploadCanvas, no texSubImage2D staging. Fills draw through the
-// W2 stencil-fill renderer (webgpu/fill.js) into an MSAA mask target whose
+// stencil-fill renderer (webgpu/fill.js) into an MSAA mask target whose
 // resolve texture the spectral composite samples directly.
 //
 // `Mix.ctx` is no longer a CanvasRenderingContext2D. It is the FILL
@@ -31,7 +31,7 @@ const clamp01 = (v) => Math.max(0, Math.min(1, v));
 function createFillSurface(Renderer, mask) {
   const host = Renderer.host;
   const SS = host.fillSS ?? 1; // supersampling factor of the fill target
-  // W4a: the fill renderer records ops CPU-side (no encoder needed until
+  // The fill renderer records ops CPU-side (no encoder needed until
   // flush); flush() creates one encoder, encodes the whole batch as one
   // render pass, and submits.
 
@@ -131,7 +131,7 @@ function createFillSurface(Renderer, mask) {
     },
 
     // ------------------------------------------------------------------
-    // W5 — GPU-resident fill geometry. These mirror layer()/erase() above
+    // GPU-resident fill geometry. These mirror layer()/erase() above
     // but take a grow-compute poly handle instead of CPU vertices, and let
     // the dirty rect accumulate GPU-side (there is no CPU bbox to mark).
     // ------------------------------------------------------------------
@@ -286,7 +286,7 @@ export function getFillCompositeRect(
 ) {
   if (!target) return null;
   if (target.gpuDirty) {
-    // W5: GPU-resident fill geometry has no CPU-side bbox, so the rect is a
+    // GPU-resident fill geometry has no CPU-side bbox, so the rect is a
     // GPU BUFFER the composite and the blend-source blit read as vertex
     // data. Flushing here (rather than in getShaderMask, which core calls
     // AFTER the blit) is what guarantees the compute pass that fills that

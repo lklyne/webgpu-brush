@@ -17,7 +17,7 @@
 //                      ≤ 1.5 × no-hook median + 3 ms over 7 reps) AND
 //                      routing is asserted: B's strokes stay on the GPU
 //                      walk (gpuStrokes counter), A's are hooked.
-//   4. cpu-vs-gpu    — useCpuGeometry(true)/(false) render each scenario
+//   4. cpu-vs-gpu    — cpuGeometry()/noCpuGeometry() render each scenario
 //                      within RMSE < 1.0/255 (float precision only).
 //
 // Chain note: stroke.js's cross-stroke pressure-cache chain (upstream's
@@ -125,7 +125,8 @@ function normalizeChain(b) {
  *          capture?: boolean, stats?: boolean}} [opts]
  */
 async function renderRun(b, sceneFn, opts = {}) {
-  b.useCpuGeometry(opts.cpu ?? false);
+  if (opts.cpu) b.cpuGeometry();
+  else b.noCpuGeometry();
   const disposers = (opts.hooks ?? []).map((h) => b.onGeometry(h.stream, h.fn));
   resetAll(b);
   normalizeChain(b);
@@ -144,7 +145,7 @@ async function renderRun(b, sceneFn, opts = {}) {
   const { pixels, width, height } = await b.readPixels();
 
   for (const d of disposers) d();
-  b.useCpuGeometry(false);
+  b.noCpuGeometry();
   resetAll(b);
   return { pixels, width, height, geo, stats };
 }

@@ -1,6 +1,7 @@
 // =============================================================================
-// Transcribes the spectral constant tables from src/core/gl/shader.frag
-// into src/webgpu/wgsl/spectral.wgsl and src/webgpu/spectral.js, between
+// Transcribes the spectral constant tables from test/reference/glsl/spectral.frag
+// (upstream's GLSL blend shader, kept only as the source of truth for these
+// tables) into src/webgpu/wgsl/spectral.wgsl.js and src/webgpu/spectral.js, between
 // their "BEGIN/END GENERATED TABLES" markers. The plan mandates
 // programmatic transcription — the literal digit strings are copied
 // verbatim from the .frag, never reparsed through a float.
@@ -14,9 +15,9 @@ import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = resolve(fileURLToPath(import.meta.url), "../..");
-const FRAG = resolve(ROOT, "src/core/gl/shader.frag");
+const FRAG = resolve(ROOT, "test/reference/glsl/spectral.frag");
 const TARGETS = [
-  { path: resolve(ROOT, "src/webgpu/wgsl/spectral.wgsl"), lang: "wgsl" },
+  { path: resolve(ROOT, "src/webgpu/wgsl/spectral.wgsl.js"), lang: "wgsl" },
   { path: resolve(ROOT, "src/webgpu/spectral.js"), lang: "js" },
 ];
 
@@ -80,17 +81,17 @@ function wgslBlock() {
 
 function jsBlock() {
   const lines = [];
-  lines.push("/** 38×7 (w,c,m,y,r,g,b) — shader.frag spectral_linear_to_reflectance. */");
+  lines.push("/** 38×7 (w,c,m,y,r,g,b) — spectral.frag spectral_linear_to_reflectance. */");
   lines.push("export const SPECTRAL_L2R = [");
   for (const row of l2r) lines.push(`  [${row.join(", ")}],`);
   lines.push("];");
   lines.push("");
-  lines.push("/** 38×3 CIE weights — shader.frag spectral_reflectance_to_xyz. */");
+  lines.push("/** 38×3 CIE weights — spectral.frag spectral_reflectance_to_xyz. */");
   lines.push("export const SPECTRAL_R_TO_XYZ = [");
   for (const row of r2xyz) lines.push(`  [${row.join(", ")}],`);
   lines.push("];");
   lines.push("");
-  lines.push("/** 3×3 XYZ→linear-sRGB rows — shader.frag XYZ_RGB. */");
+  lines.push("/** 3×3 XYZ→linear-sRGB rows — spectral.frag XYZ_RGB. */");
   lines.push("export const SPECTRAL_XYZ_TO_RGB = [");
   for (const row of xyz2rgb) lines.push(`  [${row.join(", ")}],`);
   lines.push("];");

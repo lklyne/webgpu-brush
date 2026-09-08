@@ -23,8 +23,6 @@ import {
   blitSourceToFramebuffer,
 } from "./compositor_runtime.js";
 
-import vertSrc from "./gl/shader.vert";
-import fragSrc from "./gl/shader.frag";
 import { notifyDraw } from "./runtime.js";
 
 // =============================================================================
@@ -82,7 +80,7 @@ const getFullDirtyRect = () => {
 // Section: Scissor Helpers
 // =============================================================================
 /**
- * Converts a top-left-based dirty rectangle into a WebGL scissor box.
+ * Converts a top-left-based dirty rectangle into a device-pixel scissor box.
  * @param {{minX:number,minY:number,maxX:number,maxY:number}|null} rect - Dirty rect.
  * @returns {{x:number,y:number,width:number,height:number}|null} Scissor box or null.
  */
@@ -101,7 +99,7 @@ const toScissorBox = (rect, flipY = true) => {
 
 /**
  * Runs a draw callback with a temporary scissor region.
- * @param {WebGL2RenderingContext} gl - Active WebGL context.
+ * @param {unknown} gl - Unused by the WebGPU host; kept for signature stability.
  * @param {{minX:number,minY:number,maxX:number,maxY:number}|null} rect - Dirty rect.
  * @param {Function} draw - Draw callback executed under the scissor box.
  */
@@ -130,7 +128,7 @@ const withScissor = (gl, rect, draw, flipY = true) => {
  */
 export const State = {};
 /**
- * Handles color blending using WebGL shaders. Implements advanced blending
+ * Handles color blending through the host compositor. Implements advanced blending
  * effects based on Kubelka-Munk theory. Relies on spectral.js for blending logic.
  */
 
@@ -148,10 +146,10 @@ export const isMixReady = () => {
 };
 
 /**
- * Manages blending operations with WebGL shaders.
+ * Manages blending operations through the compositor hooks.
  * @property {boolean} loaded - Indicates if shaders are loaded.
  * @property {boolean} isBlending - Indicates if blending is active.
- * @property {object} currentColor - Current color in WebGL format.
+ * @property {object} currentColor - Current color as a float array.
  * @property {function} load - Initializes blending resources.
  * @property {function} blend - Applies blending effects.
  */
@@ -212,7 +210,7 @@ export const Mix = {
         Renderer.blendSourceFramebuffer.height !== Cheight ||
         (typeof Renderer.blendSourceFramebuffer.pixelDensity === "function" &&
           Renderer.blendSourceFramebuffer.pixelDensity() !== Density);
-    ensureBlendShaderProgram(Renderer, vertSrc, fragSrc);
+    ensureBlendShaderProgram(Renderer);
 
     this.glMask = strokeComposite?.ensureResources?.(
       Renderer,
@@ -374,8 +372,10 @@ export const flushActiveComposite = () => {
  * resources if the renderer was already active.
  *
  * @param {object|false} [buffer=false] - Optional offscreen target.
+ * @param {object} [options] - Host options forwarded to the target adapter
+ *   (standalone: `{ device, adapter }` to adopt an external WebGPU device).
  */
-export const load = (buffer = false) => {
-  loadTarget(buffer);
+export const load = (buffer = false, options) => {
+  loadTarget(buffer, options);
   if (Renderer.loaded) Mix.load();
 };

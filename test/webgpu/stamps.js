@@ -8,11 +8,11 @@
 //   1. disc-grid  — fixed grid of disc stamps at known positions/sizes/
 //      alphas: WebGPU instanced quads (src/webgpu/stamps.js) vs upstream's
 //      ACTUAL WebGL point-sprite path — the verbatim shader sources
-//      fetched from src/stroke/shader.{vert,frag} (unchanged from pinned
+//      fetched from test/reference/glsl/stamp-circle.{vert,frag} (unchanged from pinned
 //      upstream), same projection matrix, same blend
 //      (ONE_MINUS_DST_ALPHA, ONE), drawn with gl.POINTS.
 //   2. image-grid — same idea for the image-tip path: verbatim
-//      src/stroke/image.{vert,frag}, instanced TRIANGLE_STRIP quads, a
+//      test/reference/glsl/stamp-image.{vert,frag}, instanced TRIANGLE_STRIP quads, a
 //      deterministic procedurally-generated asymmetric tip texture
 //      (identical bytes uploaded to both APIs) at varied rotations.
 //   3. brush-smoke — every built-in brush (enumerated via brush.box() on
@@ -355,10 +355,10 @@ async function fetchShaders() {
     return r.text();
   };
   return {
-    circleVert: await get("/src/stroke/shader.vert"),
-    circleFrag: await get("/src/stroke/shader.frag"),
-    imageVert: await get("/src/stroke/image.vert"),
-    imageFrag: await get("/src/stroke/image.frag"),
+    circleVert: await get("/test/reference/glsl/stamp-circle.vert"),
+    circleFrag: await get("/test/reference/glsl/stamp-circle.frag"),
+    imageVert: await get("/test/reference/glsl/stamp-image.vert"),
+    imageFrag: await get("/test/reference/glsl/stamp-image.frag"),
   };
 }
 

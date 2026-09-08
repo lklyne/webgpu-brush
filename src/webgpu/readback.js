@@ -1,11 +1,11 @@
 // =============================================================================
-// Readback primitive (W1a)
+// Readback primitive
 //
 // Staging buffer + mapAsync + typed-array views. OUT-OF-BAND ONLY — plan
 // gotcha #9: readback is fatal in the frame path. These functions await
 // GPU completion; nothing here may ever be called from inside a frame.
 // Consumers: oracle scripts, grow-compute / strokewalk-compute
-// verification, and (W4b) brush.readGeometry / geometry hooks.
+// verification, and brush.readGeometry / geometry hooks.
 // =============================================================================
 
 /**

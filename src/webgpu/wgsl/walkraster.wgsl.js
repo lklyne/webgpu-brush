@@ -1,5 +1,5 @@
 // =============================================================================
-// Walk-raster WGSL (W3)
+// Walk-raster WGSL
 //
 // Rasterizes GPU-walked stamps (strokewalk-compute output) straight from
 // their storage buffer: instanced antialiased discs via vertex pulling and

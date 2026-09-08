@@ -1,5 +1,5 @@
 // =============================================================================
-// Adapter: Standalone Compositor Hooks (WebGPU, W3)
+// Adapter: Standalone Compositor Hooks (WebGPU)
 //
 // The six compositor hooks, implemented on the WebGPU host:
 //
@@ -44,11 +44,10 @@ function clearTarget(renderer, target, isFramebufferTarget) {
 }
 
 /**
- * The GLSL sources arrive from shared core code (shader.vert/shader.frag
- * imports); the WebGPU adapter ignores them — the composite runs the WGSL
- * port (spectral.wgsl.js) with the CPU-hoisted reflectance uniforms.
+ * The composite runs the WGSL spectral pipeline (spectral.wgsl.js) with the
+ * CPU-hoisted reflectance uniforms; the handle only marks it as prepared.
  */
-function ensureBlendShaderProgram(renderer, _vertSrc, _fragSrc) {
+function ensureBlendShaderProgram(renderer) {
   renderer.shaderProgram ??= { __webgpuSpectral: true };
   return renderer.shaderProgram;
 }

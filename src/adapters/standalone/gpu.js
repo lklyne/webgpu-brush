@@ -1,10 +1,9 @@
 // =============================================================================
-// Adapter: Standalone WebGPU host (W3)
+// Adapter: Standalone WebGPU host
 //
 // Owns the per-target GPU state the standalone adapter hooks share:
-// device/context (W1a scaffold), pipeline cache, stamp renderer (W2),
-// fill renderer (W2), the spectral composite pipeline (W2), and the
-// persistent PAINTING texture.
+// device/context, pipeline cache, stamp renderer, fill renderer, the
+// spectral composite pipeline, and the persistent PAINTING texture.
 //
 // Texture/orientation model (gotcha #3 — you cannot sample the swapchain):
 //   - The painting lives in ONE persistent texture ("current always in A").
@@ -47,8 +46,11 @@ function notReady() {
  * @param {number} width logical
  * @param {number} height logical
  * @param {number} density
+ * @param {{device?: GPUDevice, adapter?: GPUAdapter|null}} [gpuOptions]
+ *   forwarded to initDevice — an injected device is adopted instead of
+ *   requested (shared-device interop).
  */
-export function createGpuHost(canvas, width, height, density) {
+export function createGpuHost(canvas, width, height, density, gpuOptions = {}) {
   const host = {
     canvas,
     width, // logical
@@ -58,7 +60,7 @@ export function createGpuHost(canvas, width, height, density) {
     cache: null,
     stamps: null,
     fillR: null,
-    /** W5 GPU-resident fill DAG driver (webgpu/fillgpu.js), built lazily */
+    /** GPU-resident fill DAG driver (webgpu/fillgpu.js), built lazily */
     fillGpu: null,
     ready: null,
     /** painting texture (image convention, gpu.format) */
@@ -76,6 +78,19 @@ export function createGpuHost(canvas, width, height, density) {
   let blendRing = null;
   let sampler = null;
   const blendScratch = new Float32Array(BLEND_UNIFORM_BYTES / 4);
+  // Shared-device interop consumers holding the painting GPUTexture (e.g. a
+  // three.js ExternalTexture) must re-wrap it after a resize recreates it.
+  const paintingListeners = new Set();
+
+  /**
+   * @param {(painting: GPUTexture) => void} fn called with every NEW painting
+   *   texture (resize); not for the one that already exists
+   * @returns {() => void} dispose
+   */
+  host.onPaintingChanged = (fn) => {
+    paintingListeners.add(fn);
+    return () => paintingListeners.delete(fn);
+  };
 
   function updateFillSS() {
     if (!host.gpu) return;
@@ -111,10 +126,18 @@ export function createGpuHost(canvas, width, height, density) {
       host._pendingClear = null;
       host.clearPainting(c);
     }
+    for (const fn of paintingListeners) fn(host.painting);
   }
 
   host.ready = (async () => {
-    const gpu = await initDevice({ canvas, width, height, density });
+    const gpu = await initDevice({
+      canvas,
+      width,
+      height,
+      density,
+      device: gpuOptions.device,
+      adapter: gpuOptions.adapter,
+    });
     host.gpu = gpu;
     host.cache = createPipelineCache(gpu);
     host.stamps = createStampRenderer(gpu, host.cache, { format: gpu.format });
@@ -368,7 +391,7 @@ struct VSOut { @builtin(position) pos: vec4f, @location(0) uv: vec2f };
    * @param {GPUTexture} fromTexture
    * @param {{minX,minY,maxX,maxY}|null} rect device px, image convention
    */
-  // W5: when fill geometry is GPU-resident there is no CPU-side dirty rect
+  // When fill geometry is GPU-resident there is no CPU-side dirty rect
   // (computing one would need a readback — gotcha #9). The rect lives in a
   // storage buffer instead, so the blend-source blit becomes a QUAD DRAW
   // pulling its corners from that buffer rather than a copyTextureToTexture

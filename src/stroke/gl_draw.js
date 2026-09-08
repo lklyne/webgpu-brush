@@ -1,5 +1,5 @@
 // =============================================================================
-// Module: GL Draw (WebGPU, W3)
+// Module: GL Draw (WebGPU)
 //
 // Replaces the WebGL2 batching module outright (plan: no second backend).
 // What is deliberately KEPT from the original:
@@ -7,17 +7,16 @@
 //   - flat Float32Array queue packing with doubling growth
 //     (lives in webgpu/stamps.js — reallocate only when exceeded)
 //   - dirty-rect accumulation in device pixels
-//   - the begin/end/resetDirectShaderTracking hook call sites (they are
-//     host-contract concerns; the standalone WebGPU adapter no-ops them)
 //
 // Two stamp producers feed the brush mask:
 //   - CPU walk (stroke.js tip loop) → circle()/stampImage() queues →
-//     glDraw()/glDrawImages() flush through the W2 stamp renderer
+//     glDraw()/glDrawImages() flush through the instanced stamp renderer
 //   - GPU walk (strokewalk-compute) → queueWalkStroke() descriptors,
 //     grouped by (translation, color) ACROSS color changes → flushWalkBatch()
 //     walks every group in one dispatch, then rasterizes each group straight
 //     from the storage buffer with drawIndirect and composites deferred
-//     groups in draw order (no readback — gotcha #9; FORK.md W6)
+//     groups in draw order (no readback — gotcha #9; FORK.md, deferred
+//     stroke groups)
 //
 // ORDER: the mask blend (one-minus-dst-alpha, one) is order-dependent
 // (gotcha #10), so every CPU flush, every other composite, frame end and
@@ -31,11 +30,6 @@ import {
   isMixReady,
   State,
 } from "../core/color.js";
-import {
-  beginDirectMaskDraw,
-  endDirectMaskDraw,
-  resetDirectShaderTracking,
-} from "../core/renderer_runtime.js";
 import { getAffineMatrix, notifyDraw } from "../core/runtime.js";
 import { _getSeedU32 } from "../core/utils.js";
 import { _fieldSnapshot, _fieldEpochNow } from "../core/flowfield.js";
@@ -48,7 +42,7 @@ import {
 import { createUniformRing } from "../webgpu/pipeline.js";
 import { STAMP_BLEND } from "../webgpu/stamps.js";
 import { WALK_RASTER_WGSL } from "../webgpu/wgsl/walkraster.wgsl.js";
-// W4b inspection/manipulation seam — every call below is `_iflag.active`-
+// Inspection/manipulation seam — every call below is `_iflag.active`-
 // guarded (one boolean test when no hooks/captures exist; see inspect.js).
 import {
   _iflag,
@@ -179,8 +173,9 @@ export function circle(x, y, diameter, alpha) {
 
   const dScreenX = screenX * _density;
   const dScreenY = screenY * _density;
-  // W4b: hooked-stream strokes stage into inspect.js instead (replayed —
-  // possibly mutated — at glDraw); captures record without diverting.
+  // Inspection hooks: hooked-stream strokes stage into inspect.js instead
+  // (replayed — possibly mutated — at glDraw); captures record without
+  // diverting.
   if (_iflag.active && _tapDisc(dScreenX, dScreenY, radius, alpha / 255)) return;
   host.stamps.disc(dScreenX, dScreenY, radius, alpha / 255);
   circleDirtyRect = accumulateDirtyRect(
@@ -233,8 +228,8 @@ export function stampImage(x, y, size, angle, alpha, extraPadding = 0) {
  * @param {string} src - The image src string / tip key, texture cache key.
  */
 export function glDrawImages(p5img, src) {
-  // W4b: replay this stroke's staged (hooked) image stamps into the queue,
-  // recomputing the dirty rect from post-hook positions.
+  // Inspection hooks: replay this stroke's staged (hooked) image stamps into
+  // the queue, recomputing the dirty rect from post-hook positions.
   if (_iflag.active && host) {
     const staged = _drainStroke("image");
     if (staged) {
@@ -260,7 +255,6 @@ export function glDrawImages(p5img, src) {
   }
   flushWalkBatch(true); // preserve stamp order (gotcha #10); same-color group joins
   Mix.glMask.isDrawn = true;
-  const targetState = beginDirectMaskDraw(Renderer, null, Mix.glMask);
 
   const color = State.stroke.color._array;
   host.stamps.drawImages(null, {
@@ -270,12 +264,10 @@ export function glDrawImages(p5img, src) {
     source: p5img.canvas,
   });
 
-  endDirectMaskDraw(Renderer, null, targetState);
   if (imgDirtyRect) {
     Mix.markDirtyRect(Mix.glMask, imgDirtyRect);
     imgDirtyRect = null;
   }
-  resetDirectShaderTracking(Renderer, null);
 }
 
 /**
@@ -289,8 +281,8 @@ export function invalidateTexEntry(key) {
  * Flush all queued circle stamps in one instanced draw.
  */
 export function glDraw() {
-  // W4b: replay this stroke's staged (hooked) disc stamps into the queue,
-  // recomputing the dirty rect from post-hook positions.
+  // Inspection hooks: replay this stroke's staged (hooked) disc stamps into
+  // the queue, recomputing the dirty rect from post-hook positions.
   if (_iflag.active && host) {
     const staged = _drainStroke("disc");
     if (staged) {
@@ -310,17 +302,14 @@ export function glDraw() {
   if (!host || host.stamps.discCount === 0) return;
   flushWalkBatch(true); // preserve stamp order (gotcha #10); same-color group joins
   Mix.glMask.isDrawn = true;
-  const targetState = beginDirectMaskDraw(Renderer, null, Mix.glMask);
 
   const color = State.stroke.color._array;
   host.stamps.drawDiscs(null, { view: Mix.glMask.view, color });
 
-  endDirectMaskDraw(Renderer, null, targetState);
   if (circleDirtyRect) {
     Mix.markDirtyRect(Mix.glMask, circleDirtyRect);
     circleDirtyRect = null;
   }
-  resetDirectShaderTracking(Renderer, null);
 }
 
 // =============================================================================
@@ -364,7 +353,7 @@ let useCpuWalk = false;
 export function _setUseCpuWalk(v) {
   useCpuWalk = !!v;
 }
-/** brush.useCpuGeometry() is one switch: it also forces the CPU fill DAG. */
+/** brush.cpuGeometry() is one switch: it also forces the CPU fill DAG. */
 export function _getUseCpuWalk() {
   return useCpuWalk;
 }
@@ -421,7 +410,7 @@ function ensureRasterPipeline() {
  */
 export function walkEligible(param) {
   if (useCpuWalk || Stats.enabled) return false;
-  // W4b: a hooked stream forfeits the GPU walk (documented honest cost) —
+  // A hooked stream forfeits the GPU walk (documented honest cost) —
   // its strokes take the retained CPU producer so the hook can run on
   // CPU-resident arrays with zero readback. Scoped: other streams keep
   // the GPU walk untouched.
@@ -495,7 +484,7 @@ function ensureEnvironment(gaussPool) {
  * @returns {{pc, cached}} updated pressure-cache chain
  */
 export function queueWalkStroke(o) {
-  _noteGpuStroke(); // W4b routing counter (per stroke, trivial)
+  _noteGpuStroke(); // inspection routing counter (per stroke, trivial)
   ensureEnvironment(o.gaussPool);
 
   const color = State.stroke.color._array;
@@ -630,7 +619,7 @@ export function flushWalkBatch(joinMask = false) {
     descs,
     gs.map((g) => ({ start: g.start, end: g.end })),
   ); // submits its own compute encoder
-  // W4b: an open capture retains the batch (no readback here — it is
+  // An open geometry capture retains the batch (no readback here — it is
   // mapped only when readGeometry() is awaited, out-of-band).
   const captured = _iflag.active && _captureWalkBatch(walker, batch, descs, Density);
   ensureRasterPipeline();

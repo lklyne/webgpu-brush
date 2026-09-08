@@ -1,12 +1,12 @@
 // =============================================================================
-// Inspection and manipulation API (W4b)
+// Inspection and manipulation API
 //
 // One mechanism, four consumers (plan: "Inspection and manipulation"):
 //   - readGeometry(handle)      inspect / log / export stroke geometry
 //   - onGeometry(streamId, fn)  manipulate geometry between generate and
 //                               rasterize
 //   - the retained CPU walk     the debugger (unchanged, stroke.js)
-//   - useCpuGeometry(bool)      force the CPU producer (gl_draw.js)
+//   - cpuGeometry()/noCpuGeometry()  force / release the CPU producer (gl_draw.js)
 //
 // THE RULE (plan gotcha #9): readback is fatal in the frame path, fine
 // out-of-band. Nothing in this module stalls a frame:
@@ -40,7 +40,7 @@
 // hook, rasterize, discard. Fill/hatch-mass polygon geometry is not captured
 // here (fills are CPU-produced already; see fill/fill.js).
 //
-// Ownership (W4b): this file is new; gl_draw.js/stroke.js carry only the
+// Ownership: this file owns the mechanism; gl_draw.js/stroke.js carry only the
 // minimal insertion points that call into it, every one guarded by
 // `_iflag.active` so the seam is a no-op when unused.
 // =============================================================================

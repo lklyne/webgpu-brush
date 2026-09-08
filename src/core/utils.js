@@ -56,11 +56,11 @@ let rng = _makePRNG(Math.random());
 let rng2 = _makePRNG(Math.random() + ':2');
 
 // ---------------------------------------------------------------------------
-// Counter-based hash RNG (W1b) — replaces the sequential rr() stream.
+// Counter-based hash RNG — replaces upstream's sequential rr() stream.
 //
 // Internal geometry randomness no longer draws from an implicit sequential
 // stream: every draw is hash(seed, streamId, salt, index), so any consumer
-// (including the W2+ GPU compute shaders) can reproduce any single value
+// (including the GPU compute shaders) can reproduce any single value
 // from its coordinates alone, in any order, in parallel.
 //
 // Construction: multiply-xor input combiner + the lowbias32 finalizer
@@ -77,7 +77,7 @@ let rng2 = _makePRNG(Math.random() + ':2');
 // ---------------------------------------------------------------------------
 
 /**
- * Stream identifiers — one per randomness purpose. W2 compute shaders must
+ * Stream identifiers — one per randomness purpose. GPU compute shaders must
  * reproduce these ids verbatim; never renumber, only append.
  */
 export const STREAM = {
@@ -146,7 +146,7 @@ export const STREAM = {
 let _seedU32 = _hashSeed(Math.random());
 
 /**
- * The current hash-stream seed word (W3 export). GPU compute components
+ * The current hash-stream seed word. GPU compute components
  * (grow-compute, strokewalk-compute) hand this to their shaders so WGSL
  * hashU32 reproduces the CPU streams bit-exactly. Test/internal use —
  * grow.js previously recovered it by inverting the lowbias32 finalizer.

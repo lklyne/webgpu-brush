@@ -1,5 +1,5 @@
 // =============================================================================
-// Stamp WGSL (W2 stamp-pipeline)
+// Stamp WGSL (stamp-pipeline)
 //
 // One instanced-quad shader replacing both upstream stamp paths
 // (stroke/shader.{vert,frag} point sprites and stroke/image.{vert,frag}
@@ -11,7 +11,8 @@
 //   vs_disc / fs_disc   — procedural antialiased disc (ignores `angle`)
 //   vs_image / fs_image — rotated quad sampling a tip texture's alpha
 //
-// The disc fragment reproduces stroke/shader.frag exactly:
+// The disc fragment reproduces upstream's point-sprite fragment shader
+// (test/reference/glsl/stamp-circle.frag) exactly:
 //   f = distance from center in point-sprite units (0.5 at the rim),
 //   a = fwidth(f) — top-level, so gotcha #2 (derivatives in non-uniform
 //   control flow) does not bite here,
@@ -31,9 +32,9 @@
 // (srcFactor one-minus-dst-alpha, dstFactor one) — see ../stamps.js.
 //
 // NOTE: this is a .wgsl.js wrapper rather than a raw .wgsl file so it is
-// importable in the browser and node with zero bundler configuration
-// (rollup's glslify plugin only handles .frag/.vert). If W3+ adds a .wgsl
-// string plugin, move the template literal into stamp.wgsl.
+// importable in the browser and node with zero bundler configuration —
+// WGSL is exported as a template-literal string and bundled by rollup
+// directly, like any other module.
 // =============================================================================
 
 export default /* wgsl */ `
@@ -81,7 +82,7 @@ fn cornerFor(vi : u32) -> vec2f {
   // mostly miss every fragment center instead. Replicate the clamp; the
   // 511 upper clamp is NOT replicated — quads are simply correct above it.
   //
-  // W3: for the CLAMPED case the quad is additionally SNAPPED to the one
+  // For the CLAMPED case the quad is additionally SNAPPED to the one
   // pixel GL point rasterization covers (fragment centers inside the 1px
   // square centered on pos → the single pixel with index ceil(pos - 1)).
   // An unsnapped ±0.5 quad spreads coverage over up to 4 pixels, which
@@ -94,7 +95,7 @@ fn cornerFor(vi : u32) -> vec2f {
     // rasterization — with a tiny tie epsilon: ANGLE-on-Metal resolves
     // exact-boundary centers (integer device coords, common for
     // axis-aligned strokes) to the LOWER pixel, observed against the
-    // W1b-dist reference render. Only positions within 0.005 px of a
+    // upstream GL reference render. Only positions within 0.005 px of a
     // boundary are affected.
     let px = ceil(pos - 1.005);
     quadPos = px + vec2f(f32(vi & 1u), f32(vi >> 1u)); // spans [px, px+1]

@@ -13,24 +13,40 @@ the left pane.
 
 ## Divergences from upstream
 
-0. **W3 — WebGPU renderer.** The standalone build renders through pure
-   WebGPU (no WebGL anywhere in the standalone path). Three API-visible
-   consequences:
-   - **`await brush.ready()` is required** after
-     `createCanvas()`/`load()`, before the first drawing call. WebGPU
-     device acquisition has no synchronous form; drawing before ready
-     throws with a message pointing at `ready()`. Every harness/scenario
-     in this repo awaits it (a `brush.ready` guard keeps them working
-     against upstream, which has no such export).
+0. **W3 — WebGPU renderer.** The library renders through pure WebGPU (no
+   WebGL anywhere). API-visible consequences:
+   - **`brush.ready()`** resolves once the WebGPU device is up. WebGPU
+     device acquisition has no synchronous form. *Awaiting it is
+     optional* (W8): stateful calls made before the device resolves are
+     recorded and replayed in program order, so upstream's synchronous
+     `createCanvas()`-then-draw sequence runs unmodified (see W8 for the
+     one pre-ready `random()` caveat). Upstream's own standalone test
+     pages run byte-identical in this repo (W9 dropped the `ready` guards
+     they had carried since W3).
    - **`brush.readPixels()`** (async, out-of-band) reads the painting
      texture back as RGBA — the supported way to capture output
      (canvas2d `drawImage()` of a WebGPU canvas is blank in some
      headless configurations; the parity harness uses `readPixels`).
-   - **`brush.useCpuGeometry(bool)`** forces the retained CPU stroke
-     walk (early W4b surface; the CPU path is a first-class producer).
-   The p5 adapter (`adapters/p5/`) still references the old GL stroke
-   path and is **broken at runtime** — per plan it is out of scope,
-   untouched and untested; it still builds.
+   - **`brush.cpuGeometry()` / `brush.noCpuGeometry()`** force / release
+     the retained CPU producers (stroke walk and fill DAG; the CPU path is
+     a first-class producer). Named as a toggle pair to match upstream's
+     `fill`/`noFill`, `field`/`noField` (W8). The interim
+     `useCpuGeometry(bool)` alias was removed in W9.
+   - **`brush.gpu()`** (W7) and `createCanvas`/`load` `{device, adapter}`
+     options: shared-device interop for hosts that own a WebGPU device.
+   - **`snapshot()` / `restore()` / `freeSnapshot()`** and the geometry
+     inspection API (`stream`, `onGeometry`, `beginGeometry`/`endGeometry`,
+     `readGeometry`, W4b) are additive.
+   **The p5 build is gone.** The p5 adapter needed p5's WebGL renderer
+   (framebuffers, `createShader`) that W3 removed from the core, so it had
+   been broken at runtime since W3 and unbuilt since W8. W9 deleted it
+   along with the WebGL shader sources, `index.p5.js`/`index.shared.js`,
+   the p5 test pages, the examples, the online tools and the Pages deploy.
+   The package ships the standalone build only (`brush-gpu/standalone`;
+   `main`/`module` point at it too). Upstream's GLSL shaders survive
+   verbatim under `test/reference/glsl/` because two component oracles
+   (spectral, stamps) render them in WebGL2 as their reference, and the
+   spectral constant tables are transcribed from that `.frag`.
 
 1. **W1b — counter-based hash RNG.** `rr()` (the internal sequential
    geometry stream) is gone; every internal random draw is
@@ -1164,3 +1180,257 @@ walkraster}.wgsl.js`, `src/adapters/standalone/gpu.js`
 `src/stroke/composite.js` (`flushPending` hook), `src/adapters/standalone/
 frame.js` (clear flushes), `scripts/bench-strokes.mjs`,
 `test/standalone/stroke_ab.{html,js}`.
+
+## W7 — Shared-device interop (`brush.gpu()`)
+
+The first r3f embedding (the host site's draw tab) re-uploaded the fork's
+canvas through a `THREE.CanvasTexture` on every dirty frame. This wave makes
+the painting consumable by a host renderer on the **same GPUDevice** with
+zero copies. Additive; no dependency on three in the fork.
+
+### API surface (standalone build)
+
+- **`brush.createCanvas(w, h, { device, adapter })` / `brush.load(target,
+  { device, adapter })`** — adopt an externally owned device instead of
+  requesting one. The owner keeps ownership: `GpuContext.destroy()`
+  unconfigures the canvas but never destroys an injected device
+  (`ctx.external`). The injected device must carry limits large enough for
+  the target; the fork's own request asks for the adapter maximum of
+  `maxTextureDimension2D` / `maxBufferSize` / `maxStorageBufferBindingSize`.
+- **`brush.gpu()`** → `{ device, adapter, format, painting,
+  onPaintingChanged(fn) → dispose }`. Synchronous; requires
+  `await brush.ready()` (throws the not-ready error otherwise). `painting`
+  is a getter for the LIVE painting `GPUTexture` — `ensurePainting()`
+  recreates it on resize, and every listener receives the new texture. Image
+  convention (row 0 = top); premultiplied colors in `format` (the preferred
+  canvas format, not sRGB-typed).
+- The fork's own `requestDevice` now asks for every feature the adapter
+  supports — the same request three's WebGPUBackend makes — so a host
+  adopting this device sees the feature set it would have requested itself
+  (`core-features-and-limits` keeps three out of compatibility mode;
+  `timestamp-query` feeds the host site's GPU-timing inspector). The
+  fork's shaders need nothing beyond defaults.
+
+### Intended pairing (verified on the host site)
+
+Fork owns the device (it needs the raw limits); three adopts it:
+`createCanvas` → `await ready()` → `gpu()` → `new WebGPURenderer({ device })`
+→ `new ExternalTexture(painting)` sampled through a TSL `texture()` node
+with v flipped (three plane UVs put v=0 at the bottom). Same device, same
+queue: the fork's submissions land before the host's render in submission
+order, no fences, no `needsUpdate`. Three initializes an `ExternalTexture`
+exactly once, so on `onPaintingChanged` the host swaps a fresh wrapper into
+the node's `.value` rather than re-pointing the old one. Bridge:
+`src/lib/brush-three.ts` in the host repo.
+
+### Verification
+
+- `vitest` 99/99, `npm run build` clean.
+- Host draw tab (`/experiments/brush-parity?tab=draw`): pointer strokes
+  land live on the three plane through the shared device, orientation
+  correct, undo (`restore()`) visible without any texture invalidation;
+  console clean; `device.features` includes `core-features-and-limits`.
+- Goldens gate re-run on the rebuilt dist, `diff-parity --webgpu --goldens
+  /test/goldens/tiles --regime character --tolerance 3.0`: **52/54, mean
+  1.2771, worst 4.7957** — bit-for-bit the W3/W5/W6 numbers, same two
+  documented residuals (edge-subpixel 3.7466, edge-self-intersect 4.7957).
+  Expected: the device request gained one optional feature and no shader
+  or geometry path changed.
+
+## W8 — Upstream consistency: sync-style API, naming, packaging
+
+Three free-of-perf changes toward upstream's shape (host-site request:
+"more parity without sacrificing perf"). None touch a shader, a geometry
+path, or anything after the first frame.
+
+### Deferred-call recorder (`await ready()` is optional)
+
+`src/adapters/standalone/deferred.js` + `src/index.standalone.js`. Between
+`createCanvas()`/`load()` and the device resolving, every stateful public
+call (state setters, transforms, drawing, `render`, `clear`,
+`Polygon#show`, `Plot#show`, the CPU-geometry switch) is recorded and
+replayed in program order once the device is up and the GPU stroke walker
+is warm — `applyLoadedTarget` now arms the recorder and starts `ready()`
+itself, so a sketch that never awaits anything still runs, and `ready()` /
+`readPixels()` hand back that same promise. After the first flush every
+wrapper is one boolean check.
+
+Immediate (never recorded): pure data (`random`, `noise`, `wRand`, `box`,
+`listFields`, `hatchArray`, `massArray`, `clip`, class constructors,
+`addField` registration, `add` — CPU tip rasterization and image loading,
+returns its Promise as upstream does), lifecycle (`createCanvas`, `load`,
+`ready`, `readPixels`, `gpu`), the W4b inspection API, and snapshots
+(`snapshot` returns a handle, so it cannot be deferred and still requires
+ready).
+
+`seed()`/`noiseSeed()` are both: they apply immediately (a `random()` read
+before ready is the seeded stream) AND replay in full at their place in
+the sequence. Full replay is deliberate: `circle()`, `Plot`, `mass()` and
+flow-field generation draw from the SAME stream as `brush.random()`
+(upstream design, `rr2`), so the stream must be reset at the same points
+for the replayed image to equal a synchronous run. The one consequence,
+pre-ready only: a `random()` value read after a pre-ready `seed()` is
+that stream's first draw, where a synchronous run would have consumed the
+intervening drawing first. The replayed image and the post-ready
+`random()` continuation both match the synchronous run exactly (oracle
+below). Errors thrown by a deferred call surface at replay, inside the
+ready promise, not at the call site.
+
+### Naming
+
+`cpuGeometry()` / `noCpuGeometry()` replace `useCpuGeometry(bool)` (kept
+as a deprecated alias; the oracles still exercise it). Upstream spells
+mode switches as toggle pairs.
+
+### Packaging
+
+Version **3.0.0** (the fork changes output per seed and swaps renderers).
+The p5 build is no longer produced: rollup target removed, `dist/p5.brush.*`
+deleted, root `.` export removed, `main`/`module`/`browser` point at the
+standalone dist. `src/adapters/p5` and `test/p5` stay as upstream code.
+
+### Verification
+
+- **oracle-w8** (`node scripts/oracle-w8.mjs`; page
+  `test/webgpu/oracle-w8.{html,js}`; report `oracle-w8-report.json`): two
+  FRESH pages — one draws a full program (both stroke producers, a
+  field-bent line, watercolor fill, hatch, transforms, `Polygon#show`, a
+  mid-program reseed) immediately after `createCanvas()` with no await,
+  the other awaits `ready()` first. **7/7**: no throw; pixel FNV-1a hash
+  **identical** across the deferred and synchronous runs (3937 inked px);
+  `random()` read before any seed matches, and the first post-flush
+  `random()` equals the synchronous run's continuation; a stroke after the
+  flush lands in the next `readPixels()`. Two pages rather than two passes
+  because flow-field generation is lazy and cached per module — the first
+  pass on a page consumes stream draws the second never does (a run-order
+  effect upstream shares; not what the oracle measures).
+- Goldens gate `diff-parity --webgpu --goldens /test/goldens/tiles --regime
+  character --tolerance 3.0`: **52/54, mean 1.2771, worst 4.7957** —
+  unchanged (the harness awaits ready, so it runs entirely post-flush).
+- oracle-w4b 4/4, oracle-w5 4/4 (through the deprecated alias),
+  `vitest` 99/99, `npm run build` clean.
+
+## W9 — Cleanup: unify toward upstream (standalone-only)
+
+Upstream `main` had not moved past the fork point (`fc37da3`) when this
+wave ran, so "unify" meant shrinking the fork's divergence and removing
+what no longer described the library, not merging.
+
+### Removed
+
+- **The p5 side.** `src/adapters/p5/`, `src/index.p5.js`,
+  `src/index.shared.js` (only the p5 entry used it), the WebGL shader
+  sources under `src/core/gl/` and `src/stroke/*.{frag,vert}`, the
+  `rollup-plugin-glslify` dependency, the `p5` peer dependency, and the
+  `test/p5/` pages, `example/`, `example2/`, `tools/`, `images/` and the
+  GitHub Pages deploy workflow — all of which loaded `dist/p5.brush.js`,
+  which W8 stopped producing. The p5 adapter had been broken since W3
+  (it asks the core for WebGL framebuffers and `createShader`). Every
+  upstream comparison uses the npm-pinned `p5.brush@2.2.2` (parity
+  harness left pane, stroke A/B bench, the site's parity and perf tabs),
+  so nothing about perf or parity testing changed.
+- **The renderer-hook contract** (`core/renderer_runtime.js`,
+  `adapters/standalone/renderer.js`, six call sites in
+  `stroke/gl_draw.js`): begin/end/reset around raw WebGL mask draws. With
+  the p5 adapter gone every implementation was a no-op.
+  `compositor_runtime.js` lost `blitDefaultFramebufferSource` (WebGL
+  `blitFramebuffer`, p5-only) and `ensureBlendShaderProgram` no longer
+  receives GLSL sources — `color.js` no longer imports them.
+- **`useCpuGeometry(bool)`**, the deprecated alias from W8. The oracles and
+  the A/B bench use `cpuGeometry()` / `noCpuGeometry()`.
+- `package-lock.json` (the pnpm workspace owns installs) and one timing
+  JSON nothing referenced.
+
+### Kept, moved
+
+- Upstream's GLSL — the spectral blend shader and the four stamp shaders —
+  now lives verbatim under `test/reference/glsl/`. The spectral and stamp
+  component oracles render it in WebGL2 as their reference, and
+  `scripts/spectral-gen-tables.mjs` transcribes the spectral constant
+  tables from it (that script had also gone stale: it targeted
+  `spectral.wgsl`, which W3 turned into `spectral.wgsl.js`; fixed).
+- `example/brush_tips/brush.jpg`, because upstream's `visual_suite.js`
+  loads it and that file is now byte-identical to upstream.
+
+### Unified
+
+- **Upstream test pages byte-identical.** The ten `test/standalone/*`
+  files that had carried a `if (brush.ready) await brush.ready()` line
+  since W3 are restored from `upstream/main`; the W8 recorder makes the
+  guard unnecessary. `test/index.html`, `test/test-nav.js` and the smoke
+  test list only the standalone suite; the smoke test asserts a WebGPU
+  context and inked pixels (via `readPixels`) instead of a WebGL2 context.
+- **One headless scaffold.** `scripts/lib/headless.mjs` (static server
+  over the repo root with an optional path rewrite, Chromium resolution,
+  `WEBGPU_ARGS` / `SWIFTSHADER_ARGS`, `launchBrowser()`) replaces the
+  thirteen private copies in `scripts/*.mjs` and the smoke test.
+- **Call-site validation in the recorder.** Restoring upstream's
+  `visual_suite.js` exposed a recorder gap: its error-message tests
+  (`pick("__DOES_NOT_EXIST__")`, `field("__DOES_NOT_EXIST__")`) expect a
+  synchronous throw — eleven of them, nine depending on state (no brush
+  set, `vertex()` outside `beginShape()`, `refreshField()` with no field)
+  — but a deferred call returned undefined and threw at replay,
+  nondeterministically, depending on whether the device resolved first.
+  `guard(fn, validate)` now runs a precheck at the call site while
+  deferring. `adapters/standalone/precheck.js` holds them: a shadow of
+  exactly the state upstream's checks read (brush+color set, open shape
+  and its vertex count, open stroke, active field, a push/pop stack for
+  the first and last), seeded from the real state when recording starts,
+  plus the pure-argument checks (`assertBrush`, `assertField`, angle
+  mode, `beginStroke` type, `spline` length), with upstream's messages
+  verbatim. For `field` to validate pre-ready the standard field
+  generators are registered at module load (`addStandard()` at init)
+  instead of only when the grid is first built — definitions only, so no
+  grid is generated and the random stream is untouched; `createField()`
+  still re-registers them as upstream does. `listFields()` (immediate, not
+  recorded) is now a pure registry read: upstream routed it through
+  `isFieldReady()`, which builds the compositor and therefore needed the
+  device, so the suite's pre-ready `listFields()` call threw "device is
+  still initializing". Errors outside that set (an invalid color value)
+  still surface inside `ready()`, as documented.
+  Unit-tested in `test/unit/precheck.test.js` and `deferred.test.js`.
+- **Wave labels out of source comments.** Every `W0`–`W8` reference in
+  `src/` was rewritten as an intent-level comment; this file keeps the
+  chronology. Stale statements were corrected in passing (target.js no
+  longer says callers must await `ready()`; WGSL comments no longer cite
+  the glslify plugin).
+- **Packaging.** `repository`/`bugs`/`homepage` point at the fork,
+  keywords drop `p5`, `pnpm test:goldens` runs the goldens gate, and the
+  README, `docs/standalone.md`, `llms.txt` and the adapter READMEs
+  describe a single WebGPU build (install `brush-gpu/standalone`;
+  requirements, `ready()` optional with the `random()` caveat,
+  `readPixels`, `gpu()`, `cpuGeometry`, snapshots, inspection API, hash
+  RNG divergence).
+
+Not touched: `.github/workflows/publish-npm.yml` (publishes on a `v*` tag
+through an npm trusted-publisher environment that this fork's repo has
+not configured), the `p5.brush` devDependency (the reference), and the
+plan documents in the host repo.
+
+### Verification (final state)
+
+All re-run on the final tree after `pnpm build` (Metal, headless Chromium):
+
+- `pnpm exec vitest run` — 8 files, 109 tests (6 new for the recorder and
+  its prechecks).
+- `pnpm test:smoke` — upstream's `test/standalone/visual_suite.html`,
+  byte-identical to `upstream/main`, three consecutive runs: PASS (no page
+  errors, no unexpected `console.error`, a WebGPU context, inked pixels
+  via `readPixels`). Its eleven error-message tests all throw at the call
+  site while the device is still initializing.
+- `node scripts/oracle-w8.mjs` — 7/7, pixel hash 2970327761 identical
+  between the recorded+replayed run and the synchronous run (unchanged
+  from W8).
+- `oracle-w4b` 4/4, `oracle-w5` 4/4, `oracle-w1a` 4/4, `oracle-stencil`
+  12/12, `oracle-spectral` 4/4, `oracle-stamps` 4/4, `oracle-grow` 4/4,
+  `oracle-strokewalk` 5/5 — the spectral and stamp oracles now fetch
+  their GLSL reference from `test/reference/glsl/`.
+- `pnpm test:goldens` — 54 tiles, regime character, worst 4.7957, mean
+  1.2771, failing 2 (edge-subpixel 3.7466, edge-self-intersect 4.7957):
+  unchanged since W3.
+- `node scripts/spectral-gen-tables.mjs --check` — both targets up to
+  date against `test/reference/glsl/spectral.frag`.
+- `grep -rn '\bW[0-8][ab]\?\b' src` — no matches.
+- `src/` vs `upstream/main`: 18 files modified, 20 added, 18 deleted
+  (the p5 adapter, GLSL, and the no-op renderer hooks); `scripts/*.mjs`
+  2656 → 1874 lines including the new shared module.

@@ -8,14 +8,8 @@
 // Requires `npm run build` (dist/).
 // ============================================================
 
-import { chromium } from "playwright-chromium";
-import { createServer } from "node:http";
-import { existsSync, readdirSync } from "node:fs";
-import { readFile } from "node:fs/promises";
-import { extname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { startServer, launchBrowser } from "./lib/headless.mjs";
 
-const REPO_ROOT = resolve(fileURLToPath(import.meta.url), "../..");
 const args = process.argv.slice(2);
 function opt(name, fallback) {
   const i = args.indexOf(`--${name}`);
@@ -34,40 +28,6 @@ const VARIANTS = [
   { impl: "fork", color: "fixed", walk: "cpu" },
 ];
 
-const MIME = { ".html": "text/html", ".js": "application/javascript", ".mjs": "application/javascript" };
-
-function startServer() {
-  return new Promise((res, rej) => {
-    const server = createServer(async (req, resp) => {
-      const urlPath = req.url.split("?")[0];
-      try {
-        const data = await readFile(join(REPO_ROOT, urlPath));
-        resp.writeHead(200, { "Content-Type": MIME[extname(urlPath)] || "application/octet-stream" });
-        resp.end(data);
-      } catch {
-        resp.writeHead(404);
-        resp.end("Not found");
-      }
-    });
-    server.listen(0, "127.0.0.1", () => res(server));
-    server.on("error", rej);
-  });
-}
-
-function findExecutable() {
-  if (process.env.PARITY_CHROME && existsSync(process.env.PARITY_CHROME)) return process.env.PARITY_CHROME;
-  const agentBrowsers = join(process.env.HOME ?? "", ".agent-browser", "browsers");
-  if (existsSync(agentBrowsers)) {
-    for (const dir of readdirSync(agentBrowsers).sort().reverse()) {
-      const p = join(agentBrowsers, dir, "Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing");
-      if (existsSync(p)) return p;
-    }
-  }
-  const systemChrome = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
-  if (existsSync(systemChrome)) return systemChrome;
-  throw new Error("No Chromium found. Set PARITY_CHROME.");
-}
-
 const median = (xs) => {
   const s = [...xs].sort((a, b) => a - b);
   return s[Math.floor(s.length / 2)];
@@ -75,10 +35,7 @@ const median = (xs) => {
 
 const server = await startServer();
 const baseUrl = `http://127.0.0.1:${server.address().port}`;
-const browser = await chromium.launch({
-  executablePath: findExecutable(),
-  args: ["--enable-unsafe-webgpu", "--use-angle=metal", "--enable-features=WebGPU"],
-});
+const browser = await launchBrowser();
 
 console.log(`${"variant".padEnd(28)} ${"total ms".padStart(9)} ${"js ms".padStart(8)}   (median of ${RUNS}, n=${N})`);
 try {

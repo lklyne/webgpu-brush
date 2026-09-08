@@ -1,5 +1,5 @@
 // =============================================================================
-// Stamp renderer (W2 stamp-pipeline)
+// Stamp renderer (stamp-pipeline)
 //
 // WebGPU replacement for the two stamp paths in stroke/gl_draw.js:
 //   - the point-sprite circle path  → instanced-quad "disc" pipeline
@@ -17,7 +17,7 @@
 //
 // Units contract (differs from gl_draw.js only by density):
 //   x, y      — stamp center, DEVICE pixels (gl_draw stores logical px and
-//               lets the viewport scale; here W3 multiplies by Density at
+//               lets the viewport scale; here the adapter multiplies by Density at
 //               queue time, same as gl_draw's dScreenX/dScreenY already do
 //               for dirty rects)
 //   halfSize  — radius / half quad size, device px (same as gl_draw)

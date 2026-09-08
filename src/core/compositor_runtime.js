@@ -5,11 +5,10 @@
 /**
  * Shared compositor helpers and host hooks.
  *
- * The shared code in this module assumes framebuffer-like targets expose:
- * - `framebuffer`: native WebGL framebuffer handle
- * - optional lifecycle methods supplied by the host adapter
+ * Framebuffer-like targets are duck-typed objects supplied by the host
+ * adapter (the standalone adapter wraps GPU textures).
  *
- * Higher-level core modules also attach their own bookkeeping fields onto the
+ * Higher-level core modules attach their own bookkeeping fields onto the
  * active renderer and mask targets, such as:
  * - `shaderProgram`
  * - `blendSourceFramebuffer`
@@ -44,40 +43,6 @@ export const get2DContext = (canvas, willReadFrequently = false) => {
   );
   return canvas.drawingContext;
 };
-
-export function blitDefaultFramebufferSource({
-  renderer,
-  sourceFramebuffer,
-  dirtyRect,
-  getTargetPixelSize,
-  toScissorBox,
-}) {
-  const gl = renderer.drawingContext;
-  const { width, height } = getTargetPixelSize();
-  const sourceBox = dirtyRect ? toScissorBox(dirtyRect) : null;
-  const previousReadFramebuffer = gl.getParameter(gl.READ_FRAMEBUFFER_BINDING);
-  const previousDrawFramebuffer = gl.getParameter(gl.DRAW_FRAMEBUFFER_BINDING);
-
-  gl.bindFramebuffer(gl.READ_FRAMEBUFFER, null);
-  gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, sourceFramebuffer.framebuffer);
-  gl.blitFramebuffer(
-    sourceBox?.x ?? 0,
-    sourceBox?.y ?? 0,
-    sourceBox ? sourceBox.x + sourceBox.width : width,
-    sourceBox ? sourceBox.y + sourceBox.height : height,
-    sourceBox?.x ?? 0,
-    sourceBox?.y ?? 0,
-    sourceBox ? sourceBox.x + sourceBox.width : width,
-    sourceBox ? sourceBox.y + sourceBox.height : height,
-    gl.COLOR_BUFFER_BIT,
-    gl.NEAREST,
-  );
-
-  gl.bindFramebuffer(gl.READ_FRAMEBUFFER, previousReadFramebuffer);
-  gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, previousDrawFramebuffer);
-
-  return sourceFramebuffer;
-}
 
 let compositorRuntime = {
   clearTarget: () => {

@@ -38,7 +38,7 @@ brush.createCanvas(CANVAS_W, CANVAS_H, {
   pixelDensity: 1,
 });
 if (brush.ready) await brush.ready();
-if (impl === "fork" && brush.useCpuGeometry) brush.useCpuGeometry(walk === "cpu");
+if (impl === "fork" && brush.cpuGeometry) (walk === "cpu" ? brush.cpuGeometry : brush.noCpuGeometry)();
 
 const canvas = document.getElementById("brush-canvas");
 const gl = impl === "upstream" ? canvas.getContext("webgl2") : null;

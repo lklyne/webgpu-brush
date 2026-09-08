@@ -1,9 +1,9 @@
-// W3: canonical WGSL source, unified to the .wgsl.js string-export convention
-// (was prefix-scan.wgsl, fetched at runtime pre-W3). Bundled by rollup like any module.
+// WGSL ships as a string export so rollup bundles it like any module (no
+// runtime fetch).
 export const PREFIX_SCAN_WGSL = /* wgsl */ `
 // =============================================================================
-// Exclusive prefix scan over a u32 array (W2 strokewalk-compute; designed for
-// reuse by W4a's per-step restructure and grow-compute style consumers).
+// Exclusive prefix scan over a u32 array (strokewalk-compute; shaped for
+// reuse by a per-step walk layout and grow-compute style consumers).
 //
 // dst[i]  = sum(src[0..i))  for i in [0, n)
 // dst[n]  = sum(src[0..n))  — the total, so dst needs n+1 slots. The total is
@@ -15,7 +15,7 @@ export const PREFIX_SCAN_WGSL = /* wgsl */ `
 // tiles with a carried running total (Hillis–Steele scan per tile in shared
 // memory: 8 barrier rounds per tile). Cost is O(n / 256) sequential tile
 // iterations — sub-millisecond for anything stroke-shaped (n ~ 1e4 strokes,
-// or 1e6 steps for W4a; upgrade to a multi-workgroup two-level scan only if
+// or 1e6 steps for a per-step layout; upgrade to a multi-workgroup two-level scan only if
 // profiling ever shows this on the critical path).
 // =============================================================================
 
@@ -61,7 +61,7 @@ fn scanExclusive(@builtin(local_invocation_id) lid3: vec3u) {
 }
 
 // ---------------------------------------------------------------------------
-// W3: drawIndirect args from the scan — one 16-byte entry per raster GROUP
+// drawIndirect args from the scan — one 16-byte entry per raster GROUP
 // (a contiguous stroke range [start, end)): {vertexCount 4 (triangle-strip
 // quad), instanceCount = dst[end] - dst[start], firstVertex 0, firstInstance
 // 0}. The raster vertex shader adds dst[start] itself (walkraster.wgsl), so

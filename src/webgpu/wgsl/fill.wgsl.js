@@ -1,15 +1,14 @@
 // =============================================================================
-// stencil-fill WGSL (W2, batched in W4a)
+// stencil-fill WGSL (batched)
 //
 // NOTE ON FILE NAMING: the plan places these shaders at
 // src/webgpu/wgsl/fill*.wgsl. They live in a .wgsl.js module instead because
 // (a) the test pages import src/ directly as ESM with no bundler (same as
-// test/webgpu/oracle-w1a.js), and (b) rollup.config.js only has a loader for
-// .frag/.vert (glslify) — adding a .wgsl loader is a shared-file edit that
-// belongs to W3. Exported template literals are the zero-tooling equivalent.
+// test/webgpu/oracle-w1a.js), and (b) exported template literals need no
+// loader at all — rollup bundles them like any module.
 //
-// W4a batching: all polygons of a batch share ONE render pass. Per-draw
-// parameters no longer arrive via a per-draw uniform bind group — they live
+// Batching: all polygons of a batch share ONE render pass. Per-draw
+// parameters do not arrive via a per-draw uniform bind group — they live
 // in a storage array indexed by @builtin(instance_index), selected with the
 // firstInstance argument of draw(). The cover pipeline stencil passOp is
 // 'zero' (set on the pipeline, not here), which self-cleans the stencil
@@ -115,7 +114,7 @@ struct CoverOut {
 `;
 
 // =============================================================================
-// POLY_WGSL (W5) — the same three stages, but pulling vertices straight out
+// POLY_WGSL — the same three stages, but pulling vertices straight out
 // of a grow-compute poly buffer instead of a CPU-uploaded arena.
 //
 // Nothing about the fill geometry touches the CPU on this path: vertex counts

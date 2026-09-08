@@ -33,14 +33,9 @@
 // sidesteps the canvas2d pixel noise floor.
 // ============================================================
 
-import { chromium } from "playwright-chromium";
-import { createServer } from "node:http";
-import { existsSync, readdirSync } from "node:fs";
+import { startServer, launchBrowser, REPO_ROOT, WEBGPU_ARGS } from "./lib/headless.mjs";
 import { readFile, writeFile } from "node:fs/promises";
-import { extname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
-
-const REPO_ROOT = resolve(fileURLToPath(import.meta.url), "../..");
+import { resolve } from "node:path";
 
 const args = process.argv.slice(2);
 function opt(name, fallback) {
@@ -193,82 +188,17 @@ if (!OUT) {
 const MODULE = opt("module", "/dist/brush.esm.js");
 const SEED = opt("seed", "parity-0");
 
-const MIME = {
-  ".html": "text/html",
-  ".js": "application/javascript",
-  ".mjs": "application/javascript",
-  ".json": "application/json",
-  ".png": "image/png",
-  ".css": "text/css",
-  ".svg": "image/svg+xml",
-};
-
-function startServer() {
-  return new Promise((res, rej) => {
-    const server = createServer(async (req, resp) => {
-      const urlPath = req.url.split("?")[0];
-      if (urlPath === "/favicon.ico") {
-        resp.writeHead(204);
-        resp.end();
-        return;
-      }
-      try {
-        const data = await readFile(join(REPO_ROOT, urlPath));
-        resp.writeHead(200, { "Content-Type": MIME[extname(urlPath)] || "application/octet-stream" });
-        resp.end(data);
-      } catch {
-        resp.writeHead(404);
-        resp.end("Not found");
-      }
-    });
-    server.listen(0, "127.0.0.1", () => res(server));
-    server.on("error", rej);
-  });
-}
-
-function findExecutable() {
-  if (process.env.PARITY_CHROME && existsSync(process.env.PARITY_CHROME)) {
-    return process.env.PARITY_CHROME;
-  }
-  try {
-    const p = chromium.executablePath();
-    if (p && existsSync(p)) return undefined;
-  } catch {
-    /* not downloaded */
-  }
-  const agentBrowsers = join(process.env.HOME ?? "", ".agent-browser", "browsers");
-  if (existsSync(agentBrowsers)) {
-    for (const dir of readdirSync(agentBrowsers).sort().reverse()) {
-      const p = join(
-        agentBrowsers,
-        dir,
-        "Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
-      );
-      if (existsSync(p)) return p;
-    }
-  }
-  const systemChrome = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
-  if (existsSync(systemChrome)) return systemChrome;
-  throw new Error("No Chromium found. Set PARITY_CHROME.");
-}
-
 let server = null;
 let browser = null;
 let exitCode = 0;
 try {
   server = await startServer();
   const baseUrl = `http://127.0.0.1:${server.address().port}`;
-  browser = await chromium.launch({
-    executablePath: findExecutable(),
-    // W3: the fork requires WebGPU (no software WebGPU here) — Metal ANGLE.
-    // Geometry capture (geomHash) is GPU-independent; the flags only need
-    // to let the adapter initialize.
-    args: [
-      "--enable-unsafe-webgpu",
-      "--use-angle=metal",
-      "--enable-features=WebGPU",
-      "--disable-accelerated-2d-canvas",
-    ],
+  // W3: the fork requires WebGPU (no software WebGPU here) — Metal ANGLE.
+  // Geometry capture (geomHash) is GPU-independent; the flags only need
+  // to let the adapter initialize.
+  browser = await launchBrowser({
+    args: [...WEBGPU_ARGS, "--disable-accelerated-2d-canvas"],
   });
   const page = await browser.newPage();
   const pageErrors = [];

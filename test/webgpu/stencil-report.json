@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-02T14:57:31.598Z",
+  "generatedAt": "2026-09-07T22:09:10.382Z",
   "adapter": {
     "vendor": "apple",
     "architecture": "metal-3"
@@ -126,7 +126,7 @@
       "note": "float16 canvas2d reference vs rgba16float GPU mask",
       "rmse": 0.1384,
       "maxDiff": 2.93,
-      "alphaRmse": 0.1696
+      "alphaRmse": 0.1695
     },
     {
       "name": "full-fill-replay-ss2",
@@ -146,8 +146,8 @@
     "erases": 4,
     "vertexFloatsWritten": 559638,
     "pipelines": 4,
-    "encodeSubmitMsMedian": 1.1,
-    "gpuWaitMsMedian": 2.7,
+    "encodeSubmitMsMedian": 0.9,
+    "gpuWaitMsMedian": 1.3,
     "runs": 7,
     "note": "encode+submit is CPU JS; gpuWait is submit->onSubmittedWorkDone. W4a: batched — whole fill records CPU-side, encodes as one pass."
   },

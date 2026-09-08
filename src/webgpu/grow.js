@@ -1,9 +1,9 @@
 // =============================================================================
-// grow-compute (W2, extended to the full FillPoly op set in W5) — JS driver
-// for wgsl/grow.wgsl
+// grow-compute — JS driver for wgsl/grow.wgsl, covering the full FillPoly
+// op set
 //
 // GPU port of src/fill/fill.js FillPoly.grow() (which internally calls
-// trim()), plus W5's scatter() and erase(). The CPU implementation is
+// trim()), plus scatter() and erase(). The CPU implementation is
 // untouched and remains the manipulation path and the debugger; this module
 // only adds a parallel producer.
 //
@@ -18,7 +18,7 @@
 //     and the vertex bounding box (user space) at words 16..19, so the
 //     render side needs no CPU-side geometry to bound its cover quad.
 //
-// W5 dispatch contract:
+// Dispatch contract:
 //   const gc = await createGrowCompute(gpu, cache);
 //   gc.setState({ bleedStrength, direction });        // per fill() call
 //   gc.uploadPools(gaussA, gaussB);                   // per seed() (data!)
@@ -36,10 +36,10 @@
 // The fill-op salt counter (fill.js _fillOp) is GPU-RESIDENT (a 4-byte
 // buffer) because trim()'s salt consumption depends on the polygon's
 // CURRENT vertex count (`v.length <= 8` fast path skips a salt), and vertex
-// counts only exist on the GPU mid-chain. THIS IS WHY W5 is all-or-nothing:
-// every salt consumer in fill() — grow, scatter, erase — had to move to the
-// GPU together, because the counter can never come back to the CPU without
-// a readback (gotcha #9).
+// counts only exist on the GPU mid-chain. This is why the GPU fill DAG is
+// all-or-nothing: every salt consumer in fill() — grow, scatter, erase —
+// lives on the GPU together, because the counter can never come back to
+// the CPU without a readback (gotcha #9).
 //
 // Exact-parity machinery (mirrors grow.wgsl header):
 //   - decomposeFrac(): a positive f64 < = 1 as exact mantissa/shift so the
@@ -133,9 +133,9 @@ export function buildGrowPrelude() {
 }
 
 /**
- * Full grow WGSL: prelude + the bundled source (W3 unified the raw .wgsl
- * fetch to a .wgsl.js string export so rollup bundles it).
- * Kept async for API compatibility with W2 callers.
+ * Full grow WGSL: prelude + the bundled source (WGSL ships as a .wgsl.js
+ * string export so rollup bundles it like any module — no runtime fetch).
+ * Kept async for its callers.
  */
 export async function fetchGrowWgsl() {
   return buildGrowPrelude() + GROW_WGSL;
@@ -174,8 +174,8 @@ function lowbias32(x) {
 }
 
 /**
- * The library's hash-stream seed word. W3: utils.js now exports it
- * directly (_getSeedU32); the finalizer inversion below survives purely as
+ * The library's hash-stream seed word. utils.js exports it directly
+ * (_getSeedU32); the finalizer inversion below survives purely as
  * a cross-check that the hash construction and the export stay in
  * agreement — it fails loudly if either changes.
  * @returns {number} u32
@@ -403,7 +403,7 @@ export function createGrowComputeSync(gpu, cache, opts = {}) {
   // --------------------------------------------------------------------------
   // Uniform staging: every op appends a 256-byte-aligned slot to a CPU
   // arena; uploadBatch() issues ONE writeBuffer for the whole batch. Per-call
-  // queue.writeBuffer was measured (W4a) as the single most expensive thing
+  // queue.writeBuffer was measured as the single most expensive thing
   // this codebase can do in a frame.
   // --------------------------------------------------------------------------
   //

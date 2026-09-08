@@ -1,26 +1,23 @@
 {
   "name": "brush-gpu",
-  "version": "2.2.2",
-  "description": "Fork of p5.brush (by Alejandro Campos Uribe, MIT) being ported to pure WebGPU with GPU-resident geometry. Custom brushes, natural fill effects and intuitive hatching.",
-  "main": "dist/p5.brush.js",
-  "module": "dist/p5.brush.esm.js",
-  "browser": "dist/p5.brush.js",
+  "version": "3.0.0",
+  "description": "Pure-WebGPU fork of p5.brush (Alejandro Campos Uribe, MIT): custom brushes, natural fill effects and intuitive hatching, with GPU-resident geometry. Standalone build only \u2014 no p5.js dependency.",
+  "main": "dist/brush.js",
+  "module": "dist/brush.esm.js",
+  "browser": "dist/brush.js",
   "exports": {
-    ".": {
-      "import": "./dist/p5.brush.esm.js",
-      "require": "./dist/p5.brush.js"
-    },
     "./standalone": {
       "import": "./dist/brush.esm.js",
       "require": "./dist/brush.js"
     }
   },
   "scripts": {
+    "build": "rollup --config",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:smoke": "node test/e2e/smoke.mjs",
-    "coverage": "vitest run --coverage",
-    "build": "rollup --config"
+    "test:goldens": "node scripts/diff-parity.mjs --webgpu --goldens /test/goldens/tiles --regime character --tolerance 3.0",
+    "coverage": "vitest run --coverage"
   },
   "files": [
     "dist",
@@ -30,39 +27,38 @@
   "type": "module",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/acamposuribe/p5.brush.git"
+    "url": "git+https://github.com/lklyne/brush-gpu.git"
   },
   "keywords": [
     "brush",
-    "p5",
-    "p5js",
     "brushes",
     "watercolor",
     "flowfield",
-    "p5-library"
+    "webgpu",
+    "wgsl",
+    "generative"
   ],
   "author": "Alejandro Campos Uribe",
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/acamposuribe/p5.brush/issues"
+    "url": "https://github.com/lklyne/brush-gpu/issues"
   },
-  "homepage": "https://p5-brush.cargo.site/",
+  "homepage": "https://github.com/lklyne/brush-gpu#readme",
   "devDependencies": {
     "@rollup/plugin-node-resolve": "^15.2.3",
-    "p5.brush": "2.2.2",
     "@rollup/plugin-terser": "^1.0.0",
     "@vitest/coverage-v8": "^4.1.9",
+    "p5.brush": "2.2.2",
     "playwright-chromium": "^1.58.2",
     "rollup": "^4.9.4",
     "rollup-plugin-cleanup": "^3.2.1",
-    "rollup-plugin-glslify": "^1.3.1",
     "vite": "^8.0.16",
     "vitest": "^4.1.9"
   },
-  "peerDependencies": {
-    "p5": "^2.2"
-  },
   "dependencies": {
     "simplex-noise": "^4.0.3"
-  }
+  },
+  "contributors": [
+    "Lyle Klyne"
+  ]
 }

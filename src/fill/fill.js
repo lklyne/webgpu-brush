@@ -134,11 +134,11 @@ export function noFill() {
 let _polygon;
 let _bbMinX, _bbMinY, _bbMaxX, _bbMaxY;
 
-// Hash-stream scope counters (W1b). Each createFill() gets a fresh fill id;
+// Hash-stream scope counters. Each createFill() gets a fresh fill id;
 // each randomized FillPoly operation (constructor setup, trim, grow, scatter,
 // erase, fill-level draws) grabs the next op salt. The op ORDER is fixed
 // control flow inside fill(), so (fillId, opId) is reproducible and is what
-// the W2 grow-compute dispatch receives as a uniform.
+// the grow-compute dispatch receives as a uniform.
 let _fillId = 0;
 let _fillOp = 0;
 const nextOpSalt = () => (((_fillId << 10) + _fillOp++) >>> 0);
@@ -626,7 +626,7 @@ class FillPoly {
     if (switchingToFill) Mix.justChanged = true;
     Mix.blend(color);
 
-    // W3: the fill matrix is a plain object handed to the GPU fill
+    // The fill matrix is a plain object handed to the GPU fill
     // surface (was ctx.setTransform + ctx.getTransform round trip).
     const m = getAffineMatrix();
     const fillMatrix = {
@@ -641,7 +641,7 @@ class FillPoly {
     const size = Math.max(this.sizeX, this.sizeY);
     const darker = rh(STREAM.FILL_DARKER, nextOpSalt(), 0, 0.15, 0.7);
 
-    // W5: `root` is either `this` (the retained CPU producer) or a
+    // `root` is either `this` (the retained CPU producer) or a
     // GpuFillPoly handle. Everything below is producer-agnostic — one
     // control flow, so the op order (and therefore the salt sequence) can
     // never drift between the two.
@@ -763,7 +763,7 @@ class FillPoly {
 }
 
 // ---------------------------------------------------------------------------
-// GPU-resident FillPoly (W5)
+// GPU-resident FillPoly
 //
 // A handle into the grow-compute poly pool wearing FillPoly's interface, so
 // FillPoly.fill() below drives ONE control flow for both producers. Nothing
@@ -837,7 +837,7 @@ class GpuFillPoly {
  * Opens a GPU-resident fill for `poly`, or returns null when the GPU path is
  * unavailable or deliberately bypassed:
  *   - `Stats.enabled` — structural capture reads CPU vertex arrays.
- *   - `brush.useCpuGeometry(true)` — the documented CPU producer switch.
+ *   - `brush.cpuGeometry()` — the documented CPU producer switch.
  *   - no WebGPU fill driver, or a polygon past the poly-buffer capacity.
  */
 function _tryGpuFill(poly, matrix, size) {
@@ -884,7 +884,7 @@ function _tryGpuFill(poly, matrix, size) {
 }
 
 // ---------------------------------------------------------------------------
-// Test-only exports (W3). grow-cpu-ref.js currently rebuilds FillPoly by
+// Test-only exports. grow-cpu-ref.js currently rebuilds FillPoly by
 // extracting trim()/grow() source text; this export lets the oracle move
 // to the real class. setScope wires the module-level randomness scope the
 // methods read (fill id / op counter / GROW_CAP / gaussian pools).
@@ -892,7 +892,7 @@ function _tryGpuFill(poly, matrix, size) {
 // ---------------------------------------------------------------------------
 
 /**
- * W5 test instrumentation (not API): the GPU fill driver's op counters, so
+ * Test instrumentation (not API): the GPU fill driver's op counters, so
  * the oracle can assert routing rather than infer it from pixels.
  */
 export function _fillDriverStats() {

@@ -264,6 +264,12 @@ let list = new Map();
 let resolution, left_x, top_y, num_columns, num_rows;
 const FIELD_ANGLE_MODES = new Set(["degrees", "radians"]);
 
+// Register the standard field generators now (definitions only; grids are
+// generated lazily once the target exists) so field(name) can validate a
+// name before the WebGPU device is ready. createField() re-registers them
+// exactly as upstream does when the grid is first built.
+addStandard();
+
 /**
  * Initializes the field grid and sets up the vector field's structure based on the renderer's dimensions.
  */
@@ -330,7 +336,7 @@ export function refreshField(t = 0) {
 }
 
 // ---------------------------------------------------------------------------
-// W3: GPU-walk field snapshot. The stroke router uploads the active field
+// GPU-walk field snapshot. The stroke router uploads the active field
 // to the strokewalk compute shader; the epoch lets it re-upload only when
 // the field actually changed (activation, refresh, regeneration).
 // ---------------------------------------------------------------------------
@@ -340,7 +346,7 @@ let _fieldEpoch = 0;
 /**
  * Flattened snapshot of the active flow field for GPU upload (col-major,
  * c * numRows + r — the layout strokewalk-compute expects), or null when
- * no field is active. Internal API for the W3 stroke router.
+ * no field is active. Internal API for the GPU-walk stroke router.
  */
 export function _fieldSnapshot() {
   if (!State.field.isActive || !State.field.current) return null;
@@ -378,6 +384,18 @@ function genField() {
 }
 
 /**
+ * Throws if no field is registered under `name`.
+ * @param {string} name - Field name.
+ */
+export function assertField(name) {
+  if (!list.has(name)) {
+    throw new Error(
+      `Field "${name}" does not exist. Available fields: ${Array.from(list.keys()).join(", ")}.`,
+    );
+  }
+}
+
+/**
  * Activates a specific vector field by name, ensuring it's ready for use.
  * @param {string} a - The name of the vector field to activate.
  */
@@ -386,11 +404,7 @@ export function field(a) {
     State.field.wiggle = 1;
   } // Set default wiggle value
   isFieldReady();
-  if (!list.has(a)) {
-    throw new Error(
-      `Field "${a}" does not exist. Available fields: ${Array.from(list.keys()).join(", ")}.`,
-    );
-  }
+  assertField(a);
   State.field.isActive = true;
   State.field.current = a;
   const entry = list.get(a);
@@ -426,7 +440,8 @@ export function addField(name, funct, options = {}) {
  * @returns {string[]} An array of all the field names.
  */
 export function listFields() {
-  isFieldReady();
+  // Names only: the standard fields are registered at module load and
+  // grids are generated lazily on activation, so no target is required.
   return Array.from(list.keys());
 }
 

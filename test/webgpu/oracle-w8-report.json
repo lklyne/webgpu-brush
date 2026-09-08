@@ -1,0 +1,41 @@
+{
+  "generatedAt": "2026-09-07T22:18:42.103Z",
+  "tests": [
+    {
+      "name": "deferred:no-await",
+      "pass": true,
+      "detail": "full program before ready(), no throw"
+    },
+    {
+      "name": "deferred:inked",
+      "pass": true,
+      "detail": "3937 non-background pixels, hash 2970327761"
+    },
+    {
+      "name": "deferred:post-flush",
+      "pass": true,
+      "detail": "248 ink pixels from one post-ready line"
+    },
+    {
+      "name": "sync:inked",
+      "pass": true,
+      "detail": "3937 non-background pixels, hash 2970327761"
+    },
+    {
+      "name": "sync:post-flush",
+      "pass": true,
+      "detail": "248 ink pixels from one post-ready line"
+    },
+    {
+      "name": "deferred=sync",
+      "pass": true,
+      "detail": "pixel hash 2970327761 identical across a recorded+replayed run and a synchronous run (3937 inked px)"
+    },
+    {
+      "name": "user-stream",
+      "pass": true,
+      "detail": "pre-seed draws match and the post-flush draw 0.09629731555469334 equals sync's continuation (exempt pre-ready draw 0.0777865587733686)"
+    }
+  ],
+  "pageErrors": []
+}

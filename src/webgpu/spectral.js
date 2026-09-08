@@ -1,18 +1,19 @@
 // =============================================================================
-// CPU half of the W2 spectral component — the reflectance hoist.
+// CPU half of the spectral component — the reflectance hoist.
 //
-// The GLSL composite (src/core/gl/shader.frag) recomputes a full 38-band
+// Upstream's GLSL composite (test/reference/glsl/spectral.frag, kept as the
+// reference the tables are transcribed from) recomputes a full 38-band
 // linear→reflectance conversion + XYZ integration for BOTH colors, per
 // pixel. The blend color derives from the u_color uniform and is constant
 // across the pass (outside the darken branch), so its reflectance (R2)
 // and luminance are computed here, once, when the color changes, and
 // shipped to wgsl/spectral.wgsl in the BlendUniforms block.
 //
-// Math is a float64 port of shader.frag lines 21–147; the tables between
+// Math is a float64 port of spectral.frag lines 21–147; the tables between
 // the GENERATED markers are transcribed programmatically from the .frag by
 // scripts/spectral-gen-tables.mjs — do not hand-edit, rerun the script.
 //
-// Primary API for W3:
+// Primary API (used by the adapter):
 //   packBlendUniforms({ color, isBrush, targetIsFramebuffer }) →
 //     Float32Array(48) matching struct BlendUniforms (192 bytes), ready
 //     for a uniform-ring write. R2/luminance are memoized on the color.
@@ -24,7 +25,7 @@ const SPECTRAL_EPSILON = 0.0001;
 
 // BEGIN GENERATED TABLES (scripts/spectral-gen-tables.mjs — do not hand-edit)
 
-/** 38×7 (w,c,m,y,r,g,b) — shader.frag spectral_linear_to_reflectance. */
+/** 38×7 (w,c,m,y,r,g,b) — spectral.frag spectral_linear_to_reflectance. */
 export const SPECTRAL_L2R = [
   [1.0011607271876400, 0.9705850013229620, 0.9906735573199880, 0.0210523371789306, 0.0315605737777207, 0.0095560747554212, 0.9794047525020140],
   [1.0011606515972800, 0.9705924981434250, 0.9906715249619790, 0.0210564627517414, 0.0315520718330149, 0.0095581580120851, 0.9794007068431300],
@@ -66,7 +67,7 @@ export const SPECTRAL_L2R = [
   [1.0005449969930000, 0.0145038009464639, 0.9722813248265600, 0.9847028681227950, 0.9856965214637620, 0.0281260133612096, 0.0157648801149616],
 ];
 
-/** 38×3 CIE weights — shader.frag spectral_reflectance_to_xyz. */
+/** 38×3 CIE weights — spectral.frag spectral_reflectance_to_xyz. */
 export const SPECTRAL_R_TO_XYZ = [
   [0.0000646919989576, 0.0000018442894440, 0.0003050171476380],
   [0.0002194098998132, 0.0000062053235865, 0.0010368066663574],
@@ -108,7 +109,7 @@ export const SPECTRAL_R_TO_XYZ = [
   [0.0000199961492222, 0.0000072209749130, 0.0000000000000000],
 ];
 
-/** 3×3 XYZ→linear-sRGB rows — shader.frag XYZ_RGB. */
+/** 3×3 XYZ→linear-sRGB rows — spectral.frag XYZ_RGB. */
 export const SPECTRAL_XYZ_TO_RGB = [
   [3.2409699419045200, -1.537383177570090, -0.4986107602930030],
   [-0.9692436362808790, 1.875967501507720, 0.0415550574071756],
@@ -129,7 +130,7 @@ export function spectralCompand(x) {
 }
 
 /**
- * shader.frag spectral_linear_to_reflectance.
+ * spectral.frag spectral_linear_to_reflectance.
  * @param {[number, number, number]|number[]} lrgb linear rgb
  * @returns {Float64Array} 38-band reflectance
  */
@@ -159,7 +160,7 @@ export function linearToReflectance(lrgb) {
 }
 
 /**
- * shader.frag spectral_reflectance_to_xyz.
+ * spectral.frag spectral_reflectance_to_xyz.
  * @param {ArrayLike<number>} R 38-band reflectance
  * @returns {[number, number, number]} XYZ
  */
@@ -182,7 +183,7 @@ export function reflectanceToXYZ(R) {
  * matching `array<vec4f, 10>` uniform stride) and its XYZ luminance.
  *
  * Memoized on the last color seen — "compute once when the blend color
- * changes" — so W3 can call this per composite without bookkeeping.
+ * changes" — so the adapter can call this per composite without bookkeeping.
  *
  * @param {[number, number, number]|number[]} color sRGB in [0,1]
  * @returns {{r2: Float32Array, luminance: number}} shared, do not mutate
@@ -233,7 +234,7 @@ export const BLEND_UNIFORM_OFFSETS = {
  * Packs the composite pass uniform block.
  *
  * @param {{color: number[], isBrush?: boolean, targetIsFramebuffer?: boolean}} opts
- *   color: blend color, sRGB [0,1] (shader.frag u_color)
+ *   color: blend color, sRGB [0,1] (spectral.frag u_color)
  * @param {Float32Array} [out] length ≥ 48; allocated when omitted
  * @returns {Float32Array} out — pass to uniformRing.write()
  */
@@ -244,7 +245,7 @@ export function packBlendUniforms(opts, out = new Float32Array(48)) {
   const u32 = new Uint32Array(out.buffer, out.byteOffset, 48);
   u32[BLEND_UNIFORM_OFFSETS.isBrush] = opts.isBrush ? 1 : 0;
   u32[BLEND_UNIFORM_OFFSETS.targetIsFramebuffer] = opts.targetIsFramebuffer ? 1 : 0;
-  // W3: UV-flip flags (bit 0 source V, bit 1 mask V); 0 = image convention.
+  // UV-flip flags (bit 0 source V, bit 1 mask V); 0 = image convention.
   u32[43] = opts.flags ?? 0;
   out[BLEND_UNIFORM_OFFSETS.color + 0] = opts.color[0];
   out[BLEND_UNIFORM_OFFSETS.color + 1] = opts.color[1];

@@ -1,21 +1,6 @@
 (() => {
   const GROUPS = [
     [
-      "p5/visual_suite.html",
-      "p5/fill_circle_explorer.html",
-      "p5/wash_test.html",
-      "p5/pastel_hatching_test.html",
-      "p5/angle_mode_test.html",
-      "p5/transform_test.html",
-      "p5/pushpop_test.html",
-      "p5/hatch_test.html",
-      "p5/hatch_array_regression.html",
-      "p5/field_explorer.html",
-      "p5/offscreen_target_test.html",
-      "p5/instance_mode_test.html",
-      "p5/multi_instance_async_test.html",
-    ],
-    [
       "standalone/visual_suite.html",
       "standalone/fill_circle_explorer.html",
       "standalone/wash_test.html",

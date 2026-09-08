@@ -99,7 +99,6 @@
 
       const pixelDensity = window.devicePixelRatio || 1;
       brush.createCanvas(CW, CH, { id: "brush-canvas", parent: "#canvas-host", pixelDensity });
-      if (brush.ready) await brush.ready(); // W3: WebGPU device init is async
       brush.scaleBrushes(1.5);
 
       // Label canvas for grid lines and row labels

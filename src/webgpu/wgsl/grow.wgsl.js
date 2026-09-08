@@ -1,7 +1,7 @@
-// W3: canonical WGSL source, unified to the .wgsl.js string-export convention
-// (was grow.wgsl, fetched at runtime pre-W3). Bundled by rollup like any module.
+// WGSL ships as a string export so rollup bundles it like any module (no
+// runtime fetch).
 //
-// W5: grew from "grow only" into the whole GPU-resident FillPoly op set —
+// The whole GPU-resident FillPoly op set lives here —
 // growStep / scatterStep / eraseStep share one module because they share the
 // hash RNG, the trig LUT, the exact-integer helpers and the poly layout.
 export const GROW_WGSL = /* wgsl */ `
@@ -9,7 +9,7 @@ export const GROW_WGSL = /* wgsl */ `
 // grow.wgsl — FillPoly.grow()/scatter()/erase() on the GPU
 //
 // Bit-faithful port of src/fill/fill.js FillPoly.trim() + FillPoly.grow()
-// (+ scatter/erase in W5), using the W1b counter-based hash RNG
+// (+ scatter/erase), using the counter-based hash RNG
 // (src/core/utils.js hashU32/hash01 — lowbias32 finalizer over a multiply-xor
 // combiner; u32-only, reproduced verbatim below). The CPU implementation stays
 // untouched and is the oracle.
@@ -18,11 +18,12 @@ export const GROW_WGSL = /* wgsl */ `
 // of \`const STREAM_*: u32 = ...;\` taken from STREAM in src/core/utils.js, so
 // the stream ids cannot drift from the canonical map. See buildGrowPrelude().
 //
-// W5 restructure — ONE dispatch per op, ONE workgroup (256 threads):
-//   Was two dispatches (prepare @1 thread, exec @ 2*capacity threads). Per
-//   fill the DAG issues ~220 ops; at two dispatches each — the second always
-//   launching 256 workgroups regardless of the real vertex count — dispatch
-//   overhead dominated. Now thread 0 runs the sequential "prepare" scalar
+// Dispatch shape — ONE dispatch per op, ONE workgroup (256 threads):
+//   The obvious split — two dispatches (prepare @1 thread, exec @ 2*capacity
+//   threads) — loses: per fill the DAG issues ~220 ops; at two dispatches
+//   each, the second always launching 256 workgroups regardless of the real
+//   vertex count, dispatch overhead dominates. Instead thread 0 runs the
+//   sequential "prepare" scalar
 //   decisions into workgroup memory, a workgroupBarrier publishes them, and
 //   all 256 threads stride over the output indices. A third phase reduces the
 //   per-thread vertex bounding box into the dst header, so the render side
@@ -37,7 +38,7 @@ export const GROW_WGSL = /* wgsl */ `
 //     product land on integers, where f32 truncates differently than f64
 //     (e.g. f = 0.975, N = 40: f64 → 1, f32 → 0). f64FloorMulN() emulates
 //     the f64 multiply bit-exactly (96-bit limbs + round-to-nearest-even).
-//     W5 reuses it for scatter's \`~~(L * ratio)\`, which has the same
+//     scatter reuses it for \`~~(L * ratio)\`, which has the same
 //     integer attractor (ratio 0.1 / 0.75 against small integer L).
 //   - \`Math.ceil(idx / GROW_CAP)\` has the same integer attractor (GROW_CAP
 //     multiples of 2024). capStep() looks up a JS-precomputed table of the
@@ -58,7 +59,7 @@ export const GROW_WGSL = /* wgsl */ `
 //   words 8..11   drawIndirect { vertexCount=3*(count-2) fan-expanded,
 //                 instanceCount=1, firstVertex=0, firstInstance=0 }
 //                 → renderPass.drawIndirect(polyBuffer, 32)
-//   words 12..15  drawIndirect for the BORDER expansion (W5):
+//   words 12..15  drawIndirect for the BORDER expansion:
 //                 vertexCount = 12 * count → drawIndirect(polyBuffer, 48)
 //   words 16..19  vertex bbox minX, minY, maxX, maxY (f32, user space)
 //   words 20..23  reserved
@@ -107,7 +108,7 @@ struct Uniforms {
   gMantLo: u32,    //   mant = gMantHi * 2^32 + gMantLo  (<= 2^53)
   gShift: u32,     //   0 sentinel → (1-f) <= 0 → nTrim = 0
   flags: u32,      // bit 0: read src dirs inverted (FillPoly.flipDirs())
-  // --- scatter (W5) ---
+  // --- scatter ---
   rMantHi: u32,    // f64 decomposition of the scatter ratio (same encoding)
   rMantLo: u32,
   rShift: u32,
@@ -116,7 +117,7 @@ struct Uniforms {
   bbMinY: f32,
   bbMaxX: f32,
   bbMaxY: f32,
-  // --- erase (W5) — every value below is CPU-known (sizeX/sizeY/midP are
+  // --- erase — every value below is CPU-known (sizeX/sizeY/midP are
   // constant along the whole FillPoly chain); only the SALT is GPU-resident.
   eCountFactor: f32, // map(texture, 0, 1, 2, 3.5)
   eHalfSizeX: f32,
@@ -127,7 +128,7 @@ struct Uniforms {
   eMidY: f32,
   eOutBase: u32,   // first vec4f slot of this erase in the circle arena
   opInit: u32,     // opInit entry: value to seed the GPU op counter with
-  // --- dirty rect (W5) — the NON-supersampled fill matrix, so the rect
+  // --- dirty rect — the NON-supersampled fill matrix, so the rect
   // lands in final device px, plus the CPU path's 1 + lineWidth/2 pad.
   rA: f32, rB: f32, rC: f32, rD: f32, rE: f32, rF: f32,
   rPad: f32,
@@ -649,7 +650,7 @@ fn growSlot(j: u32) -> vec2f {
 
 // ---------------------------------------------------------------------------
 // growStep — ONE dispatch, ONE workgroup: prepare, then strided exec, then
-// the bbox reduction. See the W5 restructure note in the header.
+// the bbox reduction. See the dispatch-shape note in the header.
 // ---------------------------------------------------------------------------
 
 @compute @workgroup_size(256)
@@ -796,7 +797,7 @@ fn opInit() {
 // Oracle-only entry points (never dispatched in a frame path).
 // ---------------------------------------------------------------------------
 
-// Exact-u32 hash parity vs CPU hashU32 — the W2 hard gate.
+// Exact-u32 hash parity vs CPU hashU32 — the hard gate for the whole port.
 @compute @workgroup_size(64)
 fn hashSelfTest(@builtin(global_invocation_id) gid: vec3u) {
   let k = gid.x;

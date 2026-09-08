@@ -81,7 +81,7 @@ function drawWashPolygon(polygon) {
     f: Density * (m.y + Cheight / 2),
   };
 
-  // W3: one nonzero-winding fill pass on the GPU fill surface (dirty rects
+  // One nonzero-winding fill pass on the GPU fill surface (dirty rects
   // are tracked by the surface).
   const alpha = State.wash.opacity / 255;
   Mix.ctx.washPolygon(polygon.vertices, matrix, alpha);

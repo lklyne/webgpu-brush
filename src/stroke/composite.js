@@ -123,7 +123,7 @@ export function getStrokeCompositeRect(
  * @returns {object} Stroke mask framebuffer.
  */
 export function getStrokeShaderMask(_Renderer, mask) {
-  // W3: any GPU-walked strokes still pending must land in the mask before
+  // Any GPU-walked strokes still pending must land in the mask before
   // the composite samples it.
   flushWalkBatch();
   return mask;

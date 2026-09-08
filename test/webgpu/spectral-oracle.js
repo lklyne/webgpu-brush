@@ -2,8 +2,8 @@
 // W2 spectral-wgsl oracle — browser half. Driven by
 // scripts/oracle-spectral.mjs.
 //
-// LUT capture: the REAL upstream GLSL (src/core/gl/shader.frag +
-// shader.vert, fetched verbatim) rendered in a WebGL2 framebuffer with a
+// LUT capture: the REAL upstream GLSL (test/reference/glsl/spectral.frag +
+// spectral.vert, upstream's blend shader kept verbatim) rendered in a WebGL2 framebuffer with a
 // uniform source color and uniform mask alpha = t. With a uniform mask
 // the blur-edge derivatives are zero, so u_isBrush=false yields exactly
 // spectral_mix(bg, u_color, t); u_isBrush=true with t > 0.7 exercises
@@ -68,7 +68,7 @@ function maxChannelDiff(a, b) {
 }
 
 // ---------------------------------------------------------------------------
-// GLSL reference (upstream shader.frag, verbatim)
+// GLSL reference (upstream spectral shader, verbatim)
 // ---------------------------------------------------------------------------
 
 function makeGlslRenderer(vertSrc, fragSrc) {
@@ -274,8 +274,8 @@ try {
     : null;
 
   const [fragSrc, vertSrc] = await Promise.all([
-    fetch("../../src/core/gl/shader.frag").then((r) => r.text()),
-    fetch("../../src/core/gl/shader.vert").then((r) => r.text()),
+    fetch("../reference/glsl/spectral.frag").then((r) => r.text()),
+    fetch("../reference/glsl/spectral.vert").then((r) => r.text()),
   ]);
   const wgsl = SPECTRAL_WGSL; // W3: bundled .wgsl.js is the canonical source
 

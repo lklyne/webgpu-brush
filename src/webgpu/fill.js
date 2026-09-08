@@ -1,15 +1,16 @@
 // =============================================================================
-// stencil-fill (W2, batched in W4a) — stencil-based nonzero-winding polygon
-// fill
+// stencil-fill — stencil-based nonzero-winding polygon fill, batched per
+// encoder
 //
 // Replaces the canvas2d fill-mask rasterizer (fill/mask.js drawPolygon/circle
 // consumers in fill/fill.js, fill/wash.js) with WebGPU render passes. The
 // canvas2d path is never ported: no FillMaskUploadCanvas, no
 // copyExternalImageToTexture staging, no Mix.ctx (removal of those consumers
-// is W3 integration work — they are shared files).
+// happens on the adapter/integration side — they are shared files).
 //
-// W4a batching (was: one render pass + 2 queue.writeBuffer + 2 bind groups
-// PER polygon — measured 4.1 s of the 5.0 s visual_suite first frame):
+// Batching (the unbatched form — one render pass + 2 queue.writeBuffer +
+// 2 bind groups PER polygon — measured 4.1 s of the 5.0 s visual_suite
+// first frame):
 //   - Recording calls (layer / fillPolygon / strokePolygon / erase / clear)
 //     write vertices into CPU staging arrays and append a draw op. No GPU
 //     work, no writeBuffer, no bind groups.
@@ -77,7 +78,7 @@ const STENCIL_NOOP = {
  *
  * Pipelines are created through a local memo rather than
  * pipeline.js#getRenderPipeline because that cache has no `multisample`
- * field (papercut — W3 should extend RenderPipelineDesc and fold these in).
+ * field (papercut: RenderPipelineDesc could grow one and fold these in).
  * The memo is keyed the same way (format + sampleCount + variant) and the
  * pipeline set is closed (5 pipelines), so gotcha #8 still holds; counts are
  * exposed via `stats.pipelines`.
@@ -98,7 +99,7 @@ export function createFillRenderer(gpu, cache, opts = {}) {
   const polyModule = cache.getModule(POLY_WGSL, "poly-wgsl");
   const erasePolyModule = cache.getModule(ERASE_POLY_WGSL, "erase-poly-wgsl");
 
-  // W5: one explicit bind-group layout for every GPU-resident-geometry
+  // One explicit bind-group layout for every GPU-resident-geometry
   // pipeline. Binding 1 is the varying one (a grow-compute poly buffer, or
   // the erase circle arena); the per-draw record rides in a DYNAMIC-offset
   // uniform at binding 2, which is what keeps bind groups keyed on the
@@ -225,7 +226,7 @@ export function createFillRenderer(gpu, cache, opts = {}) {
           multisample,
         };
         break;
-      // ---- W5: GPU-resident geometry variants ----------------------------
+      // ---- GPU-resident geometry variants --------------------------------
       case "poly-fan-stencil":
         desc = {
           label: "fill-poly-fan-stencil",
@@ -356,7 +357,7 @@ export function createFillRenderer(gpu, cache, opts = {}) {
     return paramCount++;
   }
 
-  // W5: per-draw records for GPU-resident geometry. These are DYNAMIC-offset
+  // Per-draw records for GPU-resident geometry. These are DYNAMIC-offset
   // uniform slots rather than an instance-indexed storage array, because
   // drawIndirect owns firstInstance (the compute shader writes it) and so
   // cannot be used to select a params index.
@@ -396,7 +397,7 @@ export function createFillRenderer(gpu, cache, opts = {}) {
   let paramsBuf = null; // per-draw params storage
   let paramsCapacity = 0; // bytes
   let vpBuf = null; // 16-byte viewport uniform
-  let polyParamsBuf = null; // W5 dynamic-offset per-draw uniform arena
+  let polyParamsBuf = null; // dynamic-offset per-draw uniform arena
   let polyParamsCapacity = 0; // bytes
 
   function ensureGpuBuffers() {
@@ -574,7 +575,7 @@ export function createFillRenderer(gpu, cache, opts = {}) {
     return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
   }
 
-  // Reusable scratch for border geometry (W4a: Array.push + Float32Array
+  // Reusable scratch for border geometry (Array.push + Float32Array
   // conversion here was 87 ms of visual_suite). The returned subarray is
   // only valid until the next call — recordGeo copies it into staging
   // immediately.
@@ -799,7 +800,7 @@ export function createFillRenderer(gpu, cache, opts = {}) {
   }
 
   // --------------------------------------------------------------------------
-  // W5 recording API — GPU-resident geometry. Vertices, vertex counts and
+  // Recording API — GPU-resident geometry. Vertices, vertex counts and
   // bounding boxes all live in the grow-compute poly buffer; nothing about
   // the geometry crosses to the CPU (gotcha #9).
   // --------------------------------------------------------------------------

@@ -69,7 +69,7 @@ async function renderGrid(brush, parent) {
   });
   // W3: the WebGPU fork initializes its device asynchronously.
   if (brush.ready) await brush.ready();
-  if (query.get("cpuwalk") === "1") brush.useCpuGeometry?.(true);
+  if (query.get("cpuwalk") === "1") brush.cpuGeometry?.();
 
   brush.angleMode("degrees");
   if (!initialized.has(brush)) {

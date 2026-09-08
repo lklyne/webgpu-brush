@@ -3,10 +3,10 @@
 //
 // The whole FillPoly DAG (grow, trim, scatter, erase, the layer border and
 // the dirty rect) now runs GPU-side; the retained CPU producer is still
-// selectable with useCpuGeometry(true). This oracle gates that the two
+// selectable with cpuGeometry(). This oracle gates that the two
 // producers agree, and that the GPU one is reproducible:
 //
-//   1. cpu-vs-gpu   — useCpuGeometry(true)/(false) render each fill
+//   1. cpu-vs-gpu   — cpuGeometry()/noCpuGeometry() render each fill
 //                     scenario within RMSE < 1.0/255 (float precision only).
 //                     Same gate as W4b's stroke-side check.
 //   2. determinism  — the GPU fill path rendered three times in a row is
@@ -18,7 +18,7 @@
 //                     left un-composited by the GPU path. Checked as "the
 //                     GPU ink bbox contains the CPU ink bbox", which is
 //                     what a truncated rect would break.
-//   4. routing      — Stats.enabled captures and useCpuGeometry(true) both
+//   4. routing      — Stats.enabled captures and cpuGeometry() both
 //                     fall back to the CPU DAG, and the GPU path is
 //                     actually taken otherwise (driver op counters).
 //
@@ -156,7 +156,8 @@ function resetAll(b) {
 }
 
 async function renderRun(b, sceneFn, opts = {}) {
-  b.useCpuGeometry(opts.cpu ?? false);
+  if (opts.cpu) b.cpuGeometry();
+  else b.noCpuGeometry();
   resetAll(b);
   b.seed(SEED);
   b.noiseSeed(SEED);
@@ -164,7 +165,7 @@ async function renderRun(b, sceneFn, opts = {}) {
   sceneFn(b);
   b.render();
   const { pixels, width, height } = await b.readPixels();
-  b.useCpuGeometry(false);
+  b.noCpuGeometry();
   resetAll(b);
   return { pixels, width, height };
 }

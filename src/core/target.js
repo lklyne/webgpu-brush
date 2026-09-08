@@ -56,7 +56,7 @@ export function setTargetRuntime(hooks) {
   targetRuntime = { ...targetRuntime, ...hooks };
 }
 
-export const load = (buffer = false) => targetRuntime.load(buffer);
+export const load = (buffer = false, options) => targetRuntime.load(buffer, options);
 export const syncDensity = () => targetRuntime.syncDensity();
 export const isCanvasReady = () => targetRuntime.isCanvasReady();
 export const instance = (inst) => targetRuntime.instance(inst);

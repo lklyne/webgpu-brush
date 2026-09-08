@@ -1,11 +1,12 @@
-// W3: canonical WGSL source, unified to the .wgsl.js string-export convention
-// (was spectral.wgsl, fetched at runtime pre-W3). Bundled by rollup like any module.
+// WGSL ships as a string export so rollup bundles it like any module (no
+// runtime fetch).
 export const SPECTRAL_WGSL = /* wgsl */ `
 // =============================================================================
-// spectral.wgsl (W2 spectral-wgsl)
+// spectral.wgsl (spectral-wgsl)
 //
-// WGSL port of src/core/gl/shader.frag lines 15–197 (spectral.js
-// Kubelka-Munk pigment mixing) plus the composite entry (shader.frag
+// WGSL port of upstream's GLSL blend shader, kept as the reference at
+// test/reference/glsl/spectral.frag: lines 15–197 (spectral.js
+// Kubelka-Munk pigment mixing) plus the composite entry (spectral.frag
 // main, lines 204–245).
 //
 // Differences from the GLSL, all deliberate:
@@ -25,10 +26,10 @@ export const SPECTRAL_WGSL = /* wgsl */ `
 //   the negative bases that occur here (1-R is negative for near-white
 //   reflectances > 1). GLSL drivers strength-reduce pow(x,2.0); WGSL/Metal
 //   must not be trusted to.
-// - GLSL's unused \`scaledAlpha\` local (shader.frag:228, dead code) is
+// - GLSL's unused \`scaledAlpha\` local (spectral.frag:228, dead code) is
 //   dropped.
 // - The two constant tables between the GENERATED markers are transcribed
-//   programmatically from shader.frag by scripts/spectral-gen-tables.mjs
+//   programmatically from spectral.frag by scripts/spectral-gen-tables.mjs
 //   (plan: "transcribe programmatically, not by hand"). Do not hand-edit;
 //   rerun the script.
 //
@@ -300,7 +301,7 @@ fn spectral_mix_precomputed(bg: vec3f, r2: array<vec4f, 10>, luminance2: f32, t:
 }
 
 // -----------------------------------------------------------------------------
-// Composite entry (shader.frag main). Fullscreen triangle; no vertex buffers.
+// Composite entry (spectral.frag main). Fullscreen triangle; no vertex buffers.
 // -----------------------------------------------------------------------------
 
 // Layout mirrored by packBlendUniforms in src/webgpu/spectral.js.
@@ -311,7 +312,7 @@ struct BlendUniforms {
   lum2: f32,
   isBrush: u32,
   targetIsFramebuffer: u32,
-  // W3: UV-flip flags — bit 0 flips source V, bit 1 flips mask V.
+  // UV-flip flags — bit 0 flips source V, bit 1 flips mask V.
   // 0 = image convention everywhere (row 0 = top), which is what the
   // WebGPU adapter uses for every texture; the GL-emulating flips the
   // verbatim port carried are opt-in for oracle/parity use.
@@ -340,7 +341,7 @@ struct VSOut {
   return out;
 }
 
-// W5: the fill dirty rect is GPU-resident (fill geometry never touches the
+// The fill dirty rect is GPU-resident (fill geometry never touches the
 // CPU, so no CPU-side bbox exists and setScissorRect cannot be indirect).
 // The composite therefore draws a QUAD built from that buffer instead of a
 // scissored fullscreen triangle. Layout (see webgpu/grow.js RECT_*):

@@ -1,5 +1,5 @@
 // =============================================================================
-// strokewalk-compute (W2) — JS host for the GPU flow-field walk.
+// strokewalk-compute — JS host for the GPU flow-field walk.
 //
 // One thread per stroke, sequential along the stroke, parallel across
 // strokes. Three barrier-ordered passes per batch, no readback in the path:
@@ -11,12 +11,12 @@
 //   3. walkStrokes   — the walk; writes stamps to offsets[stroke] + k
 //
 // The CPU walk in src/stroke/stroke.js stays untouched — it is the debugger
-// and the W4b manipulation path. This module is consumed by W3's adapter and
+// and the manipulation path. This module is consumed by the adapter and
 // by scripts/oracle-strokewalk.mjs (which compares GPU output stamp-for-stamp
 // against the CPU walk).
 //
-// API sketch (W3):
-//   const walker = createStrokeWalker(gpu);           // gpu: GpuContext (W1a)
+// API sketch:
+//   const walker = createStrokeWalker(gpu);           // gpu: GpuContext
 //   await walker.ensureReady();                       // fetch + compile WGSL
 //   walker.setEnvironment({ seedU32, width, height, gaussPool, field });
 //   const builder = createDescriptorBuilder({ seedU32, width, height });
@@ -35,8 +35,8 @@ import { STROKEWALK_WGSL } from "./wgsl/strokewalk.wgsl.js";
 import { PREFIX_SCAN_WGSL } from "./wgsl/prefix-scan.wgsl.js";
 
 // ---------------------------------------------------------------------------
-// Hash RNG — JS mirror of src/core/utils.js (kept private there; W3 should
-// wire the real seed word through rather than re-deriving where possible).
+// Hash RNG — JS mirror of src/core/utils.js (kept private there). Callers
+// pass the real seed word through rather than re-deriving it where possible.
 // ---------------------------------------------------------------------------
 
 /**
@@ -246,8 +246,8 @@ export function createDescriptorBuilder({ seedU32, width, height }) {
     } = inp;
     if (!(kind in KIND)) {
       throw new Error(
-        `strokewalk: unsupported kind "${kind}" (W2 supports default/marker/spray; ` +
-          `image/custom tips stay on the CPU walk until W3)`,
+        `strokewalk: unsupported kind "${kind}"; the GPU walk supports ` +
+          `default/marker/spray, image/custom tips use the CPU walk`,
       );
     }
     const strokeId = inp.strokeId ?? nextStrokeId;
@@ -406,7 +406,7 @@ export function createDescriptorBuilder({ seedU32, width, height }) {
   }
 
   /**
-   * W3: pressure-cache chain sync for mixed CPU/GPU routing. The chain is
+   * Pressure-cache chain sync for mixed CPU/GPU routing. The chain is
    * upstream's cross-stroke leak (stroke.js `current.pressureCount` /
    * `current.cachedPressure`); when strokes alternate between the CPU walk
    * and the GPU walk, the router copies the chain in before build() and
@@ -495,7 +495,7 @@ export function createStrokeWalker(gpu, opts = {}) {
   function ensureReady() {
     if (!ready) {
       ready = (async () => {
-        // W3: WGSL is bundled (.wgsl.js string exports) — no runtime fetch.
+        // WGSL is bundled (.wgsl.js string exports) — no runtime fetch.
         const walkSrc = opts.wgsl?.walk ?? STROKEWALK_WGSL;
         const scanSrc = opts.wgsl?.scan ?? PREFIX_SCAN_WGSL;
         const walkModule = device.createShaderModule({
@@ -656,7 +656,7 @@ export function createStrokeWalker(gpu, opts = {}) {
       size: capacity * 16,
       usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
     });
-    // W3: drawIndirect args written GPU-side by the writeIndirect pass —
+    // drawIndirect args written GPU-side by the writeIndirect pass —
     // one {4, groupStamps, 0, 0} entry per group; nothing is read back.
     const indirectBuf = gpu.createBuffer({
       label: "strokewalk-indirect",

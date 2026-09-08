@@ -1,7 +1,7 @@
 // =============================================================================
-// gpu-fill driver (W5) — the FillPoly DAG, GPU-resident end to end
+// gpu-fill driver — the FillPoly DAG, GPU-resident end to end
 //
-// W3/W4a deliberately left fills on the CPU: `FillPoly.fill()` interleaves
+// Fills cannot be moved to the GPU piecemeal: `FillPoly.fill()` interleaves
 // grow chains with scatter(), erase() and the layer border, all of which read
 // vertices, and the op-salt counter's consumption is data-dependent (trim's
 // fast path keys on the CURRENT vertex count). Any CPU op in the middle of the

@@ -18,75 +18,9 @@
 // Exit 0 iff all tests pass.
 // ============================================================
 
-import { chromium } from "playwright-chromium";
-import { createServer } from "node:http";
-import { existsSync, readdirSync } from "node:fs";
-import { readFile, writeFile } from "node:fs/promises";
-import { extname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
-
-const REPO_ROOT = resolve(fileURLToPath(import.meta.url), "../..");
-
-const MIME = {
-  ".html": "text/html",
-  ".js": "application/javascript",
-  ".mjs": "application/javascript",
-  ".json": "application/json",
-  ".vert": "text/plain",
-  ".frag": "text/plain",
-};
-
-function startServer() {
-  return new Promise((res, rej) => {
-    const server = createServer(async (req, resp) => {
-      const urlPath = req.url.split("?")[0];
-      if (urlPath === "/favicon.ico") {
-        resp.writeHead(204);
-        resp.end();
-        return;
-      }
-      try {
-        const data = await readFile(join(REPO_ROOT, urlPath));
-        resp.writeHead(200, {
-          "Content-Type": MIME[extname(urlPath)] || "application/octet-stream",
-        });
-        resp.end(data);
-      } catch {
-        resp.writeHead(404);
-        resp.end("Not found");
-      }
-    });
-    server.listen(0, "127.0.0.1", () => res(server));
-    server.on("error", rej);
-  });
-}
-
-// Same resolution chain as scripts/diff-parity.mjs / oracle-w1a.mjs.
-function findExecutable() {
-  if (process.env.PARITY_CHROME && existsSync(process.env.PARITY_CHROME)) {
-    return process.env.PARITY_CHROME;
-  }
-  try {
-    const p = chromium.executablePath();
-    if (p && existsSync(p)) return undefined;
-  } catch {
-    /* not downloaded */
-  }
-  const agentBrowsers = join(process.env.HOME ?? "", ".agent-browser", "browsers");
-  if (existsSync(agentBrowsers)) {
-    for (const dir of readdirSync(agentBrowsers).sort().reverse()) {
-      const p = join(
-        agentBrowsers,
-        dir,
-        "Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
-      );
-      if (existsSync(p)) return p;
-    }
-  }
-  const systemChrome = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
-  if (existsSync(systemChrome)) return systemChrome;
-  throw new Error("No Chromium found. Set PARITY_CHROME.");
-}
+import { startServer, launchBrowser, REPO_ROOT } from "./lib/headless.mjs";
+import { writeFile } from "node:fs/promises";
+import { join } from "node:path";
 
 let server = null;
 let browser = null;
@@ -96,14 +30,7 @@ try {
   server = await startServer();
   const baseUrl = `http://127.0.0.1:${server.address().port}`;
 
-  browser = await chromium.launch({
-    executablePath: findExecutable(),
-    args: [
-      "--enable-unsafe-webgpu",
-      "--use-angle=metal",
-      "--enable-features=WebGPU",
-    ],
-  });
+  browser = await launchBrowser();
 
   const page = await browser.newPage();
   const pageErrors = [];

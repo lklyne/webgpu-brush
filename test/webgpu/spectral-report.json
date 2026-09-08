@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-02T14:57:29.567Z",
+  "generatedAt": "2026-09-07T22:09:11.091Z",
   "adapter": {
     "vendor": "apple",
     "architecture": "metal-3"
@@ -460,9 +460,9 @@
   "timing": {
     "resolution": "768x768",
     "passes": 150,
-    "msPerPassFull": 0.236,
-    "msPerPassPrecomputed": 0.2213,
-    "speedup": 1.066
+    "msPerPassFull": 0.1613,
+    "msPerPassPrecomputed": 0.2113,
+    "speedup": 0.763
   },
   "pageErrors": []
 }

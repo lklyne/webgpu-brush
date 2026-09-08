@@ -1,5 +1,5 @@
 // =============================================================================
-// Pipeline / bind-group caches, uniform ring, texture upload (W1a)
+// Pipeline / bind-group caches, uniform ring, texture upload
 //
 // Gotcha #8: you own the pipeline cache. Every render pipeline is keyed on
 // (shader module, blend state, target format, stencil state) plus the

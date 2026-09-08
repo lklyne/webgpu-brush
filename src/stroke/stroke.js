@@ -53,7 +53,7 @@ import {
   walkEligible,
   queueWalkStroke,
 } from "./gl_draw.js";
-// W4b inspection seam (guarded by _iflag.active — no-op when unused)
+// Inspection seam (guarded by _iflag.active — no-op when unused)
 import { _iflag, _notifyStrokeBegin } from "../webgpu/inspect.js";
 
 initStrokeComposite(); // Register the stroke composite system for offscreen mask rendering and compositing.
@@ -165,7 +165,7 @@ export function normalizePressure(p) {
       type: "custom",
       min_max: [min, max],
       variation: { ...DEFAULT_CUSTOM_PRESSURE_VARIATION },
-      // W3: raw control points ride along so the GPU walk's descriptor
+      // Raw control points ride along so the GPU walk's descriptor
       // builder can evaluate array pressures without calling into JS.
       // Function-curve customs (no points) stay on the CPU walk.
       points: [s, m, e],
@@ -258,12 +258,20 @@ export function scaleBrushes(scaleFactor) {
  * @param {string} brushName - The name of the brush.
  */
 export function pick(brushName) {
+  assertBrush(brushName);
+  State.stroke.type = brushName;
+}
+
+/**
+ * Throws if no brush is registered under `brushName`.
+ * @param {string} brushName - The name of the brush.
+ */
+export function assertBrush(brushName) {
   if (!list.has(brushName)) {
     throw new Error(
       `Brush "${brushName}" not found. Available brushes: ${[...list.keys()].join(", ")}.`,
     );
   }
-  State.stroke.type = brushName;
 }
 
 /**
@@ -345,9 +353,9 @@ function initializeDrawingState(x, y, length, plot = false) {
   if (_plot) _plot.calcIndex(0);
 }
 
-// Fixed-size gaussian pool, hash-picked per stamp (W1b). Filled with the
+// Fixed-size gaussian pool, hash-picked per stamp. Filled with the
 // sequential seeded generator at first use / reseed — the pool contents are
-// CPU-side data the W2 compute shaders receive as a buffer; only the PICK is
+// CPU-side data the GPU compute shaders receive as a buffer; only the PICK is
 // counter-based.
 const GAUSS_POOL_N = 512;
 const gaussians = new Array(GAUSS_POOL_N);
@@ -379,7 +387,7 @@ _onSeed(() => {
  */
 function draw(angleScale, isPlot) {
   if (!isPlot) _dir = angleScale;
-  // W3: route eligible line/flowLine strokes to the GPU flow-field walk.
+  // Route eligible line/flowLine strokes to the GPU flow-field walk.
   // Plots, image/custom tips, function-curve pressures, non-translation
   // transforms, and Stats-instrumented runs take the retained CPU walk.
   if (!isPlot && tryGpuWalk(angleScale)) return;
@@ -406,7 +414,7 @@ function draw(angleScale, isPlot) {
 }
 
 /**
- * W3 GPU-walk router. Replicates saveState()'s environment side effects
+ * GPU-walk router. Replicates saveState()'s environment side effects
  * (gauss pool fill order, strokeId sequencing, blend-cycle bookkeeping)
  * and hands the stroke to strokewalk-compute via gl_draw's batch queue.
  * The cross-stroke pressure-cache chain (upstream's leak) is synced
@@ -454,7 +462,7 @@ function saveState() {
   if (Stats.enabled) Stats.beginStroke();
   if (!_gaussPoolReady) fillGaussPool();
   _strokeId++;
-  // W4b seam: latch the stream/hook decision for this CPU-walked stroke.
+  // Inspection seam: latch the stream/hook decision for this CPU-walked stroke.
   if (_iflag.active) _notifyStrokeBegin(_strokeId);
   // Stamp salt: low 2 bits reserved for draw phase (0 loop, 1 start, 2 end).
   current.salt = (_strokeId << 2) >>> 0;
