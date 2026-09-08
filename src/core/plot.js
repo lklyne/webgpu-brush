@@ -170,7 +170,11 @@ export class Plot {
         if (idx >= prevIdx) prevIdx++;
       }
     }
-    return new Polygon(vertices);
+    const polygon = new Polygon(vertices);
+    // Plot#fill / #hatch / #mass draw this polygon through the prototype
+    // patches, which resolve their painting from `owner`.
+    polygon.owner = this.owner;
+    return polygon;
   }
 
   /**

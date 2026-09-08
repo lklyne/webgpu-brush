@@ -71,6 +71,8 @@ export function createGpuHost(canvas, width, height, density, gpuOptions = {}) {
     /** fill-mask supersampling factor (box-downsampled before compositing);
      *  drops to 1 when 2x would exceed the device texture-size limit */
     fillSS: 2,
+    /** set by destroy(); every GPU field above is null afterwards */
+    destroyed: false,
   };
 
   let compositePipeline = null;
@@ -706,6 +708,46 @@ fn ordU32ToF32(v: u32) -> f32 {
     pass.setBindGroup(0, bind);
     pass.draw(6);
     pass.end();
+  };
+
+  /**
+   * Releases everything this host owns: the painting, the fill mask, the
+   * stamp/fill/grow renderers and their pools, then the GpuContext — which
+   * unconfigures the canvas and destroys the DEVICE ONLY IF THIS HOST
+   * REQUESTED IT (`GpuContext.external`: an injected device belongs to
+   * whoever injected it).
+   *
+   * The pipeline cache is per host, so a shared device keeps the modules and
+   * pipelines this host compiled — those have no destroy() in WebGPU and are
+   * collected with their last reference. The stroke walker is per DEVICE
+   * (stroke/gl_draw.js) and is deliberately left alone: another painting on
+   * the same device is still using it.
+   */
+  host.destroy = () => {
+    if (host.destroyed) return;
+    host.destroyed = true;
+    paintingListeners.clear();
+    try {
+      host.fillGpu?.destroy();
+      host.fillR?.destroy();
+      host.stamps?.destroy();
+      blendRing?.destroy();
+      fillMaskTex?.destroy();
+      host.painting?.destroy();
+    } finally {
+      fillMaskTex = null;
+      fillMaskView = null;
+      dsSrcTex = null;
+      dsSrcView = null;
+      host.painting = null;
+      host.paintingView = null;
+      host.fillGpu = null;
+      host.fillR = null;
+      host.stamps = null;
+      host.cache = null;
+      host.gpu?.destroy();
+      host.gpu = null;
+    }
   };
 
   /** See encodeRectComposite. */

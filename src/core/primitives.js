@@ -30,8 +30,10 @@ export function polygon(pointsArray) {
  * @param {Array<Array<number>>} pointsArray - Array of points [x, y, pressure]
  */
 export function _polygon(ctx, pointsArray) {
-  // Create a new Polygon instance
+  // Create a new Polygon instance. It draws through the prototype patches,
+  // which resolve their painting from `owner`, so tag it with this one.
   const polygon = new Polygon(pointsArray);
+  polygon.owner = ctx;
   polygon.show();
   return polygon;
 }
@@ -92,6 +94,7 @@ export function circle(x, y, radius, r = false) {
 export function _circle(ctx, x, y, radius, r = false) {
   const rng = ctx.rng;
   const p = new Plot("curve");
+  p.owner = ctx;
   const arcLength = Math.PI * radius;
   const angleOffset = rng.rr2(0, 360);
   const randomFactor = r ? () => 1 + r * 0.2 * rng.rr2() : () => 1;
@@ -158,6 +161,7 @@ export function _arc(ctx, x, y, radius, start, end) {
   if (sweepDeg === 0) return null;
 
   const p = new Plot("curve");
+  p.owner = ctx;
   const segmentCount = Math.max(1, Math.ceil(sweepDeg / 90));
   const segmentSweep = sweepDeg / segmentCount;
   const arcLength = (Math.PI * radius * segmentSweep) / 180;
@@ -331,6 +335,7 @@ export function _beginStroke(ctx, type, x, y) {
   }
   ctx.shape.strokeOrigin = [x, y];
   ctx.shape.strokeArray = new Plot(type);
+  ctx.shape.strokeArray.owner = ctx;
 }
 
 /**
@@ -432,6 +437,7 @@ export function _spline(ctx, _array_points, _curvature = 0.5) {
 function _createSpline(ctx, points, curvature = 0.5, close = false) {
   const plotType = curvature === 0 ? "segments" : "curve";
   const p = new Plot(plotType);
+  p.owner = ctx;
   const PI2 = Math.PI * 2;
 
   // If closing the spline, add the second point to the end

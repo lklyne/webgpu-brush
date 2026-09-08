@@ -64,5 +64,14 @@ export function freeSnapshot(handle: {
 export function _freeSnapshot(ctx: import("../../core/context.js").BrushContext, handle: {
     __brushSnapshot: number;
 }): boolean;
+/**
+ * Destroys every snapshot texture this painting holds, live and pooled.
+ *
+ * For dispose() only: `release()` recycles into the spare pool, which is
+ * exactly wrong when the pool itself is going away.
+ *
+ * @param {import("../../core/context.js").BrushContext} ctx
+ */
+export function _freeAllSnapshots(ctx: import("../../core/context.js").BrushContext): void;
 /** Live snapshot bound; the oldest handle is dropped when exceeded. */
 export const MAX_SNAPSHOTS: 20;

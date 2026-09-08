@@ -37,6 +37,12 @@ the left pane.
    - **`snapshot()` / `restore()` / `freeSnapshot()`** and the geometry
      inspection API (`stream`, `onGeometry`, `beginGeometry`/`endGeometry`,
      `readGeometry`, W4b) are additive.
+   - **`createBrush(options)`** (W11) returns an independent painting
+     carrying the whole public surface under the same names, plus
+     `dispose()` and `canvas`. Several paintings can be live on one page,
+     sharing a `GPUDevice` or not; the module-level exports are the default
+     instance. Upstream is a module singleton, so this is purely additive —
+     a sketch that never calls `createBrush()` sees no change.
    **The p5 build is gone.** The p5 adapter needed p5's WebGL renderer
    (framebuffers, `createShader`) that W3 removed from the core, so it had
    been broken at runtime since W3 and unbuilt since W8. W9 deleted it
@@ -2056,3 +2062,160 @@ cache `T`, field definitions, `STREAM`, the trig tables, `pipeline.js`'s
 `webgpu/spectral.js`'s color memo, `stroke/runtime.js`'s tip hooks,
 `adapters/standalone/runtime.js`'s CSS color parser, gl_draw.js's per-DEVICE
 walker slice, and the weak live-context registry itself.
+
+### Step 5 — `createBrush()`, the default instance, and the three fence
+
+Section 9 of the plan plus "Building the public surface per instance". The
+singleton path is unchanged — every gate number below is bit-identical to
+step 4b's, geomHash and the deferred-replay pixel hash included.
+
+**`buildApi(ctx)` (`src/api.js`).** One object per painting, carrying the
+whole public surface: the immediate group (`random` / `noise` / `wRand` off
+`ctx.rng`, `box`, `listFields`, `hatchArray`, `massArray`, `clip`, `add`,
+`addField`, `getAngleMode`, `DEGREES` / `RADIANS`, `Color`), lifecycle
+(`createCanvas`, `load`, `ready`, `readPixels`, `gpu`), snapshots, the
+inspection API, `cpuGeometry` / `noCpuGeometry`, `seed` / `noiseSeed` through
+`guardReplayFor(ctx, …)`, and every drawing and state function through
+`guardFor(ctx, …)` with the same validate hooks the module-level exports
+carry — `createPrecheck(ctx)` builds that painting's table. **79 members**:
+the 83 module exports minus `_stats`, `_geometryStats`,
+`_resetGeometryStats`, `_fillDriverStats` (test instrumentation, module-level
+only), `initStandaloneRuntime` (an adapter installer) and `instance` (the
+deprecated p5 no-op), plus `dispose()` and a `canvas` getter.
+`test/unit/api.test.js` asserts that set relation and the typeof of every
+shared name, so the two surfaces cannot drift.
+
+Every entry is `like(publicFn, (…args) => _publicFn(ctx, …args))` — `like()`
+is a type-only cast whose first argument is never called, so the inferred
+instance shape keeps each function's REAL signature instead of collapsing to
+`any`. `buildApi`'s return type is deliberately inferred (an explicit
+`@returns {object}` would erase it), which is what `types/api.d.ts` publishes
+and what `Attachment.brush` resolves to. Every wrapped member came out as
+`typeof prim.rect`, `typeof strokes.line`, … — the same declarations
+`index.standalone.d.ts` has.
+
+The last functions that still only knew `defaultContext` grew their
+`_name(ctx, …)` siblings: `angleMode` / `getAngleMode` / `push` / `pop` /
+`translate` / `rotate` / `scale` (adapters/standalone/runtime.js), `clip`
+(stroke.js) and `createMassArray` (mass.js).
+
+**Module-level API = the default instance.** `index.standalone.js` keeps its
+export list verbatim — `guard(f)` is `guardFor(defaultContext, f)`, so those
+exports ARE the same construction over the default painting, spelled as named
+exports because upstream-shaped sketches import them that way. Writing them
+as `defaultApi.rect` would have changed the declared type from
+`typeof prim.rect` to a structural member type; the diff of
+`types/index.standalone.d.ts` is therefore exactly one added line
+(`export { createBrush } from "./api.js"`).
+
+**Owners.** `api.Polygon` / `api.Plot` / `api.Position` are subclasses that
+set `owner = ctx` in their constructor, cast back to the base class — so
+`new a.Polygon(pts) instanceof Polygon` holds and the declared type is
+`typeof Polygon`. A bare `new Polygon(pts)` from the module import leaves
+`owner` unset and the prototype patches keep resolving `?? defaultContext`.
+
+Setting the field on user-built shapes was not enough: core builds shapes
+internally and then calls the patched methods on them. `_polygon`, `_circle`,
+`_arc`, `_beginStroke` and `_createSpline` (primitives.js) now tag the
+`Polygon` / `Plot` they create with their own `ctx`; `Plot#genPol` tags the
+polygon it returns with `this.owner` (that polygon is what `Plot#fill`,
+`#hatch` and `#wash` draw); mass.js's `jitterPolygon` copies the owner into
+each translated layer. With `ctx === defaultContext` these are all no-ops, so
+the single-context path is untouched.
+
+`Polygon.prototype.show` / `Plot.prototype.show` are wrapped with a new
+`guardOwned()` rather than `guard()`. A fixed `guardFor(defaultContext, …)`
+would record a second painting's `show()` into the DEFAULT painting's queue
+whenever that one happened to be initializing, and replay it later;
+`guardOwned` reads `this.owner ?? defaultContext` at call time, which is what
+the method bodies already do.
+
+**`dispose()`.** Frees an open geometry capture (its retained GPU batches),
+every live and pooled snapshot texture (`_freeAllSnapshots`, which destroys
+rather than recycling into a pool that is going away), the recorded-but-
+unreplayed queue, the pending stroke super-batch, and then `host.destroy()`
+(new, adapters/standalone/gpu.js): fill/stamp/grow renderers, the blend
+uniform ring, the fill mask, the painting texture, and `GpuContext.destroy()`
+— which unconfigures the canvas and destroys the device ONLY when this
+painting requested it (`ctx.external`, the W7 rule). Deliberately NOT freed:
+the per-DEVICE stroke walker and raster pipeline in gl_draw.js, which another
+painting on the same device is still using, and the pipeline cache's compiled
+modules (WebGPU has no destroy for those; they go with their last reference).
+`disposeContext(ctx)` (core/context.js) drops the weak registry entry so
+`brush.add()`'s `forEachContext` stops walking into it, and every function
+member of the api object is replaced with a thrower — "was called on a
+disposed painting" — leaving `dispose()` itself idempotent.
+
+**`brush-gpu/three`.** The one-live-attachment fence is gone.
+`attachToRenderer` and `createSharedDevice` each build their own instance and
+return it as `attachment.brush`, so `att.brush.line(…)` draws into that
+painting and several attachments can be live at once. `options.brush` adopts
+an existing instance instead (including the module namespace, for a sketch
+that wants the default painting on a three plane); `dispose()` then leaves it
+alive and only releases the three wrappers. The entry still imports from
+`../index.standalone.js`, not `../api.js`: rollup keeps that specifier
+external and rewrites it to `./brush.esm.js`, so the bridge shares the
+consumer's library instance rather than bundling a second one.
+`types/three/index.d.ts` changes accordingly — `Attachment.brush` is
+`BrushInstance` (`ReturnType<typeof createBrush>`) instead of
+`typeof brush`, and `AttachOptions` gained `brush?: BrushInstance`.
+
+`test/e2e/smoke.mjs` no longer reads the module-level `readPixels()` on the
+two three pages: those pages own their painting now, so the ink count comes
+from `window.__smoke.inkedInBrush`, which `test/three/common.js` already
+measured through `att.brush.readPixels()`. The pages themselves are
+unchanged (they used `att.brush` from the start).
+
+**Still deliberately global**, unchanged from step 4b's list: brush
+definitions and the image-tip cache, field definitions, `STREAM`, the trig
+tables, `pipeline.js`'s and `snapshot.js`'s id counters and the snapshot
+handle-owner `WeakMap`, `spectral.js`'s color memo, `stroke/runtime.js`'s tip
+hooks, `adapters/standalone/runtime.js`'s CSS color parser, gl_draw.js's
+per-device walker slice, and the weak live-context registry.
+
+### Two-instance oracle (`node scripts/oracle-instances.mjs`)
+
+Page `test/webgpu/oracle-instances.{html,js}`, report
+`oracle-instances-report.json`. Four FRESH pages. Painting A is 300×200,
+seed `"a"`, a flow field (`field("seabed")` + `wiggle`), hatch, transforms and
+a `Polygon#show`; painting B is 200×300, seed `"b"`, a watercolor fill, a
+spline and hatch, no field at all. Both programs are step lists, so the
+interleaved and solo runs make the same calls on each painting in the same
+per-painting order and only the interleaving differs.
+
+- `interleaved` — A and B built together, stepped one call each, nothing
+  awaited before the reads.
+- `soloA` / `soloB` — one painting per page, same step list.
+- `shared` — A owns a device, `B = createBrush({…, device: A.gpu().device})`,
+  interleaved again.
+
+**21/21.** Pixel FNV-1a hashes, identical across all three modes: **A
+4259207871** (2851 inked px), **B 2290971667** (3840 inked px) — A
+interleaved = A alone = A on the shared device, likewise B, and A ≠ B. Each
+painting's `random()` sequence after re-seeding is the same whether or not
+the other one drew (A `0.8824977…, 0.4817562…, 0.8028780…`; B
+`0.5413842…, 0.0516310…, 0.8646711…`). On the interleaved page the
+module-level default API also draws (130 ink px through `brush.line`), the
+canvases keep their own sizes, `A.dispose()` leaves B drawing (3840 → 4185 ink)
+and `A.line()` then throws. The shared page confirms both paintings report
+the same `GPUDevice`.
+
+One finding worth recording: `seed()` does NOT reseed the noise generators
+(only `noiseSeed()` does), and the `"hand"` field that `wiggle()` activates
+reads `noise2()`. A program that uses `wiggle()` without `noiseSeed()` is
+therefore nondeterministic run to run — as it is upstream. The oracle seeds
+both, the way `oracle-w8.js` does.
+
+**Verification.** `pnpm exec vitest run` **134/134** (was 123; +11 in a new
+`test/unit/api.test.js`), three consecutive runs; `pnpm build` clean (rollup +
+tsc); `git diff types/index.standalone.d.ts` is one added line
+(`export { createBrush } from "./api.js"`) with `types/api.d.ts` added, and
+`types/three/index.d.ts` changes only in the instance-typed
+`Attachment.brush` / `AttachOptions.brush` / `BrushInstance`;
+`pnpm test:smoke` 3/3 PASS; `pnpm test:goldens` 54 tiles · worst 4.7957 ·
+mean 1.2771 · failing 2 (edge-subpixel 3.7466, edge-self-intersect 4.7957);
+`assert-structure --identity` PASS with geomHash `3878505443`;
+`oracle-w8.mjs` 7/7 with pixel hash `2970327761` (3937 inked px);
+`oracle-w4b.mjs` 4/4; `oracle-w5.mjs` 4/4; `oracle-instances.mjs` 21/21.
+`grep -rn '\bW[0-9]' src` matches nothing. Bundle: `dist/brush.esm.js`
+246 694 → 251 683 bytes (+2.0%), `dist/three.esm.js` 1682 → 1650.

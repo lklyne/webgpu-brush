@@ -159,6 +159,33 @@ export function guardFor(ctx, fn, validate) {
 }
 
 /**
+ * Wrap a prototype method whose painting is the RECEIVER's owner
+ * (`Polygon#show`, `Plot#show`). The context is resolved at call time from
+ * `this.owner`, falling back to the default painting for an object built by
+ * a bare `new Polygon(...)` — exactly what the method bodies themselves do.
+ *
+ * A fixed `guardFor(defaultContext, …)` would be wrong here: a shape owned by
+ * one painting would be recorded into another painting's queue whenever that
+ * other one happened to be initializing.
+ *
+ * @template {Function} F
+ * @param {F} fn
+ * @returns {F}
+ */
+export function guardOwned(fn) {
+  return /** @type {F} */ (
+    function guarded(...args) {
+      const rec = (this?.owner ?? defaultContext).recorder;
+      if (rec && rec.deferring) {
+        rec.queue.push([fn, this, args]);
+        return undefined;
+      }
+      return fn.apply(this, args);
+    }
+  );
+}
+
+/**
  * Wrap a stateful call for the DEFAULT painting — what the module-level
  * public API is built from.
  *

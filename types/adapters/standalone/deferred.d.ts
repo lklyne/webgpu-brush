@@ -51,6 +51,21 @@ export function isDeferring(ctx: import("../../core/context.js").BrushContext): 
  */
 export function guardFor<F extends Function>(ctx: import("../../core/context.js").BrushContext, fn: F, validate?: (...args: unknown[]) => void): F;
 /**
+ * Wrap a prototype method whose painting is the RECEIVER's owner
+ * (`Polygon#show`, `Plot#show`). The context is resolved at call time from
+ * `this.owner`, falling back to the default painting for an object built by
+ * a bare `new Polygon(...)` — exactly what the method bodies themselves do.
+ *
+ * A fixed `guardFor(defaultContext, …)` would be wrong here: a shape owned by
+ * one painting would be recorded into another painting's queue whenever that
+ * other one happened to be initializing.
+ *
+ * @template {Function} F
+ * @param {F} fn
+ * @returns {F}
+ */
+export function guardOwned<F extends Function>(fn: F): F;
+/**
  * Wrap a stateful call for the DEFAULT painting — what the module-level
  * public API is built from.
  *

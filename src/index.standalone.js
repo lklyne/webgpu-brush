@@ -12,7 +12,7 @@
  * (immediate + replayed), deferred (everything that mutates state or draws).
  */
 
-import { guard, guardReplay } from "./adapters/standalone/deferred.js";
+import { guard, guardOwned, guardReplay } from "./adapters/standalone/deferred.js";
 import { precheck as pre } from "./adapters/standalone/precheck.js";
 import * as runtime from "./adapters/standalone/runtime.js";
 import * as frame from "./adapters/standalone/frame.js";
@@ -137,9 +137,11 @@ export const fillBleed = guard(fills.fillBleed);
 export const wash = guard(washes.wash);
 export const noWash = guard(washes.noWash);
 
-// Class drawing entry points draw with the current state, so they defer too.
-Polygon.prototype.show = guard(Polygon.prototype.show);
-Plot.prototype.show = guard(Plot.prototype.show);
+// Class drawing entry points draw with the current state, so they defer too —
+// into the recorder of the painting the shape belongs to (`owner`, unset means
+// the default painting), not into a fixed one.
+Polygon.prototype.show = guardOwned(Polygon.prototype.show);
+Plot.prototype.show = guardOwned(Plot.prototype.show);
 
 // Geometry producer switch. cpuGeometry() forces the retained
 // CPU walk and CPU fill DAG (same output, slower); noCpuGeometry() restores
@@ -147,12 +149,16 @@ Plot.prototype.show = guard(Plot.prototype.show);
 export const cpuGeometry = guard(() => _setUseCpuWalk(true));
 export const noCpuGeometry = guard(() => _setUseCpuWalk(false));
 
-// The public functions above are the default context's own wrappers (each
-// module exports one, bound to `defaultContext`), so the guarded export list
-// and its declared signatures are exactly what they were before the context
-// was threaded through. `guard`/`guardReplay` are `guardFor`/`guardReplayFor`
-// bound to that same context, and each context owns its recorder — building a
-// second instance's surface is step 5.
+// ---------------------------------------------------------------------------
+// Independent paintings. createBrush() builds this same surface over a new
+// context (api.js): same names, same signatures, same guards and prechecks,
+// its own state, canvas, seed stream and GPU resources. The exports above are
+// that construction over `defaultContext` — `guard`/`guardReplay` are
+// `guardFor`/`guardReplayFor` bound to it and each context owns its recorder,
+// so the module-level API is simply the default instance, spelled as named
+// exports for upstream-shaped sketches.
+// ---------------------------------------------------------------------------
+export { createBrush } from "./api.js";
 
 import { initStandaloneTargetRuntime } from "./adapters/standalone/target.js";
 import { initStandaloneCompositorRuntime } from "./adapters/standalone/compositor.js";

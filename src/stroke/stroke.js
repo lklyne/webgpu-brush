@@ -462,7 +462,17 @@ export function _noStroke(ctx) {
  * @param {number[]} region - Array as [x1, y1, x2, y2] defining the clipping region.
  */
 export function clip(region) {
-  isCanvasReady(defaultContext);
+  return _clip(defaultContext, region);
+}
+
+/**
+ * Context-taking implementation of clip().
+ * @param {import("../core/context.js").BrushContext} ctx
+ * @param {number[]} region
+ * @returns {number[]}
+ */
+export function _clip(ctx, region) {
+  isCanvasReady(ctx);
   return region;
 }
 

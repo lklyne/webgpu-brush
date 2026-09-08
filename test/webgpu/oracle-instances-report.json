@@ -1,0 +1,143 @@
+{
+  "generatedAt": "2026-09-08T09:28:54.265Z",
+  "hashes": {
+    "interleaved": {
+      "a": {
+        "hash": 4259207871,
+        "ink": 2851
+      },
+      "b": {
+        "hash": 2290971667,
+        "ink": 3840
+      }
+    },
+    "solo": {
+      "a": {
+        "hash": 4259207871,
+        "ink": 2851
+      },
+      "b": {
+        "hash": 2290971667,
+        "ink": 3840
+      }
+    },
+    "shared": {
+      "a": {
+        "hash": 4259207871,
+        "ink": 2851
+      },
+      "b": {
+        "hash": 2290971667,
+        "ink": 3840
+      }
+    }
+  },
+  "tests": [
+    {
+      "name": "interleaved:no-throw",
+      "pass": true,
+      "detail": "both programs ran interleaved before ready(), no throw"
+    },
+    {
+      "name": "interleaved:inked-a",
+      "pass": true,
+      "detail": "2851 non-background pixels, hash 4259207871"
+    },
+    {
+      "name": "interleaved:inked-b",
+      "pass": true,
+      "detail": "3840 non-background pixels, hash 2290971667"
+    },
+    {
+      "name": "interleaved:sizes",
+      "pass": true,
+      "detail": "A 300x200, B 200x300"
+    },
+    {
+      "name": "interleaved:default-api",
+      "pass": true,
+      "detail": "137 ink pixels drawn through the module-level exports"
+    },
+    {
+      "name": "interleaved:dispose-throws",
+      "pass": true,
+      "detail": "A.line() after A.dispose() throws"
+    },
+    {
+      "name": "interleaved:dispose-isolation",
+      "pass": true,
+      "detail": "B ink 3840 → 4185 after A was disposed"
+    },
+    {
+      "name": "soloA:inked-a",
+      "pass": true,
+      "detail": "2851 non-background pixels, hash 4259207871"
+    },
+    {
+      "name": "soloB:inked-b",
+      "pass": true,
+      "detail": "3840 non-background pixels, hash 2290971667"
+    },
+    {
+      "name": "shared:inked-a",
+      "pass": true,
+      "detail": "2851 non-background pixels, hash 4259207871"
+    },
+    {
+      "name": "shared:inked-b",
+      "pass": true,
+      "detail": "3840 non-background pixels, hash 2290971667"
+    },
+    {
+      "name": "shared:one-device",
+      "pass": true,
+      "detail": "both paintings report the same GPUDevice"
+    },
+    {
+      "name": "A: interleaved = alone",
+      "pass": true,
+      "detail": "pixel hash 4259207871 identical (2851 inked px)"
+    },
+    {
+      "name": "B: interleaved = alone",
+      "pass": true,
+      "detail": "pixel hash 2290971667 identical (3840 inked px)"
+    },
+    {
+      "name": "A: shared device = alone",
+      "pass": true,
+      "detail": "pixel hash 4259207871 identical (2851 inked px)"
+    },
+    {
+      "name": "B: shared device = alone",
+      "pass": true,
+      "detail": "pixel hash 2290971667 identical (3840 inked px)"
+    },
+    {
+      "name": "A and B differ",
+      "pass": true,
+      "detail": "two different paintings (4259207871 vs 2290971667)"
+    },
+    {
+      "name": "A: seeded stream unaffected by B",
+      "pass": true,
+      "detail": "random() after seed() is 0.8824977108743042, 0.4817561956588179, 0.8028779730666429 either way"
+    },
+    {
+      "name": "B: seeded stream unaffected by A",
+      "pass": true,
+      "detail": "random() after seed() is 0.5413841826375574, 0.05163095938041806, 0.8646710980683565 either way"
+    },
+    {
+      "name": "A: seeded stream on a shared device",
+      "pass": true,
+      "detail": "random() after seed() is 0.8824977108743042, 0.4817561956588179, 0.8028779730666429 either way"
+    },
+    {
+      "name": "B: seeded stream on a shared device",
+      "pass": true,
+      "detail": "random() after seed() is 0.5413841826375574, 0.05163095938041806, 0.8646710980683565 either way"
+    }
+  ],
+  "pageErrors": []
+}

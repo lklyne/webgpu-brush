@@ -97,23 +97,29 @@ async function runSuite(page, { name, path, windowCheck }, baseUrl) {
     failures.push("No WebGPU context found on any canvas element.");
   }
 
-  const inked = await page.evaluate(async () => {
-    const brush = await import("/dist/brush.esm.js");
-    const { pixels } = await brush.readPixels();
-    let n = 0;
-    for (let i = 3; i < pixels.length; i += 4) if (pixels[i] > 0) n++;
-    return n;
-  });
-  if (!(inked > 0)) {
-    failures.push(`Painting is empty (${inked} pixels with alpha).`);
-  }
-
   if (windowCheck) {
+    // These pages own their painting: attachToRenderer()/createSharedDevice()
+    // each create their own brush instance, so the ink count comes from that
+    // instance's readPixels() (test/three/common.js), not the module-level
+    // default painting, which those pages never target.
     const result = await page.evaluate((key) => window[key] ?? null, windowCheck);
     if (!result) {
       failures.push(`window.${windowCheck} was never set (page did not finish).`);
     } else if (!result.ok) {
       failures.push(`window.${windowCheck} reports failure: ${JSON.stringify(result)}`);
+    } else if (!(result.inkedInBrush > 0)) {
+      failures.push(`Painting is empty (${result.inkedInBrush} pixels with alpha).`);
+    }
+  } else {
+    const inked = await page.evaluate(async () => {
+      const brush = await import("/dist/brush.esm.js");
+      const { pixels } = await brush.readPixels();
+      let n = 0;
+      for (let i = 3; i < pixels.length; i += 4) if (pixels[i] > 0) n++;
+      return n;
+    });
+    if (!(inked > 0)) {
+      failures.push(`Painting is empty (${inked} pixels with alpha).`);
     }
   }
 

@@ -28,6 +28,9 @@ import { attachToRenderer, createSharedDevice, createPaintingTexture } from 'bru
 
 // ESM — local file
 import * as brush from './dist/brush.esm.js'
+
+// Extra paintings: same surface, own canvas/state/seed/GPU resources
+import { createBrush } from 'brush-gpu/standalone'
 ```
 
 ---
@@ -55,6 +58,21 @@ canvas.width = 600; canvas.height = 600
 document.body.appendChild(canvas)
 brush.load(canvas)
 ```
+
+For MORE THAN ONE painting on a page, use `brush.createBrush(options)`. It returns an object carrying every public function under the same name, drawing into its own canvas, state, transform stack, seed stream, flow-field grids and GPU resources. Synchronous, like `createCanvas()`: pre-ready calls are recorded and replayed.
+
+```js
+const a = createBrush({ width: 400, height: 400, parent: '#a' })  // width/height create the canvas now
+const b = createBrush({ width: 300, height: 300, parent: '#b' })
+a.seed('a'); a.set('HB', '#222', 1); a.line(-150, -150, 150, 150); a.render()
+b.seed('b'); b.fill('#c33', 90); b.circle(0, 0, 100); b.render()
+await a.ready()
+a.dispose()                                  // frees a's painting; b keeps drawing
+```
+
+Options: `{ width, height, pixelDensity, parent, id }` (as `createCanvas`), `{ canvas }` to load an existing one, `{ device, adapter }` to adopt an external device — including `other.gpu().device`, which puts two paintings on one device. With no target, call `api.createCanvas(w, h)` later. Instance extras: `dispose()` and `canvas`; instances do not carry the `_`-prefixed instrumentation, `initStandaloneRuntime`, or `instance()`.
+
+Shared globally across paintings: brush definitions (`add`), image tips, field definitions (`addField`). Everything else is per painting. `new a.Polygon(pts)` / `new a.Plot('curve')` draw into `a`; a bare `new Polygon(pts)` draws into the default painting. `dispose()` frees the painting and, only if that painting requested it, the device; every method then throws.
 
 ---
 
@@ -170,9 +188,9 @@ brush.render()  // required
 
 ### GPU interop
 
-- `brush-gpu/three` — three.js bridge. `await attachToRenderer(renderer, w, h)` (three owns the device; brush adopts it) or `await createSharedDevice(w, h)` then `new WebGPURenderer({ device: att.device })` (brush owns the device). Both resolve to `{ brush, canvas, interop, device, painting, node, dispose }`; put `att.node` in a material's `colorNode` to sample the live painting with zero copies. One attachment live at a time: `dispose()` before attaching again. Painting is premultiplied, not sRGB-typed: linear output color space, tone mapping off.
+- `brush-gpu/three` — three.js bridge. `await attachToRenderer(renderer, w, h)` (three owns the device; brush adopts it) or `await createSharedDevice(w, h)` then `new WebGPURenderer({ device: att.device })` (brush owns the device). Both create their OWN painting and resolve to `{ brush, canvas, interop, device, painting, node, dispose }`; `att.brush` is that instance — draw with `att.brush.line(...)`, not the module-level exports — and `att.node` goes in a material's `colorNode` to sample the live painting with zero copies. Any number of attachments can be live; `att.dispose()` releases the wrappers and the instance it created. Pass `{ brush: existingInstance }` to attach a painting you already have (dispose it yourself). Painting is premultiplied, not sRGB-typed: linear output color space, tone mapping off.
 - `brush.gpu()` — Returns `{ device, adapter, format, painting, onPaintingChanged }`. Synchronous; requires `await brush.ready()`. `painting` is a getter for the live painting `GPUTexture` (row 0 = top, premultiplied, in `format`); it is recreated on resize, so subscribe with `onPaintingChanged(fn)` (returns a dispose fn). Use for zero-copy sampling by another renderer on the same device (e.g. three.js `WebGPURenderer({ device })` + `ExternalTexture(painting)`).
-- `brush.createCanvas(w, h, { device, adapter })` — Adopt an externally owned device instead of requesting one. brush-gpu never destroys an adopted device.
+- `brush.createCanvas(w, h, { device, adapter })` / `createBrush({ device, adapter })` — Adopt an externally owned device instead of requesting one. brush-gpu never destroys an adopted device.
 
 ### CPU geometry
 

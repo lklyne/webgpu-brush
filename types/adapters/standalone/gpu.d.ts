@@ -35,4 +35,6 @@ export function createGpuHost(canvas: HTMLCanvasElement | OffscreenCanvas, width
     /** fill-mask supersampling factor (box-downsampled before compositing);
      *  drops to 1 when 2x would exceed the device texture-size limit */
     fillSS: number;
+    /** set by destroy(); every GPU field above is null afterwards */
+    destroyed: boolean;
 };

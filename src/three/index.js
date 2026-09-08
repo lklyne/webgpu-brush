@@ -14,17 +14,31 @@
 // The second gives brush the adapter's full texture/buffer limits; the first
 // is what an existing <Canvas> already has. Both resolve to an Attachment.
 //
-// brush-gpu is a module singleton (one active painting per page), so only one
-// attachment may be live at a time: dispose() before attaching again.
+// Each attach creates its OWN brush instance (createBrush), so several
+// paintings can be live on one page — one per renderer, or several on one
+// renderer. `attachment.brush` is that instance: draw with
+// `att.brush.line(...)`, not with the module-level exports, which belong to
+// the default painting. `options.brush` adopts an existing instance instead
+// (including the module namespace, when a sketch wants the default painting
+// on a three plane); dispose() then leaves it alive.
 // =============================================================================
 
-import * as brush from "../index.standalone.js";
+// From the package entry, not api.js: rollup keeps `index.standalone.js`
+// external and rewrites it to `./brush.esm.js`, so the bridge shares the
+// consumer's library instance instead of bundling a second copy.
+import { createBrush } from "../index.standalone.js";
 import { texture, uv, vec2 } from "three/tsl";
 import { ExternalTexture } from "three/webgpu";
 
 /**
+ * One painting's public API — what `createBrush()` returns and what the
+ * module-level `brush-gpu` exports are the default instance of.
+ * @typedef {ReturnType<typeof createBrush>} BrushInstance
+ */
+
+/**
  * The handle returned by `brush.gpu()`.
- * @typedef {ReturnType<typeof brush.gpu>} BrushGpuInterop
+ * @typedef {ReturnType<BrushInstance["gpu"]>} BrushGpuInterop
  */
 
 /**
@@ -40,8 +54,9 @@ import { ExternalTexture } from "three/webgpu";
 
 /**
  * @typedef {object} Attachment
- * @property {typeof brush} brush The drawing API (the same module as
- *   `brush-gpu/standalone`).
+ * @property {BrushInstance} brush This attachment's own painting — draw with
+ *   `attachment.brush.line(...)`. Independent of the module-level exports and
+ *   of every other attachment.
  * @property {HTMLCanvasElement} canvas brush's own canvas. Detached from the
  *   DOM unless `parent` was given; the painting is sampled through `node`.
  * @property {BrushGpuInterop} interop
@@ -49,15 +64,23 @@ import { ExternalTexture } from "three/webgpu";
  * @property {PaintingTexture} painting
  * @property {import("three/webgpu").TextureNode} node Shortcut for
  *   `painting.node`.
- * @property {() => void} dispose Releases the three wrappers and the
- *   attachment slot. brush's canvas and device stay as they are (brush never
- *   destroys a device it did not create).
+ * @property {() => void} dispose Releases the three wrappers and, when this
+ *   attachment created the instance, disposes it (freeing its painting and,
+ *   if brush requested the device, the device). An instance passed in through
+ *   `options.brush` is left alone — its owner disposes it.
  */
 
 /**
- * Options forwarded to `brush.createCanvas`. `parent` defaults to `null`
- * here (the painting is sampled by three, not shown as a DOM canvas).
- * @typedef {{ pixelDensity?: number, parent?: string|Element|null, id?: string }} AttachOptions
+ * Options forwarded to `createBrush`. `parent` defaults to `null` here (the
+ * painting is sampled by three, not shown as a DOM canvas). `brush` attaches
+ * an EXISTING instance instead of creating one; its canvas is re-created at
+ * the requested size on the attachment's device.
+ * @typedef {{
+ *   pixelDensity?: number,
+ *   parent?: string|Element|null,
+ *   id?: string,
+ *   brush?: BrushInstance,
+ * }} AttachOptions
  */
 
 /**
@@ -96,18 +119,6 @@ export function createPaintingTexture(interop) {
   };
 }
 
-/** @type {Attachment|null} */
-let live = null;
-
-function claim() {
-  if (live) {
-    throw new Error(
-      "brush-gpu/three: a painting is already attached. brush-gpu keeps one " +
-        "active painting per page; call dispose() on the previous attachment first.",
-    );
-  }
-}
-
 /**
  * @param {GPUDevice} device
  * @param {number} width
@@ -128,16 +139,21 @@ function checkLimits(device, width, height, density) {
 }
 
 /**
+ * Brings one instance up and wraps its painting for three.
+ *
+ * @param {BrushInstance} instance
  * @param {HTMLCanvasElement} canvas
+ * @param {boolean} owned true when this attachment created the instance and
+ *   is therefore the one to dispose it
  * @returns {Promise<Attachment>}
  */
-async function finish(canvas) {
-  await brush.ready();
-  const interop = brush.gpu();
+async function finish(instance, canvas, owned) {
+  await instance.ready();
+  const interop = instance.gpu();
   const painting = createPaintingTexture(interop);
   /** @type {Attachment} */
   const attachment = {
-    brush,
+    brush: instance,
     canvas,
     interop,
     device: interop.device,
@@ -145,11 +161,31 @@ async function finish(canvas) {
     node: painting.node,
     dispose() {
       painting.dispose();
-      if (live === attachment) live = null;
+      if (owned) instance.dispose();
     },
   };
-  live = attachment;
   return attachment;
+}
+
+/**
+ * Creates (or adopts) the instance for an attachment and gives it a canvas on
+ * the shared device.
+ *
+ * @param {AttachOptions} options
+ * @param {number} width
+ * @param {number} height
+ * @param {{device?: GPUDevice, adapter?: GPUAdapter|null}} gpuOptions
+ * @returns {{instance: BrushInstance, canvas: HTMLCanvasElement, owned: boolean}}
+ */
+function makeInstance(options, width, height, gpuOptions) {
+  const { brush: existing, ...canvasOptions } = options;
+  const instance = existing ?? createBrush();
+  const canvas = instance.createCanvas(width, height, {
+    parent: null,
+    ...canvasOptions,
+    ...gpuOptions,
+  });
+  return { instance, canvas, owned: !existing };
 }
 
 /**
@@ -168,7 +204,6 @@ async function finish(canvas) {
  * @returns {Promise<Attachment>}
  */
 export async function attachToRenderer(renderer, width, height, options = {}) {
-  claim();
   await renderer.init();
   const backend = /** @type {{ device?: GPUDevice }} */ (renderer.backend);
   const device = backend?.device;
@@ -180,13 +215,11 @@ export async function attachToRenderer(renderer, width, height, options = {}) {
   }
   const density = Math.max(1, Number(options.pixelDensity) || 1);
   checkLimits(device, width, height, density);
-  const canvas = brush.createCanvas(width, height, {
-    parent: null,
-    ...options,
+  const { instance, canvas, owned } = makeInstance(options, width, height, {
     device,
     adapter: null,
   });
-  return finish(canvas);
+  return finish(instance, canvas, owned);
 }
 
 /**
@@ -205,7 +238,6 @@ export async function attachToRenderer(renderer, width, height, options = {}) {
  * @returns {Promise<Attachment>}
  */
 export async function createSharedDevice(width, height, options = {}) {
-  claim();
-  const canvas = brush.createCanvas(width, height, { parent: null, ...options });
-  return finish(canvas);
+  const { instance, canvas, owned } = makeInstance(options, width, height, {});
+  return finish(instance, canvas, owned);
 }

@@ -130,10 +130,20 @@ export class Color {
  * @param {"degrees"|"radians"} mode
  */
 export function angleMode(mode) {
+  return _angleMode(defaultContext, mode);
+}
+
+/**
+ * Context-taking implementation of angleMode().
+ *
+ * @param {import("../../core/context.js").BrushContext} ctx
+ * @param {"degrees"|"radians"} mode
+ */
+export function _angleMode(ctx, mode) {
   if (mode !== DEGREES && mode !== RADIANS) {
     throw new Error(`Invalid angle mode "${mode}". Use "degrees" or "radians".`);
   }
-  defaultContext.angleMode = mode;
+  ctx.angleMode = mode;
 }
 
 /**
@@ -142,24 +152,52 @@ export function angleMode(mode) {
  * @returns {"degrees"|"radians"}
  */
 export function getAngleMode() {
-  return defaultContext.angleMode;
+  return _getAngleMode(defaultContext);
+}
+
+/**
+ * Context-taking implementation of getAngleMode().
+ *
+ * @param {import("../../core/context.js").BrushContext} ctx
+ * @returns {"degrees"|"radians"}
+ */
+export function _getAngleMode(ctx) {
+  return ctx.angleMode;
 }
 
 /**
  * Pushes the current standalone transform onto the stack.
  */
 export function push() {
-  pushState(defaultContext);
-  defaultContext.transformStack.push({ ...defaultContext.transform });
+  return _push(defaultContext);
+}
+
+/**
+ * Context-taking implementation of push().
+ *
+ * @param {import("../../core/context.js").BrushContext} ctx
+ */
+export function _push(ctx) {
+  pushState(ctx);
+  ctx.transformStack.push({ ...ctx.transform });
 }
 
 /**
  * Pops the last standalone transform from the stack.
  */
 export function pop() {
-  if (defaultContext.transformStack.length === 0) return;
-  defaultContext.transform = defaultContext.transformStack.pop();
-  popState(defaultContext);
+  return _pop(defaultContext);
+}
+
+/**
+ * Context-taking implementation of pop().
+ *
+ * @param {import("../../core/context.js").BrushContext} ctx
+ */
+export function _pop(ctx) {
+  if (ctx.transformStack.length === 0) return;
+  ctx.transform = ctx.transformStack.pop();
+  popState(ctx);
 }
 
 /**
@@ -169,7 +207,18 @@ export function pop() {
  * @param {number} y
  */
 export function translate(x, y) {
-  defaultContext.transform = multiplyTransform(defaultContext.transform, {
+  return _translate(defaultContext, x, y);
+}
+
+/**
+ * Context-taking implementation of translate().
+ *
+ * @param {import("../../core/context.js").BrushContext} ctx
+ * @param {number} x
+ * @param {number} y
+ */
+export function _translate(ctx, x, y) {
+  ctx.transform = multiplyTransform(ctx.transform, {
     a: 1,
     b: 0,
     c: 0,
@@ -185,11 +234,20 @@ export function translate(x, y) {
  * @param {number} angle
  */
 export function rotate(angle) {
-  const theta =
-    defaultContext.angleMode === RADIANS ? angle : (angle * Math.PI) / 180;
+  return _rotate(defaultContext, angle);
+}
+
+/**
+ * Context-taking implementation of rotate().
+ *
+ * @param {import("../../core/context.js").BrushContext} ctx
+ * @param {number} angle
+ */
+export function _rotate(ctx, angle) {
+  const theta = ctx.angleMode === RADIANS ? angle : (angle * Math.PI) / 180;
   const cosTheta = Math.cos(theta);
   const sinTheta = Math.sin(theta);
-  defaultContext.transform = multiplyTransform(defaultContext.transform, {
+  ctx.transform = multiplyTransform(ctx.transform, {
     a: cosTheta,
     b: sinTheta,
     c: -sinTheta,
@@ -206,7 +264,18 @@ export function rotate(angle) {
  * @param {number} [y=x]
  */
 export function scale(x, y = x) {
-  defaultContext.transform = multiplyTransform(defaultContext.transform, {
+  return _scale(defaultContext, x, y);
+}
+
+/**
+ * Context-taking implementation of scale().
+ *
+ * @param {import("../../core/context.js").BrushContext} ctx
+ * @param {number} x
+ * @param {number} [y=x]
+ */
+export function _scale(ctx, x, y = x) {
+  ctx.transform = multiplyTransform(ctx.transform, {
     a: x,
     b: 0,
     c: 0,

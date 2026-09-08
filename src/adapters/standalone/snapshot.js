@@ -230,3 +230,21 @@ export function _freeSnapshot(ctx, handle) {
   if (!requireOwned(ctx, handle)) return false;
   return release(ctx, handle?.__brushSnapshot ?? -1);
 }
+
+/**
+ * Destroys every snapshot texture this painting holds, live and pooled.
+ *
+ * For dispose() only: `release()` recycles into the spare pool, which is
+ * exactly wrong when the pool itself is going away.
+ *
+ * @param {import("../../core/context.js").BrushContext} ctx
+ */
+export function _freeAllSnapshots(ctx) {
+  const pool = ctx.snapshots;
+  if (!pool) return;
+  for (const texture of pool.live.values()) texture.destroy();
+  for (const texture of pool.spare) texture.destroy();
+  pool.live.clear();
+  pool.order.length = 0;
+  pool.spare.length = 0;
+}

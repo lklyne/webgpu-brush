@@ -92,9 +92,12 @@ export function _noMass(ctx) {
  * @returns {Polygon}
  */
 function jitterPolygon(polygon, jitterX, jitterY) {
-  return new Polygon(
+  const copy = new Polygon(
     polygon.vertices.map((vertex) => [vertex.x + jitterX, vertex.y + jitterY]),
   );
+  // The copy is drawn through Polygon#draw, which resolves its own painting.
+  copy.owner = polygon.owner;
+  return copy;
 }
 
 function jitterPolygons(polygons, jitterX, jitterY) {
@@ -528,7 +531,17 @@ export function createMass(ctx, shape, x, y, scale) {
 }
 
 export function createMassArray(polygons) {
-  return createMass(defaultContext, polygons, false);
+  return _createMassArray(defaultContext, polygons);
+}
+
+/**
+ * Context-taking implementation of createMassArray().
+ *
+ * @param {import("../core/context.js").BrushContext} ctx
+ * @param {Polygon|Polygon[]} polygons
+ */
+export function _createMassArray(ctx, polygons) {
+  return createMass(ctx, polygons, false);
 }
 
 // ---------------------------------------------------------------------------

@@ -134,6 +134,13 @@ export function _noStroke(ctx: import("../core/context.js").BrushContext): void;
  */
 export function clip(region: number[]): number[];
 /**
+ * Context-taking implementation of clip().
+ * @param {import("../core/context.js").BrushContext} ctx
+ * @param {number[]} region
+ * @returns {number[]}
+ */
+export function _clip(ctx: import("../core/context.js").BrushContext, region: number[]): number[];
+/**
  * Disables the clipping region.
  */
 export function noClip(): void;

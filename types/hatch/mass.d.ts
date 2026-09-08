@@ -42,5 +42,12 @@ export function _noMass(ctx: import("../core/context.js").BrushContext): void;
  */
 export function createMass(ctx: import("../core/context.js").BrushContext, shape: Polygon | Polygon[] | Plot, x: number | false, y: number, scale: number): void;
 export function createMassArray(polygons: any): void;
+/**
+ * Context-taking implementation of createMassArray().
+ *
+ * @param {import("../core/context.js").BrushContext} ctx
+ * @param {Polygon|Polygon[]} polygons
+ */
+export function _createMassArray(ctx: import("../core/context.js").BrushContext, polygons: Polygon | Polygon[]): void;
 import { Polygon } from "../core/polygon.js";
 import { Plot } from "../core/plot.js";

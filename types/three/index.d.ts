@@ -1,6 +1,11 @@
 /**
+ * One painting's public API — what `createBrush()` returns and what the
+ * module-level `brush-gpu` exports are the default instance of.
+ * @typedef {ReturnType<typeof createBrush>} BrushInstance
+ */
+/**
  * The handle returned by `brush.gpu()`.
- * @typedef {ReturnType<typeof brush.gpu>} BrushGpuInterop
+ * @typedef {ReturnType<BrushInstance["gpu"]>} BrushGpuInterop
  */
 /**
  * @typedef {object} PaintingTexture
@@ -14,8 +19,9 @@
  */
 /**
  * @typedef {object} Attachment
- * @property {typeof brush} brush The drawing API (the same module as
- *   `brush-gpu/standalone`).
+ * @property {BrushInstance} brush This attachment's own painting — draw with
+ *   `attachment.brush.line(...)`. Independent of the module-level exports and
+ *   of every other attachment.
  * @property {HTMLCanvasElement} canvas brush's own canvas. Detached from the
  *   DOM unless `parent` was given; the painting is sampled through `node`.
  * @property {BrushGpuInterop} interop
@@ -23,14 +29,22 @@
  * @property {PaintingTexture} painting
  * @property {import("three/webgpu").TextureNode} node Shortcut for
  *   `painting.node`.
- * @property {() => void} dispose Releases the three wrappers and the
- *   attachment slot. brush's canvas and device stay as they are (brush never
- *   destroys a device it did not create).
+ * @property {() => void} dispose Releases the three wrappers and, when this
+ *   attachment created the instance, disposes it (freeing its painting and,
+ *   if brush requested the device, the device). An instance passed in through
+ *   `options.brush` is left alone — its owner disposes it.
  */
 /**
- * Options forwarded to `brush.createCanvas`. `parent` defaults to `null`
- * here (the painting is sampled by three, not shown as a DOM canvas).
- * @typedef {{ pixelDensity?: number, parent?: string|Element|null, id?: string }} AttachOptions
+ * Options forwarded to `createBrush`. `parent` defaults to `null` here (the
+ * painting is sampled by three, not shown as a DOM canvas). `brush` attaches
+ * an EXISTING instance instead of creating one; its canvas is re-created at
+ * the requested size on the attachment's device.
+ * @typedef {{
+ *   pixelDensity?: number,
+ *   parent?: string|Element|null,
+ *   id?: string,
+ *   brush?: BrushInstance,
+ * }} AttachOptions
  */
 /**
  * Wraps a `brush.gpu()` handle as a TSL texture node.
@@ -78,9 +92,14 @@ export function attachToRenderer(renderer: import("three/webgpu").WebGPURenderer
  */
 export function createSharedDevice(width: number, height: number, options?: AttachOptions): Promise<Attachment>;
 /**
+ * One painting's public API — what `createBrush()` returns and what the
+ * module-level `brush-gpu` exports are the default instance of.
+ */
+export type BrushInstance = ReturnType<typeof createBrush>;
+/**
  * The handle returned by `brush.gpu()`.
  */
-export type BrushGpuInterop = ReturnType<typeof brush.gpu>;
+export type BrushGpuInterop = ReturnType<BrushInstance["gpu"]>;
 export type PaintingTexture = {
     /**
      * TSL node sampling the
@@ -98,10 +117,11 @@ export type PaintingTexture = {
 };
 export type Attachment = {
     /**
-     * The drawing API (the same module as
-     * `brush-gpu/standalone`).
+     * This attachment's own painting — draw with
+     * `attachment.brush.line(...)`. Independent of the module-level exports and
+     * of every other attachment.
      */
-    brush: typeof brush;
+    brush: BrushInstance;
     /**
      * brush's own canvas. Detached from the
      * DOM unless `parent` was given; the painting is sampled through `node`.
@@ -119,20 +139,24 @@ export type Attachment = {
      */
     node: import("three/webgpu").TextureNode;
     /**
-     * Releases the three wrappers and the
-     * attachment slot. brush's canvas and device stay as they are (brush never
-     * destroys a device it did not create).
+     * Releases the three wrappers and, when this
+     * attachment created the instance, disposes it (freeing its painting and,
+     * if brush requested the device, the device). An instance passed in through
+     * `options.brush` is left alone — its owner disposes it.
      */
     dispose: () => void;
 };
 /**
- * Options forwarded to `brush.createCanvas`. `parent` defaults to `null`
- * here (the painting is sampled by three, not shown as a DOM canvas).
+ * Options forwarded to `createBrush`. `parent` defaults to `null` here (the
+ * painting is sampled by three, not shown as a DOM canvas). `brush` attaches
+ * an EXISTING instance instead of creating one; its canvas is re-created at
+ * the requested size on the attachment's device.
  */
 export type AttachOptions = {
     pixelDensity?: number;
     parent?: string | Element | null;
     id?: string;
+    brush?: BrushInstance;
 };
-import * as brush from "../index.standalone.js";
+import { createBrush } from "../index.standalone.js";
 import { ExternalTexture } from "three/webgpu";

@@ -53,6 +53,7 @@ export const wash: typeof washes.wash;
 export const noWash: typeof washes.noWash;
 export function cpuGeometry(): void;
 export function noCpuGeometry(): void;
+export { createBrush } from "./api.js";
 import * as runtime from "./adapters/standalone/runtime.js";
 import * as frame from "./adapters/standalone/frame.js";
 import * as flow from "./core/flowfield.js";

@@ -8,6 +8,16 @@
  */
 export function forEachContext(fn: (ctx: BrushContext) => void): void;
 /**
+ * Drops a context from the live registry and marks it dead.
+ *
+ * Called by an instance's `dispose()`. The registry holds weak refs, so this
+ * is not required for collection — it only stops `forEachContext` from
+ * touching a painting whose GPU resources are gone.
+ *
+ * @param {BrushContext} ctx
+ */
+export function disposeContext(ctx: BrushContext): void;
+/**
  * Creates a drawing context that owns its own state.
  *
  * @param {object} [options]
@@ -109,4 +119,8 @@ export type BrushContext = {
      * installed by the host adapter (adapters/standalone/deferred.js).
      */
     recorder: object | null;
+    /**
+     * True once disposeContext() has run.
+     */
+    disposed: boolean;
 };

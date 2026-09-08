@@ -69,6 +69,7 @@ const identityMatrix = {
  * @property {object[]} stateStack push()/pop() brush-state stack (core/save.js).
  * @property {object|null} recorder This painting's deferred-call recorder,
  *   installed by the host adapter (adapters/standalone/deferred.js).
+ * @property {boolean} disposed True once disposeContext() has run.
  */
 
 /** @type {Array<(ctx: BrushContext) => void>} */
@@ -94,6 +95,23 @@ export function forEachContext(fn) {
     const ctx = ref.deref();
     if (ctx) fn(ctx);
     else liveContexts.delete(ref);
+  }
+}
+
+/**
+ * Drops a context from the live registry and marks it dead.
+ *
+ * Called by an instance's `dispose()`. The registry holds weak refs, so this
+ * is not required for collection — it only stops `forEachContext` from
+ * touching a painting whose GPU resources are gone.
+ *
+ * @param {BrushContext} ctx
+ */
+export function disposeContext(ctx) {
+  ctx.disposed = true;
+  for (const ref of liveContexts) {
+    const live = ref.deref();
+    if (live === ctx || live === undefined) liveContexts.delete(ref);
   }
 }
 
@@ -141,6 +159,9 @@ export function createContext({ rng = createRng() } = {}) {
 
     // This painting's deferred-call recorder, installed by the host adapter.
     recorder: null,
+
+    // Set by disposeContext(); the painting's GPU resources are gone.
+    disposed: false,
   };
   liveContexts.add(new WeakRef(ctx));
   for (const init of initializers) init(ctx);

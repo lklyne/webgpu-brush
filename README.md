@@ -18,6 +18,7 @@ It does not depend on p5.js.
 - [Requirements](#requirements)
 - [Installation](#installation)
 - [Quick Start](#quick-start)
+- [Multiple paintings](#multiple-paintings)
 - [three.js](#threejs)
 - [Differences from upstream p5.brush](#differences-from-upstream-p5brush)
 - [Reference](#reference)
@@ -91,6 +92,49 @@ The order is always: create a canvas, set state (`set`, `fill`, `hatch`, ...), d
 
 You can start drawing right after `createCanvas()`. The WebGPU device comes up asynchronously; calls made before it is ready are recorded and replayed in order. `await brush.ready()` when you need to know the painting is current (before `readPixels()`, `gpu()`, or `snapshot()`).
 
+## Multiple paintings
+
+The module-level functions above draw into one default painting. `createBrush()` makes another one, with its own canvas, state, seed stream and GPU resources — as many as you want on a page, drawing in any order.
+
+```js
+import { createBrush } from 'brush-gpu/standalone';
+
+const left  = createBrush({ width: 400, height: 400, parent: '#left' });
+const right = createBrush({ width: 400, height: 400, parent: '#right' });
+
+left.seed('a');
+left.set('HB', '#2f2a26', 1.4);
+left.line(-150, -150, 150, 150);
+left.render();
+
+right.seed('b');
+right.fill('#d7c3a3', 120);
+right.circle(0, 0, 120);
+right.render();
+
+right.dispose();   // frees its painting; `left` keeps drawing
+```
+
+An instance carries the whole public surface under the same names, so a sketch written against `import * as brush` moves onto one by renaming a single identifier. It adds `dispose()` and `canvas`, and leaves out the underscore-prefixed test instrumentation, `initStandaloneRuntime` and the `instance()` no-op.
+
+`createBrush()` is synchronous, like `createCanvas()`: drawing before the device resolves is recorded and replayed, and `await api.ready()` resolves when the painting is current.
+
+**Options.** `{ width, height, pixelDensity, parent, id }` are `createCanvas`'s, and create the canvas immediately. `{ canvas }` loads an existing `HTMLCanvasElement` or `OffscreenCanvas` instead. `{ device, adapter }` adopts an externally owned WebGPU device — including another instance's, which puts two paintings on one device:
+
+```js
+const a = createBrush({ width: 512, height: 512 });
+await a.ready();
+const b = createBrush({ width: 256, height: 256, device: a.gpu().device });
+```
+
+With no target at all, `createBrush()` returns an instance you call `createCanvas()` or `load()` on later.
+
+**`dispose()`** frees the painting texture, the fill and stamp renderers, every snapshot this painting holds, and — only if this painting requested the device — the device itself. An adopted device is left to its owner. Afterwards every method on that instance throws. Other paintings, including ones sharing the device, are untouched.
+
+**What is still shared** on purpose: brush definitions (`add`), custom image tips, field definitions (`addField`), and the trig tables. Register a brush once and every painting can `pick()` it. Everything a painting draws with — state, transforms, seed stream, flow-field grids, snapshots — is its own.
+
+Classes follow their painting. `new left.Polygon(pts)` and `new left.Plot('curve')` draw into `left`; a bare `new Polygon(pts)` imported from the module draws into the default painting, as it always did. `instanceof Polygon` holds either way.
+
 ## three.js
 
 `brush-gpu/three` puts the painting on the same `GPUDevice` as a three.js `WebGPURenderer` and hands you a TSL texture node that samples it directly. No upload, no readback: the painting `GPUTexture` is bound as an `ExternalTexture`, and because both sides share one queue, brush's submissions land before three's render in submission order.
@@ -128,11 +172,16 @@ const att = await createSharedDevice(1024, 1024);
 const renderer = new THREE.WebGPURenderer({ canvas, device: att.device });
 ```
 
-Both return an `Attachment`: `{ brush, canvas, interop, device, painting, node, dispose }`. `brush` is the drawing API (the same module as `brush-gpu/standalone`), `node` is the TSL node for materials, `painting.texture` is the current `ExternalTexture`, and `dispose()` releases the three wrappers. The node keeps working across resizes: brush recreates the painting texture, and the bridge swaps a fresh wrapper into the node.
+Both return an `Attachment`: `{ brush, canvas, interop, device, painting, node, dispose }`. `brush` is **this attachment's own painting** — a `createBrush()` instance, not the module-level exports — so draw with `att.brush.line(...)`. `node` is the TSL node for materials, `painting.texture` is the current `ExternalTexture`, and `dispose()` releases the three wrappers and the instance. The node keeps working across resizes: brush recreates the painting texture, and the bridge swaps a fresh wrapper into the node.
 
 The painting is premultiplied and not sRGB-typed, so for a 1:1 display use a renderer with linear output color space and tone mapping off.
 
-brush-gpu keeps one active painting per page, so only one attachment can be live at a time. `dispose()` before attaching again. With react-three-fiber, do the attach once at module level or in a ref-guarded effect, not per mount.
+Every attach creates a new painting, so several can be live at once: two planes on one renderer, or one per `<Canvas>`. With react-three-fiber, attach in an effect and call `att.dispose()` in its cleanup. To attach a painting you already have — the default one, or an instance you made yourself — pass it as `options.brush`; `dispose()` then leaves it alive for you to dispose.
+
+```js
+import * as brush from 'brush-gpu/standalone';
+const att = await attachToRenderer(renderer, 1024, 1024, { brush });
+```
 
 `createPaintingTexture(interop)` is also exported for the low-level path: call `brush.gpu()` yourself and wrap the handle.
 
@@ -148,6 +197,7 @@ The drawing API is upstream's, unchanged. What differs:
 - **`brush.snapshot()` / `brush.restore()` / `brush.freeSnapshot()`** copy the painting texture aside and back on the GPU. Undo for host applications.
 - **Geometry inspection:** `brush.stream()`, `brush.onGeometry()`, `brush.beginGeometry()` / `brush.endGeometry()`, `brush.readGeometry()` expose and let you edit stroke stamps between generation and rasterization.
 - **Hash RNG.** Internal random draws are a counter-based hash, which GPU compute can reproduce and a sequential stream cannot. The same seed gives a different, equally plausible image than upstream p5.brush. Run-to-run reproducibility per seed is preserved. `random()`, `wRand()`, and `noise()` are unchanged.
+- **`createBrush()`** returns an independent painting carrying the whole public surface, plus `dispose()`. Several can be live on a page, sharing a device or not; the module-level exports are the default one. See [Multiple paintings](#multiple-paintings).
 - **Standalone only.** Transforms (`brush.push/pop/translate/rotate/scale`), angle mode (`brush.angleMode`), seeding (`brush.seed/noiseSeed`), clearing (`brush.clear`), and the frame flush (`brush.render`) are all library calls. `brush.load()` takes an `HTMLCanvasElement` or `OffscreenCanvas`. There are no framebuffer targets and `brush.instance()` is a no-op.
 
 Exports whose names start with an underscore (`_stats`, `_geometryStats`, `_resetGeometryStats`, `_fillDriverStats`) are test instrumentation, not API.
@@ -158,7 +208,7 @@ Exports whose names start with an underscore (`_stats`, `_geometryStats`, `_rese
 
 | Section | Functions | Section | Functions |
 |---|---|---|---|
-| [Canvas and lifecycle](#canvas-and-lifecycle) | `brush.createCanvas()`, `brush.load()`, `brush.ready()`, `brush.render()`, `brush.clear()`, `brush.readPixels()`, `brush.scaleBrushes()` | [Fill Operations](#fill-operations) | `brush.fill()`, `brush.noFill()`, `brush.wash()`, `brush.noWash()`, `brush.fillBleed()`, `brush.fillTexture()` |
+| [Canvas and lifecycle](#canvas-and-lifecycle) | `brush.createBrush()`, `brush.createCanvas()`, `brush.load()`, `brush.ready()`, `brush.render()`, `brush.clear()`, `brush.readPixels()`, `brush.scaleBrushes()`, `api.dispose()` | [Fill Operations](#fill-operations) | `brush.fill()`, `brush.noFill()`, `brush.wash()`, `brush.noWash()`, `brush.fillBleed()`, `brush.fillTexture()` |
 | [Transforms, angles, seeding](#transforms-angles-seeding) | `brush.push()`, `brush.pop()`, `brush.translate()`, `brush.rotate()`, `brush.scale()`, `brush.angleMode()`, `brush.seed()`, `brush.noiseSeed()`, `brush.random()`, `brush.wRand()`, `brush.noise()` | [Hatch Operations](#hatch-operations) | `brush.hatch()`, `brush.noHatch()`, `brush.hatchStyle()`, `brush.mass()`, `brush.noMass()`, `brush.hatchArray()`, `brush.massArray()` |
 | [Vector Fields](#vector-fields) | `brush.field()`, `brush.noField()`, `brush.refreshField()`, `brush.listFields()`, `brush.addField()`, `brush.wiggle()` | [Primitives](#primitives) | `brush.line()`, `brush.flowLine()`, `brush.beginStroke()`, `brush.move()`, `brush.endStroke()`, `brush.spline()`, `brush.rect()`, `brush.circle()`, `brush.arc()`, `brush.beginShape()`, `brush.vertex()`, `brush.endShape()`, `brush.polygon()` |
 | [Brush Management](#brush-management) | `brush.box()`, `brush.add()`, `brush.clip()`, `brush.noClip()` | [Exposed Classes](#exposed-classes) | `brush.Polygon`, `brush.Plot`, `brush.Position`, `brush.Color` |
@@ -168,6 +218,32 @@ Exports whose names start with an underscore (`_stats`, `_geometryStats`, `_rese
 
 <sub>[back to table](#table-of-functions)</sub>
 ### Canvas and lifecycle
+
+- `brush.createBrush(options)`
+  - **Description**: Creates an independent painting and returns its API — the whole public surface under the same names, drawing into its own canvas, state and seed stream. Synchronous; drawing before the device resolves is recorded and replayed. See [Multiple paintings](#multiple-paintings).
+  - **Parameters**:
+    - `options` (Object): Optional.
+      - `width`, `height`: Logical size. Given both, the canvas is created immediately with `createCanvas`'s `pixelDensity` / `parent` / `id` options.
+      - `canvas`: An existing `HTMLCanvasElement` or `OffscreenCanvas` to draw into, instead of creating one.
+      - `device`, `adapter`: Adopt an externally owned `GPUDevice` — including another instance's `api.gpu().device`, which puts both paintings on one device.
+    - With no target the instance has no canvas yet; call `api.createCanvas()` or `api.load()` later.
+  - **Usage**:
+    ```javascript
+    const painting = brush.createBrush({ width: 800, height: 600, parent: '#sketch' });
+    painting.set('HB', '#000', 1);
+    painting.line(-200, 0, 200, 0);
+    painting.render();
+    ```
+
+- `api.dispose()`
+  - **Description**: Releases one painting created by `createBrush()`: its painting texture, fill and stamp renderers, snapshots, and — only if that painting requested the device — the device. An adopted device is left to its owner, and other paintings on it keep drawing. Every method on the disposed instance throws afterwards. Idempotent.
+  - **Usage**:
+    ```javascript
+    painting.dispose();
+    ```
+
+- `api.canvas`
+  - **Description**: The canvas of a `createBrush()` instance, or `null` before `createCanvas()`/`load()`.
 
 - `brush.createCanvas(width, height, options)`
   - **Description**: Creates a `<canvas>`, sizes its backing store by `pixelDensity`, appends it to the DOM, and loads it as the draw target. Starts WebGPU device acquisition. Returns the canvas element.
