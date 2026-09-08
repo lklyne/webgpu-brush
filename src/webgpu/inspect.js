@@ -193,7 +193,8 @@ export async function readGeometry(handle) {
   // Flush any GPU-walk descriptors still pending so their batch is captured.
   // Dynamic import avoids a module cycle (gl_draw.js imports this module).
   const { flushWalkBatch } = await import("../stroke/gl_draw.js");
-  flushWalkBatch();
+  const { defaultContext } = await import("../core/context.js");
+  flushWalkBatch(defaultContext);
 
   handle.active = false;
   capture = null;

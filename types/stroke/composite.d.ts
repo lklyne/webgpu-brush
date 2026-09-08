@@ -3,13 +3,16 @@
  * canvas dimensions. Stroke stamps are rendered into this mask in WebGL before
  * being blended into the main target.
  *
+ * @param {import("../core/context.js").BrushContext} _ctx - Unused here; the
+ *   compositor hooks take the drawing context first so the ones that need it
+ *   (getShaderMask, flushPending) can be called uniformly.
  * @param {object} Renderer - Active host renderer.
  * @param {number} Cwidth - Target width in sketch units.
  * @param {number} Cheight - Target height in sketch units.
  * @param {number} Density - Active pixel density.
  * @returns {object} The framebuffer used as stroke mask.
  */
-export function ensureStrokeCompositeResources(Renderer: object, Cwidth: number, Cheight: number, Density: number): object;
+export function ensureStrokeCompositeResources(_ctx: import("../core/context.js").BrushContext, Renderer: object, Cwidth: number, Cheight: number, Density: number): object;
 /**
  * Clears the current stroke mask and resets its bookkeeping flags.
  *
@@ -41,11 +44,12 @@ export function getStrokeCompositeRect(target: object | null, getActiveFramebuff
  * Returns the resource that should be bound to the blend shader's `u_mask`
  * uniform for stroke compositing.
  *
+ * @param {import("../core/context.js").BrushContext} ctx
  * @param {object} _Renderer - Active host renderer.
  * @param {object} mask - Stroke mask framebuffer.
  * @returns {object} Stroke mask framebuffer.
  */
-export function getStrokeShaderMask(_Renderer: object, mask: object): object;
+export function getStrokeShaderMask(ctx: import("../core/context.js").BrushContext, _Renderer: object, mask: object): object;
 /**
  * Registers the stroke compositor with the shared color/composite core.
  * Safe to call multiple times.

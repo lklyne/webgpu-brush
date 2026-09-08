@@ -1,14 +1,16 @@
 /**
  * Snapshots the current runtime affine transform. Call once at the start of each stroke.
+ * @param {import("../core/context.js").BrushContext} ctx
  */
-export function snapshotMatrix(): void;
+export function snapshotMatrix(ctx: import("../core/context.js").BrushContext): void;
 /** True when the snapshotted matrix is a pure translation (GPU-walk gate). */
 export function matrixIsTranslation(): boolean;
 /**
  * Ensures the WebGPU stamp path is ready. Mirrors the old isReady():
  * (re)binds the mask target and refreshes size-dependent state.
+ * @param {import("../core/context.js").BrushContext} ctx
  */
-export function isReady(): void;
+export function isReady(ctx: import("../core/context.js").BrushContext): void;
 /**
  * Queue a circle stamp. Same coordinate contract as the WebGL module:
  * x/y in position space (user coords + Cwidth/2, Cheight/2), diameter in
@@ -22,18 +24,20 @@ export function circle(x: any, y: any, diameter: any, alpha: any): void;
 export function stampImage(x: any, y: any, size: any, angle: any, alpha: any, extraPadding?: number): void;
 /**
  * Flush all queued image stamps in one instanced draw.
+ * @param {import("../core/context.js").BrushContext} ctx
  * @param {object} p5img - The preprocessed brush-tip surface (from T.tips).
  * @param {string} src - The image src string / tip key, texture cache key.
  */
-export function glDrawImages(p5img: object, src: string): void;
+export function glDrawImages(ctx: import("../core/context.js").BrushContext, p5img: object, src: string): void;
 /**
  * Removes a cached tip texture by key, forcing re-upload on next draw.
  */
 export function invalidateTexEntry(key: any): void;
 /**
  * Flush all queued circle stamps in one instanced draw.
+ * @param {import("../core/context.js").BrushContext} ctx
  */
-export function glDraw(): void;
+export function glDraw(ctx: import("../core/context.js").BrushContext): void;
 export function _setUseCpuWalk(v: any): void;
 /** brush.cpuGeometry() is one switch: it also forces the CPU fill DAG. */
 export function _getUseCpuWalk(): boolean;
@@ -58,6 +62,7 @@ export function walkEligible(param: any): boolean;
  * Queue one stroke for the GPU walk. Caller (stroke.js) has already run
  * Mix.blend and owns strokeId sequencing and the pressure-cache chain.
  *
+ * @param {import("../core/context.js").BrushContext} ctx
  * @param {object} o
  * @param {number} o.strokeId sequential stroke id (stroke.js _strokeId)
  * @param {"default"|"marker"|"spray"} o.kind
@@ -73,7 +78,7 @@ export function walkEligible(param: any): boolean;
  * @param {{pc: number|undefined, cached: number|undefined}} o.chain
  * @returns {{pc, cached}} updated pressure-cache chain
  */
-export function queueWalkStroke(o: {
+export function queueWalkStroke(ctx: import("../core/context.js").BrushContext, o: {
     strokeId: number;
     kind: "default" | "marker" | "spray";
     x: number;
@@ -101,6 +106,7 @@ export function queueWalkStroke(o: {
  * the live mask — and presents once. Called before every CPU stamp flush,
  * before any other composite, at frame end, and on environment change.
  *
+ * @param {import("../core/context.js").BrushContext} ctx
  * @param {boolean} [joinMask=false] the caller is about to draw CPU stamps
  *   for the CURRENT stroke color/translation into the live mask. If the
  *   trailing deferred group matches, it is converted to immediate — it
@@ -109,4 +115,4 @@ export function queueWalkStroke(o: {
  *   this the group would composite alone, and ink overlapping the CPU
  *   stamps would be spectrally mixed twice.
  */
-export function flushWalkBatch(joinMask?: boolean): void;
+export function flushWalkBatch(ctx: import("../core/context.js").BrushContext, joinMask?: boolean): void;

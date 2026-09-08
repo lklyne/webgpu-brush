@@ -24,14 +24,7 @@
 // always land in draw order.
 // =============================================================================
 
-import { Cwidth, Cheight, Density, Renderer } from "../core/target.js";
-import {
-  Mix,
-  isMixReady,
-  State,
-} from "../core/color.js";
-import { getAffineMatrix, notifyDraw } from "../core/runtime.js";
-import { _getSeedU32 } from "../core/utils.js";
+import { isMixReady } from "../core/color.js";
 import { _fieldSnapshot, _fieldEpochNow } from "../core/flowfield.js";
 import { Stats } from "../core/stats.js";
 import {
@@ -78,19 +71,20 @@ let _ma = 1,
 
 /**
  * Snapshots the current runtime affine transform. Call once at the start of each stroke.
+ * @param {import("../core/context.js").BrushContext} ctx
  */
-export function snapshotMatrix() {
-  const m = getAffineMatrix();
+export function snapshotMatrix(ctx) {
+  const m = ctx.getAffineMatrix();
   _ma = m.a;
   _mb = m.b;
   _mc = m.c;
   _md = m.d;
   _mx = m.x;
   _my = m.y;
-  _halfW = Cwidth / 2;
-  _halfH = Cheight / 2;
+  _halfW = ctx.width / 2;
+  _halfH = ctx.height / 2;
   _scale = Math.sqrt(_ma * _ma + _mb * _mb);
-  _density = Density;
+  _density = ctx.density;
 }
 
 /** True when the snapshotted matrix is a pure translation (GPU-walk gate). */
@@ -98,40 +92,44 @@ export function matrixIsTranslation() {
   return _ma === 1 && _mb === 0 && _mc === 0 && _md === 1;
 }
 
-function ensureBrushMaskTarget() {
-  const rendererMask = Renderer?.glMask;
+/**
+ * @param {import("../core/context.js").BrushContext} ctx
+ */
+function ensureBrushMaskTarget(ctx) {
+  const rendererMask = ctx.renderer?.glMask;
   if (!rendererMask) return null;
   rendererMask.dirtyRect ??= null;
   rendererMask.isDrawn ??= false;
-  Mix.glMask = rendererMask;
+  ctx.mix.glMask = rendererMask;
   return rendererMask;
 }
 
 /**
  * Ensures the WebGPU stamp path is ready. Mirrors the old isReady():
  * (re)binds the mask target and refreshes size-dependent state.
+ * @param {import("../core/context.js").BrushContext} ctx
  */
-export function isReady() {
-  isMixReady();
-  ensureBrushMaskTarget();
+export function isReady(ctx) {
+  isMixReady(ctx);
+  ensureBrushMaskTarget(ctx);
 
-  const nextHost = Renderer.host;
+  const nextHost = ctx.renderer.host;
   nextHost.requireReady();
   const needsRefresh =
     !isLoaded ||
     host !== nextHost ||
-    loadedWidth !== Cwidth ||
-    loadedHeight !== Cheight ||
-    loadedDensity !== Density;
+    loadedWidth !== ctx.width ||
+    loadedHeight !== ctx.height ||
+    loadedDensity !== ctx.density;
   if (!needsRefresh) return;
 
   host = nextHost;
-  loadedWidth = Cwidth;
-  loadedHeight = Cheight;
-  loadedDensity = Density;
+  loadedWidth = ctx.width;
+  loadedHeight = ctx.height;
+  loadedDensity = ctx.density;
   host.stamps.setSize(
-    Math.max(1, Math.round(Cwidth * Density)),
-    Math.max(1, Math.round(Cheight * Density)),
+    Math.max(1, Math.round(ctx.width * ctx.density)),
+    Math.max(1, Math.round(ctx.height * ctx.density)),
     { flipY: true },
   );
   initWalker();
@@ -224,10 +222,11 @@ export function stampImage(x, y, size, angle, alpha, extraPadding = 0) {
 
 /**
  * Flush all queued image stamps in one instanced draw.
+ * @param {import("../core/context.js").BrushContext} ctx
  * @param {object} p5img - The preprocessed brush-tip surface (from T.tips).
  * @param {string} src - The image src string / tip key, texture cache key.
  */
-export function glDrawImages(p5img, src) {
+export function glDrawImages(ctx, p5img, src) {
   // Inspection hooks: replay this stroke's staged (hooked) image stamps into
   // the queue, recomputing the dirty rect from post-hook positions.
   if (_iflag.active && host) {
@@ -253,10 +252,11 @@ export function glDrawImages(p5img, src) {
     }
     return;
   }
-  flushWalkBatch(true); // preserve stamp order (gotcha #10); same-color group joins
+  flushWalkBatch(ctx, true); // preserve stamp order (gotcha #10); same-color group joins
+  const Mix = ctx.mix;
   Mix.glMask.isDrawn = true;
 
-  const color = State.stroke.color._array;
+  const color = ctx.state.stroke.color._array;
   host.stamps.drawImages(null, {
     view: Mix.glMask.view,
     color,
@@ -265,7 +265,7 @@ export function glDrawImages(p5img, src) {
   });
 
   if (imgDirtyRect) {
-    Mix.markDirtyRect(Mix.glMask, imgDirtyRect);
+    Mix.markDirtyRect(ctx, Mix.glMask, imgDirtyRect);
     imgDirtyRect = null;
   }
 }
@@ -279,8 +279,9 @@ export function invalidateTexEntry(key) {
 
 /**
  * Flush all queued circle stamps in one instanced draw.
+ * @param {import("../core/context.js").BrushContext} ctx
  */
-export function glDraw() {
+export function glDraw(ctx) {
   // Inspection hooks: replay this stroke's staged (hooked) disc stamps into
   // the queue, recomputing the dirty rect from post-hook positions.
   if (_iflag.active && host) {
@@ -300,14 +301,15 @@ export function glDraw() {
     }
   }
   if (!host || host.stamps.discCount === 0) return;
-  flushWalkBatch(true); // preserve stamp order (gotcha #10); same-color group joins
+  flushWalkBatch(ctx, true); // preserve stamp order (gotcha #10); same-color group joins
+  const Mix = ctx.mix;
   Mix.glMask.isDrawn = true;
 
-  const color = State.stroke.color._array;
+  const color = ctx.state.stroke.color._array;
   host.stamps.drawDiscs(null, { view: Mix.glMask.view, color });
 
   if (circleDirtyRect) {
-    Mix.markDirtyRect(Mix.glMask, circleDirtyRect);
+    Mix.markDirtyRect(ctx, Mix.glMask, circleDirtyRect);
     circleDirtyRect = null;
   }
 }
@@ -426,18 +428,22 @@ export function walkEligible(param) {
   return true;
 }
 
-function ensureEnvironment(gaussPool) {
-  const seed = _getSeedU32();
+/**
+ * @param {import("../core/context.js").BrushContext} ctx
+ * @param {ArrayLike<number>} gaussPool
+ */
+function ensureEnvironment(ctx, gaussPool) {
+  const seed = ctx.rng.seedU32();
   const fieldEpoch = _fieldEpochNow();
-  const field = _fieldSnapshot();
+  const field = _fieldSnapshot(ctx);
   const fieldName = field?.name ?? null;
   if (
     envState.seed === seed &&
     envState.fieldEpoch === fieldEpoch &&
     envState.fieldName === fieldName &&
-    envState.w === Cwidth &&
-    envState.h === Cheight &&
-    envState.density === Density &&
+    envState.w === ctx.width &&
+    envState.h === ctx.height &&
+    envState.density === ctx.density &&
     envState.pool === gaussPool
   ) {
     return;
@@ -445,22 +451,22 @@ function ensureEnvironment(gaussPool) {
   // Environment (seed word, field, pools) is about to change: any pending
   // descriptors were built against the CURRENT environment and must walk
   // under it, not the new one.
-  flushWalkBatch();
+  flushWalkBatch(ctx);
   walker.setEnvironment({
     seedU32: seed,
-    width: Cwidth,
-    height: Cheight,
+    width: ctx.width,
+    height: ctx.height,
     gaussPool: Float32Array.from(gaussPool),
     field,
-    density: Density,
+    density: ctx.density,
   });
-  builder = createDescriptorBuilder({ seedU32: seed, width: Cwidth, height: Cheight });
+  builder = createDescriptorBuilder({ seedU32: seed, width: ctx.width, height: ctx.height });
   envState.seed = seed;
   envState.fieldEpoch = fieldEpoch;
   envState.fieldName = fieldName;
-  envState.w = Cwidth;
-  envState.h = Cheight;
-  envState.density = Density;
+  envState.w = ctx.width;
+  envState.h = ctx.height;
+  envState.density = ctx.density;
   envState.pool = gaussPool;
 }
 
@@ -468,6 +474,7 @@ function ensureEnvironment(gaussPool) {
  * Queue one stroke for the GPU walk. Caller (stroke.js) has already run
  * Mix.blend and owns strokeId sequencing and the pressure-cache chain.
  *
+ * @param {import("../core/context.js").BrushContext} ctx
  * @param {object} o
  * @param {number} o.strokeId sequential stroke id (stroke.js _strokeId)
  * @param {"default"|"marker"|"spray"} o.kind
@@ -483,11 +490,12 @@ function ensureEnvironment(gaussPool) {
  * @param {{pc: number|undefined, cached: number|undefined}} o.chain
  * @returns {{pc, cached}} updated pressure-cache chain
  */
-export function queueWalkStroke(o) {
+export function queueWalkStroke(ctx, o) {
   _noteGpuStroke(); // inspection routing counter (per stroke, trivial)
-  ensureEnvironment(o.gaussPool);
+  ensureEnvironment(ctx, o.gaussPool);
 
-  const color = State.stroke.color._array;
+  const Mix = ctx.mix;
+  const color = ctx.state.stroke.color._array;
   const immediate = Mix.glMask.isDrawn === true;
   if (
     openGroup &&
@@ -524,7 +532,7 @@ export function queueWalkStroke(o) {
   });
   desc.group = groups.length; // index openGroup takes when sealed
   pending.push(desc);
-  notifyDraw();
+  ctx.notifyDraw();
 
   // Conservative CPU dirty rect (device px), used only when the group joins
   // the live mask (immediate now, or converted by a same-color CPU stamp
@@ -561,7 +569,7 @@ export function queueWalkStroke(o) {
       maxY: (maxY + _my) * d,
     };
   }
-  if (immediate) Mix.markDirtyRect(Mix.glMask, desc.cpuRect);
+  if (immediate) Mix.markDirtyRect(ctx, Mix.glMask, desc.cpuRect);
 
   return builder.getChain();
 }
@@ -583,6 +591,7 @@ const rasterUniformU32 = new Uint32Array(rasterUniform.buffer);
  * the live mask — and presents once. Called before every CPU stamp flush,
  * before any other composite, at frame end, and on environment change.
  *
+ * @param {import("../core/context.js").BrushContext} ctx
  * @param {boolean} [joinMask=false] the caller is about to draw CPU stamps
  *   for the CURRENT stroke color/translation into the live mask. If the
  *   trailing deferred group matches, it is converted to immediate — it
@@ -591,9 +600,10 @@ const rasterUniformU32 = new Uint32Array(rasterUniform.buffer);
  *   this the group would composite alone, and ink overlapping the CPU
  *   stamps would be spectrally mixed twice.
  */
-export function flushWalkBatch(joinMask = false) {
+export function flushWalkBatch(ctx, joinMask = false) {
   sealGroup();
   if (pending.length === 0) return;
+  const Mix = ctx.mix;
   const descs = pending;
   const gs = groups;
   pending = [];
@@ -601,7 +611,7 @@ export function flushWalkBatch(joinMask = false) {
 
   if (joinMask) {
     const last = gs[gs.length - 1];
-    const c = State.stroke.color._array;
+    const c = ctx.state.stroke.color._array;
     if (
       !last.immediate &&
       last.key.mx === _mx && last.key.my === _my &&
@@ -609,7 +619,7 @@ export function flushWalkBatch(joinMask = false) {
     ) {
       last.immediate = true;
       for (let i = last.start; i < last.end; i++) {
-        Mix.markDirtyRect(Mix.glMask, descs[i].cpuRect);
+        Mix.markDirtyRect(ctx, Mix.glMask, descs[i].cpuRect);
       }
       Mix.glMask.isDrawn = true;
     }
@@ -621,13 +631,13 @@ export function flushWalkBatch(joinMask = false) {
   ); // submits its own compute encoder
   // An open geometry capture retains the batch (no readback here — it is
   // mapped only when readGeometry() is awaited, out-of-band).
-  const captured = _iflag.active && _captureWalkBatch(walker, batch, descs, Density);
+  const captured = _iflag.active && _captureWalkBatch(walker, batch, descs, ctx.density);
   ensureRasterPipeline();
-  isMixReady(); // blend-source framebuffer for deferred composites
+  isMixReady(ctx); // blend-source framebuffer for deferred composites
 
   const device = host.gpu.device;
-  const W = Math.max(1, Math.round(Cwidth * Density));
-  const H = Math.max(1, Math.round(Cheight * Density));
+  const W = Math.max(1, Math.round(ctx.width * ctx.density));
+  const H = Math.max(1, Math.round(ctx.height * ctx.density));
   const deferredCount = gs.reduce((n, g) => n + (g.immediate ? 0 : 1), 0);
   rasterRing.reserve(gs.length);
   host.reserveBlendSlots(deferredCount);
@@ -645,7 +655,7 @@ export function flushWalkBatch(joinMask = false) {
     rasterUniform[7] = 1;
     rasterUniform[8] = g.key.mx;
     rasterUniform[9] = g.key.my;
-    rasterUniform[10] = Density;
+    rasterUniform[10] = ctx.density;
     rasterUniform[11] = 0;
     rasterUniformU32[12] = g.start;
     rasterUniformU32[13] = 0;
@@ -688,7 +698,7 @@ export function flushWalkBatch(joinMask = false) {
       return;
     }
     host.encodeRectComposite(enc, {
-      source: Renderer.blendSourceFramebuffer,
+      source: ctx.renderer.blendSourceFramebuffer,
       maskView: Mix.glMask.view,
       color: g.color,
       rect: { buffer: batch.rectsBuffer, offset: gi * RECT_BYTES, size: RECT_BYTES },

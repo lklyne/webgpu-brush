@@ -1,8 +1,10 @@
 /**
  * Ensures the field system is initialized and ready for use.
  * If the field is not loaded, it initializes the mixing system and creates the field.
+ *
+ * @param {import("./context.js").BrushContext} ctx
  */
-export function isFieldReady(): void;
+export function isFieldReady(ctx: import("./context.js").BrushContext): void;
 /**
  * Discards the field grid when the draw target's logical size changes.
  *
@@ -23,11 +25,20 @@ export function _onTargetResized(width: number, height: number): void;
  */
 export function refreshField(t?: number): void;
 /**
+ * Context-taking implementation of refreshField().
+ *
+ * @param {import("./context.js").BrushContext} ctx
+ * @param {number} [t=0] - An optional time parameter that can affect field generation.
+ */
+export function _refreshField(ctx: import("./context.js").BrushContext, t?: number): void;
+/**
  * Flattened snapshot of the active flow field for GPU upload (col-major,
  * c * numRows + r — the layout strokewalk-compute expects), or null when
  * no field is active. Internal API for the GPU-walk stroke router.
+ *
+ * @param {import("./context.js").BrushContext} ctx
  */
-export function _fieldSnapshot(): {
+export function _fieldSnapshot(ctx: import("./context.js").BrushContext): {
     data: Float32Array<ArrayBuffer>;
     numColumns: any;
     numRows: any;
@@ -50,9 +61,22 @@ export function assertField(name: string): void;
  */
 export function field(a: string): void;
 /**
+ * Context-taking implementation of field().
+ *
+ * @param {import("./context.js").BrushContext} ctx
+ * @param {string} a - The name of the vector field to activate.
+ */
+export function _field(ctx: import("./context.js").BrushContext, a: string): void;
+/**
  * Deactivates the current vector field.
  */
 export function noField(): void;
+/**
+ * Context-taking implementation of noField().
+ *
+ * @param {import("./context.js").BrushContext} ctx
+ */
+export function _noField(ctx: import("./context.js").BrushContext): void;
 /**
  * Adds a new vector field to the field list with a unique name and a generator function.
  * @param {string} name - The unique name for the new vector field.
@@ -69,6 +93,13 @@ export function addField(name: string, funct: Function, options?: {
  */
 export function listFields(): string[];
 export function wiggle(a?: number): void;
+/**
+ * Context-taking implementation of wiggle().
+ *
+ * @param {import("./context.js").BrushContext} ctx
+ * @param {number} [a=1] - Wiggle strength.
+ */
+export function _wiggle(ctx: import("./context.js").BrushContext, a?: number): void;
 /**
  * The Position class represents a point within a two-dimensional space, which can interact with a vector field.
  * It provides methods to update the position based on the field's flow and to check whether the position is
@@ -98,8 +129,12 @@ export class Position {
      * Constructs a new Position instance.
      * @param {number} x - The initial x-coordinate.
      * @param {number} y - The initial y-coordinate.
+     * @param {import("./context.js").BrushContext} [owner] - Drawing context this
+     *   position belongs to. Unset means the default context.
      */
-    constructor(x: number, y: number);
+    constructor(x: number, y: number, owner?: import("./context.js").BrushContext);
+    /** @type {import("./context.js").BrushContext|undefined} */
+    owner: import("./context.js").BrushContext | undefined;
     mx: number;
     my: number;
     plotted: number;

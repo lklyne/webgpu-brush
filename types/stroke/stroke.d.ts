@@ -1,13 +1,15 @@
 /**
  * Retrieves a shallow copy of the current stroke state.
+ * @param {import("../core/context.js").BrushContext} ctx
  * @returns {object} The stroke state.
  */
-export function BrushState(): object;
+export function BrushState(ctx: import("../core/context.js").BrushContext): object;
 /**
  * Updates the stroke state.
+ * @param {import("../core/context.js").BrushContext} ctx
  * @param {object} state - The new stroke state.
  */
-export function BrushSetState(state: object): void;
+export function BrushSetState(ctx: import("../core/context.js").BrushContext, state: object): void;
 /**
  * Adds a new brush with the specified parameters to the brush list.
  * @param {string} name - The unique name for the new brush.
@@ -41,6 +43,12 @@ export function scaleBrushes(scaleFactor: number): void;
  */
 export function pick(brushName: string): void;
 /**
+ * Context-taking implementation of pick().
+ * @param {import("../core/context.js").BrushContext} ctx
+ * @param {string} brushName - The name of the brush.
+ */
+export function _pick(ctx: import("../core/context.js").BrushContext, brushName: string): void;
+/**
  * Throws if no brush is registered under `brushName`.
  * @param {string} brushName - The name of the brush.
  */
@@ -53,10 +61,22 @@ export function assertBrush(brushName: string): void;
  */
 export function stroke(r: number | string | Color, g?: number, b?: number, ...args: any[]): void;
 /**
+ * Context-taking implementation of stroke().
+ * @param {import("../core/context.js").BrushContext} ctx
+ * @param {...*} args - Color arguments, forwarded verbatim to the host.
+ */
+export function _stroke(ctx: import("../core/context.js").BrushContext, ...args: any[]): void;
+/**
  * Sets the brush weight (thickness).
  * @param {number} weight - The weight value.
  */
 export function strokeWeight(weight: number): void;
+/**
+ * Context-taking implementation of strokeWeight().
+ * @param {import("../core/context.js").BrushContext} ctx
+ * @param {number} weight - The weight value.
+ */
+export function _strokeWeight(ctx: import("../core/context.js").BrushContext, weight: number): void;
 /**
  * Sets the current brush with name, color, and weight.
  * @param {string} brushName - The brush name.
@@ -65,9 +85,22 @@ export function strokeWeight(weight: number): void;
  */
 export function set(brushName: string, color: string | Color, weight?: number): void;
 /**
+ * Context-taking implementation of set().
+ * @param {import("../core/context.js").BrushContext} ctx
+ * @param {string} brushName - The brush name.
+ * @param {string|Color} color - The brush color.
+ * @param {number} [weight=1] - The brush weight.
+ */
+export function _set(ctx: import("../core/context.js").BrushContext, brushName: string, color: string | Color, weight?: number): void;
+/**
  * Disables the stroke effect.
  */
 export function noStroke(): void;
+/**
+ * Context-taking implementation of noStroke().
+ * @param {import("../core/context.js").BrushContext} ctx
+ */
+export function _noStroke(ctx: import("../core/context.js").BrushContext): void;
 /**
  * Defines a clipping region for strokes.
  * The region uses the same coordinate space as brush drawing commands,
@@ -88,6 +121,15 @@ export function noClip(): void;
  */
 export function line(x1: number, y1: number, x2: number, y2: number): void;
 /**
+ * Context-taking implementation of line().
+ * @param {import("../core/context.js").BrushContext} ctx
+ * @param {number} x1 - Start x-coordinate.
+ * @param {number} y1 - Start y-coordinate.
+ * @param {number} x2 - End x-coordinate.
+ * @param {number} y2 - End y-coordinate.
+ */
+export function _line(ctx: import("../core/context.js").BrushContext, x1: number, y1: number, x2: number, y2: number): void;
+/**
  * Draws a stroke from a starting point in a given direction.
  * @param {number} x - Starting x-coordinate.
  * @param {number} y - Starting y-coordinate.
@@ -95,3 +137,12 @@ export function line(x1: number, y1: number, x2: number, y2: number): void;
  * @param {number} dir - Direction, interpreted using the current runtime angle units.
  */
 export function flowLine(x: number, y: number, length: number, dir: number): void;
+/**
+ * Context-taking implementation of flowLine().
+ * @param {import("../core/context.js").BrushContext} ctx
+ * @param {number} x - Starting x-coordinate.
+ * @param {number} y - Starting y-coordinate.
+ * @param {number} length - Length of the stroke.
+ * @param {number} dir - Direction, interpreted using the current runtime angle units.
+ */
+export function _flowLine(ctx: import("../core/context.js").BrushContext, x: number, y: number, length: number, dir: number): void;

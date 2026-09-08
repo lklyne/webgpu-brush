@@ -84,12 +84,18 @@ import {
   addField,
   field as activateField,
   noField,
-  isFieldReady,
+  isFieldReady as isFieldReadyCtx,
   listFields,
   _onTargetResized,
-  _fieldSnapshot,
+  _fieldSnapshot as _fieldSnapshotCtx,
   _fieldEpochNow,
 } from "../../src/core/flowfield.js";
+import { defaultContext } from "../../src/core/context.js";
+
+// isFieldReady() / _fieldSnapshot() take the drawing context first
+// (core/context.js).
+const isFieldReady = () => isFieldReadyCtx(defaultContext);
+const _fieldSnapshot = () => _fieldSnapshotCtx(defaultContext);
 
 // Canvas is 800×600 (mocked in target.js).
 // isInCanvas margin = 0.5

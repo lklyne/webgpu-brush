@@ -2,9 +2,10 @@
 // Adapter: Standalone Frame Helpers
 // =============================================================================
 
-import { Renderer, isCanvasReady } from "../../core/target.js";
-import { Mix, flushActiveComposite } from "../../core/color.js";
-import { createColor, setRuntime } from "../../core/runtime.js";
+import { isCanvasReady } from "../../core/target.js";
+import { flushActiveComposite } from "../../core/color.js";
+import { defaultContext } from "../../core/context.js";
+import { setRuntime } from "../../core/runtime.js";
 import { flushWalkBatch } from "../../stroke/gl_draw.js";
 
 // ---- render() reminder ----
@@ -31,12 +32,16 @@ function onDraw() {
 
 setRuntime({ notifyDraw: onDraw });
 
-function resetCompositeState() {
+/**
+ * @param {import("../../core/context.js").BrushContext} ctx
+ */
+function resetCompositeState(ctx) {
   // Deferred GPU-walk groups were drawn before this clear; composite them
   // (into pixels the clear then wipes) rather than letting them leak past it.
-  flushWalkBatch();
-  if (Mix.glMask) Mix.clearMask(Mix.glMask);
-  if (Mix.mask) Mix.clearMask(Mix.mask);
+  flushWalkBatch(ctx);
+  const Mix = ctx.mix;
+  if (Mix.glMask) Mix.clearMask(ctx, Mix.glMask);
+  if (Mix.mask) Mix.clearMask(ctx, Mix.mask);
   Mix.justChanged = false;
   Mix.isBlending = false;
   Mix.isBrush = null;
@@ -50,7 +55,7 @@ function resetCompositeState() {
  */
 export function render() {
   _hasPendingDraw = false;
-  flushActiveComposite();
+  flushActiveComposite(defaultContext);
 }
 
 /**
@@ -62,15 +67,16 @@ export function render() {
  * @param {...*} args
  */
 export function clear(...args) {
+  const ctx = defaultContext;
   isCanvasReady();
-  resetCompositeState();
+  resetCompositeState(ctx);
 
   const color =
     args.length === 0
       ? [1, 1, 1, 0]
-      : [...createColor(...args)._array.slice(0, 3), 1];
+      : [...ctx.createColor(...args)._array.slice(0, 3), 1];
 
-  Renderer.host.clearPainting({
+  ctx.renderer.host.clearPainting({
     r: color[0],
     g: color[1],
     b: color[2],

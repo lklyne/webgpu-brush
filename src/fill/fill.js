@@ -13,26 +13,16 @@
  */
 
 // Core imports
-import { Cwidth, Cheight, Density } from "../core/target.js";
-import {
-  Mix,
-  State,
-} from "../core/color.js";
+import { defaultContext } from "../core/context.js";
 import {
   constrain,
   map,
-  gaussian,
   rotate,
   cossin,
   toDegreesSigned,
-  _onSeed,
   STREAM,
-  hashU32,
-  rh,
-  nh,
 } from "../core/utils.js";
 import { isFieldReady } from "../core/flowfield.js";
-import { createColor, getAffineMatrix } from "../core/runtime.js";
 import { Polygon } from "../core/polygon.js";
 import { Plot } from "../core/plot.js";
 import { Stats } from "../core/stats.js";
@@ -60,7 +50,7 @@ let _growDirs = [];
 /**
  * Global fill state settings.
  */
-State.fill = {
+defaultContext.state.fill = {
   opacity: 150,
   bleed_strength: 0.07,
   texture_strength: 0.8,
@@ -72,9 +62,14 @@ State.fill = {
 };
 
 // Cache the current state
-const FillState = () => ({ ...State.fill });
-const FillSetState = (state) => {
-  State.fill = { ...state };
+/** @param {import("../core/context.js").BrushContext} ctx */
+const FillState = (ctx) => ({ ...ctx.state.fill });
+/**
+ * @param {import("../core/context.js").BrushContext} ctx
+ * @param {object} state
+ */
+const FillSetState = (ctx, state) => {
+  ctx.state.fill = { ...state };
 };
 
 // ---------------------------------------------------------------------------
@@ -89,9 +84,20 @@ const FillSetState = (state) => {
  * @param {number} [d] - The opacity.
  */
 export function fill(a, b, c, d) {
-  State.fill.opacity = (arguments.length < 4 ? b : d) || 150;
-  State.fill.color = arguments.length < 3 ? createColor(a) : createColor(a, b, c);
-  State.fill.isActive = true;
+  return _fill(defaultContext, ...arguments);
+}
+
+/**
+ * Context-taking implementation of fill().
+ * @param {import("../core/context.js").BrushContext} ctx
+ * @param {...*} args - Color arguments plus optional opacity.
+ */
+export function _fill(ctx, ...args) {
+  const [a, b, c, d] = args;
+  const state = ctx.state.fill;
+  state.opacity = (args.length < 4 ? b : d) || 150;
+  state.color = args.length < 3 ? ctx.createColor(a) : ctx.createColor(a, b, c);
+  state.isActive = true;
 }
 
 /**
@@ -101,9 +107,21 @@ export function fill(a, b, c, d) {
  * @param {number|null} [_angle=null] - Optional wash direction angle in current angle mode.
  */
 export function fillBleed(_i, _direction = "out", _angle = null) {
-  State.fill.bleed_strength = constrain(_i, 0, 1);
-  State.fill.direction = _direction;
-  State.fill.angle = _angle == null ? null : toDegreesSigned(_angle);
+  return _fillBleed(defaultContext, _i, _direction, _angle);
+}
+
+/**
+ * Context-taking implementation of fillBleed().
+ * @param {import("../core/context.js").BrushContext} ctx
+ * @param {number} _i - The bleed intensity (clamped to [0,1]).
+ * @param {string} [_direction="out"] - The bleeding direction.
+ * @param {number|null} [_angle=null] - Optional wash direction angle.
+ */
+export function _fillBleed(ctx, _i, _direction = "out", _angle = null) {
+  const state = ctx.state.fill;
+  state.bleed_strength = constrain(_i, 0, 1);
+  state.direction = _direction;
+  state.angle = _angle == null ? null : toDegreesSigned(_angle);
 }
 
 /**
@@ -115,16 +133,36 @@ export function fillBleed(_i, _direction = "out", _angle = null) {
  *   gradient trim is needed without extra texture noise at the edges.
  */
 export function fillTexture(_texture = 0.4, _border = 0.4, _scatter = true) {
-  State.fill.texture_strength = constrain(_texture, 0, 1);
-  State.fill.border_strength = constrain(_border, 0, 1);
-  State.fill.scatter = _scatter;
+  return _fillTexture(defaultContext, _texture, _border, _scatter);
+}
+
+/**
+ * Context-taking implementation of fillTexture().
+ * @param {import("../core/context.js").BrushContext} ctx
+ * @param {number} [_texture=0.4] - The texture strength (clamped to [0,1]).
+ * @param {number} [_border=0.4] - The border strength (clamped to [0,1]).
+ * @param {boolean} [_scatter=true] - Whether to draw the scattered sparse polygon layers.
+ */
+export function _fillTexture(ctx, _texture = 0.4, _border = 0.4, _scatter = true) {
+  const state = ctx.state.fill;
+  state.texture_strength = constrain(_texture, 0, 1);
+  state.border_strength = constrain(_border, 0, 1);
+  state.scatter = _scatter;
 }
 
 /**
  * Disables fill for subsequent drawing operations.
  */
 export function noFill() {
-  State.fill.isActive = false;
+  return _noFill(defaultContext);
+}
+
+/**
+ * Context-taking implementation of noFill().
+ * @param {import("../core/context.js").BrushContext} ctx
+ */
+export function _noFill(ctx) {
+  ctx.state.fill.isActive = false;
 }
 
 // ---------------------------------------------------------------------------
@@ -143,7 +181,7 @@ let _fillId = 0;
 let _fillOp = 0;
 const nextOpSalt = () => (((_fillId << 10) + _fillOp++) >>> 0);
 
-_onSeed(() => {
+defaultContext.rng.onSeed(() => {
   _fillId = 0;
   _fillOp = 0;
 });
@@ -154,14 +192,18 @@ const _gaussians = [[], []]; // [a, b]
 // Bumped whenever the pools are refilled, so the GPU producer can re-upload
 // them exactly once per seed() instead of once per fill.
 let _poolsVersion = 0;
-function _fillGaussianPools() {
+/**
+ * @param {import("../core/context.js").BrushContext} ctx
+ */
+function _fillGaussianPools(ctx) {
+  const gaussian = ctx.rng.gaussian;
   for (let i = 0; i < GAUSSIAN_POOL_SIZE; i++) {
     _gaussians[0][i] = gaussian(0.5, 0.2);
     _gaussians[1][i] = gaussian(0, 0.02);
   }
   _poolsVersion++;
 }
-_onSeed(_fillGaussianPools);
+defaultContext.rng.onSeed(() => _fillGaussianPools(defaultContext));
 
 function _fillStartIndex(pts, angle) {
   const cs = cossin(angle);
@@ -212,9 +254,12 @@ function _center(pts) {
 
 /**
  * Fills a given polygon with a watercolor effect.
+ * @param {import("../core/context.js").BrushContext} ctx
  * @param {Polygon} polygon - The polygon to fill.
  */
-export function createFill(polygon) {
+export function createFill(ctx, polygon) {
+  const State = ctx.state;
+  const rh = ctx.rng.rh;
   if (!State.fill.isActive || !State.fill.color) {
     throw new Error(
       "No fill color set. Call brush.fill(color) before drawing shapes.",
@@ -246,7 +291,8 @@ export function createFill(polygon) {
   const shifted = new Array(n);
   for (let i = 0; i < n; i++) shifted[i] = v[(i + shift) % n];
   const center = _center(shifted);
-  return new FillPoly(shifted, modifiers, center, [], true).fill(
+  return new FillPoly(ctx, shifted, modifiers, center, [], true).fill(
+    ctx,
     State.fill.color,
     map(State.fill.opacity, 0, 255, 0, 1, true),
     State.fill.texture_strength,
@@ -267,13 +313,14 @@ export function createFill(polygon) {
 class FillPoly {
   /**
    * Constructs a FillPolygon.
-   * @param {Object[]} _v - Vertices of the polygon.
-   * @param {number[]} _m - Multipliers for the bleed effect at each vertex.
-   * @param {Object} _center - The polygon's center {x, y}.
+   * @param {import("../core/context.js").BrushContext} ctx
+   * @param {Object[]} v - Vertices of the polygon.
+   * @param {number[]} m - Multipliers for the bleed effect at each vertex.
+   * @param {Object} center - The polygon's center {x, y}.
    * @param {boolean[]} dir - Array indicating bleed direction per vertex.
    * @param {boolean} isFirst - True for initial polygon.
    */
-  constructor(v, m, center, dir = [], isFirst = false, sx, sy) {
+  constructor(ctx, v, m, center, dir = [], isFirst = false, sx, sy) {
     // Initialize properties
     this.v = v;
     this.m = m;
@@ -344,6 +391,7 @@ class FillPoly {
       }
 
       // Randomize center (single calculation)
+      const rh = ctx.rng.rh;
       const csalt = nextOpSalt();
       const rx = rh(STREAM.FILL_CENTER_X, csalt, 0, -0.6, 0.6) * maxX;
       const ry = rh(STREAM.FILL_CENTER_Y, csalt, 0, -0.6, 0.6) * maxY;
@@ -356,10 +404,11 @@ class FillPoly {
 
   /**
    * Trims vertices from the polygon based on a factor.
-   * @param {number} [factor=1] - Factor determining amount of trimming.
+   * @param {import("../core/context.js").BrushContext} ctx
+   * @param {number} [f=1] - Factor determining amount of trimming.
    * @returns {Object} An object containing trimmed vertices, multipliers, and direction.
    */
-  trim(f = 1) {
+  trim(ctx, f = 1) {
     // Fast path for common case
     if (f >= 1 || f < 0 || this.v.length <= 8) {
       return { v: this.v, m: this.m, dir: this.dir };
@@ -378,6 +427,7 @@ class FillPoly {
     const edgeLen = Math.hypot(evx, evy);
 
     const salt = nextOpSalt();
+    const rh = ctx.rng.rh;
 
     // Estimate typical vertex spacing from one random kept vertex pair,
     // then insert at least 0.2× that density along the bridge.
@@ -419,10 +469,12 @@ class FillPoly {
   /**
    * Randomly samples a fraction of vertices, keeping their order.
    * Any sampled vertex outside the original polygon is pulled inward.
+   * @param {import("../core/context.js").BrushContext} ctx
    * @param {number} [ratio=0.3] - Fraction of vertices to keep.
    * @returns {FillPoly} A new FillPoly with fewer vertices, guaranteed inside the original.
    */
-  scatter(ratio = 0.3) {
+  scatter(ctx, ratio = 0.3) {
+    const rh = ctx.rng.rh;
     const L = this.v.length;
     const keep = Math.max(3, ~~(L * ratio));
     const step = L / keep;
@@ -464,23 +516,27 @@ class FillPoly {
       sd.push(!this.dir[j]);
     }
 
-    return new FillPoly(sv, sm, this.midP, sd, false, this.sizeX, this.sizeY);
+    return new FillPoly(ctx, sv, sm, this.midP, sd, false, this.sizeX, this.sizeY);
   }
 
   /**
    * Returns a copy with all bleed directions flipped.
+   * @param {import("../core/context.js").BrushContext} ctx
    */
-  flipDirs() {
-    return new FillPoly(this.v, this.m, this.midP, this.dir.map(d => !d), false, this.sizeX, this.sizeY);
+  flipDirs(ctx) {
+    return new FillPoly(ctx, this.v, this.m, this.midP, this.dir.map(d => !d), false, this.sizeX, this.sizeY);
   }
 
   /**
    * Grows (or shrinks) the polygon vertices to simulate watercolor spread.
-   * @param {number} [growthFactor=1] - Factor controlling growth.
+   * @param {import("../core/context.js").BrushContext} ctx
+   * @param {number} [f=1] - Factor controlling growth.
    * @returns {FillPoly} A new FillPoly with adjusted vertices.
    */
-  grow(f = 1) {
-    const { v: tr_v, m: tr_m, dir: tr_dir } = this.trim(f);
+  grow(ctx, f = 1) {
+    const rh = ctx.rng.rh;
+    const hashU32 = ctx.rng.hashU32;
+    const { v: tr_v, m: tr_m, dir: tr_dir } = this.trim(ctx, f);
     const len = tr_v.length;
 
     const outLen = len * 2;
@@ -490,9 +546,9 @@ class FillPoly {
     const insertedY = _growInsY;
     const newMods = _growMods;
     const newDirs = _growDirs;
-    const bleedDirDeg = State.fill.direction === "out" ? -90 : 90;
+    const bleedDirDeg = ctx.state.fill.direction === "out" ? -90 : 90;
 
-    if (_gaussians[0].length === 0) _fillGaussianPools();
+    if (_gaussians[0].length === 0) _fillGaussianPools(ctx);
     const gPool = _gaussians[0],
       gPoolLen = gPool.length;
     const g2Pool = _gaussians[1],
@@ -501,7 +557,7 @@ class FillPoly {
     const salt = nextOpSalt();
     let idx = 0;
     let insertedIdx = 0;
-    let mod = f === 999 ? rh(STREAM.GROW_MOD999, salt, 0, 0.6, 0.8) : State.fill.bleed_strength;
+    let mod = f === 999 ? rh(STREAM.GROW_MOD999, salt, 0, 0.6, 0.8) : ctx.state.fill.bleed_strength;
 
     // Pre-compute GROW_CAP step — if even step (step=2,4,...), all odd-indexed inserted
     // vertices will be discarded by downsampling. Skip cossin+rotation.
@@ -512,7 +568,7 @@ class FillPoly {
     if (skipInserted) {
       // Fast path: inserted vertices will be discarded by GROW_CAP step=2.
       // Result is exactly the trimmed polygon — skip all array writes.
-      return new FillPoly(tr_v, tr_m, this.midP, tr_dir, false, this.sizeX, this.sizeY);
+      return new FillPoly(ctx, tr_v, tr_m, this.midP, tr_dir, false, this.sizeX, this.sizeY);
     } else {
     for (let i = 0; i < len; i++) {
       const cv = tr_v[i];
@@ -592,11 +648,12 @@ class FillPoly {
       fm = newMods.slice(0, idx);
       fd = newDirs.slice(0, idx);
     }
-    return new FillPoly(fv, fm, this.midP, fd, false, this.sizeX, this.sizeY);
+    return new FillPoly(ctx, fv, fm, this.midP, fd, false, this.sizeX, this.sizeY);
   }
 
   /**
    * Fills the polygon with multiple layers to simulate a watercolor effect.
+   * @param {import("../core/context.js").BrushContext} ctx
    * @param {Color|string} color - The fill color.
    * @param {number} intensity - Opacity intensity (mapped from 0 to 1).
    * @param {number} tex - Texture factor.
@@ -605,18 +662,21 @@ class FillPoly {
    * The layer border width and the two alphas, shared verbatim by the CPU
    * and GPU producers (see GpuFillPoly.layer) so there is one source of
    * truth for the arithmetic.
+   * @param {import("../core/context.js").BrushContext} ctx
    */
-  _layerStyle(i, size, int) {
+  _layerStyle(ctx, i, size, int) {
+    const borderStrength = ctx.state.fill.border_strength;
     return {
       lineWidth:
-        map(i, 0, 24, size / 25, size / 30, true) * State.fill.border_strength,
+        map(i, 0, 24, size / 25, size / 30, true) * borderStrength,
       // canvas2d "rgb(255 0 0 / int%)": percentage alpha, clamped to 100%.
       fillAlpha: Math.min(100, Math.max(0, int)) / 100,
-      borderAlpha: State.fill.border_strength * 0.01,
+      borderAlpha: borderStrength * 0.01,
     };
   }
 
-  fill(color, intensity, tex) {
+  fill(ctx, color, intensity, tex) {
+    const Mix = ctx.mix;
     const numLayers = 20;
     const texture = tex * 3;
     const int = 2 * intensity * (1 + tex / 2);
@@ -624,30 +684,31 @@ class FillPoly {
     const switchingToFill = Mix.isBrush !== false;
     Mix.isBrush = false;
     if (switchingToFill) Mix.justChanged = true;
-    Mix.blend(color);
+    Mix.blend(ctx, color);
 
     // The fill matrix is a plain object handed to the GPU fill
-    // surface (was ctx.setTransform + ctx.getTransform round trip).
-    const m = getAffineMatrix();
+    // surface (was a setTransform + getTransform round trip).
+    const density = ctx.density;
+    const m = ctx.getAffineMatrix();
     const fillMatrix = {
-      a: Density * m.a,
-      b: Density * m.b,
-      c: Density * m.c,
-      d: Density * m.d,
-      e: Density * (m.x + Cwidth / 2),
-      f: Density * (m.y + Cheight / 2),
+      a: density * m.a,
+      b: density * m.b,
+      c: density * m.c,
+      d: density * m.d,
+      e: density * (m.x + ctx.width / 2),
+      f: density * (m.y + ctx.height / 2),
     };
-    GROW_CAP = GROW_MAX_VERTS * Math.max(0.2, 2 * State.fill.bleed_strength);
+    GROW_CAP = GROW_MAX_VERTS * Math.max(0.2, 2 * ctx.state.fill.bleed_strength);
     const size = Math.max(this.sizeX, this.sizeY);
-    const darker = rh(STREAM.FILL_DARKER, nextOpSalt(), 0, 0.15, 0.7);
+    const darker = ctx.rng.rh(STREAM.FILL_DARKER, nextOpSalt(), 0, 0.15, 0.7);
 
     // `root` is either `this` (the retained CPU producer) or a
     // GpuFillPoly handle. Everything below is producer-agnostic — one
     // control flow, so the op order (and therefore the salt sequence) can
     // never drift between the two.
-    const root = _tryGpuFill(this, fillMatrix, size) ?? this;
+    const root = _tryGpuFill(ctx, this, fillMatrix, size) ?? this;
     try {
-      this._fillBody(root, numLayers, texture, int, intensity, size, darker, color, fillMatrix);
+      this._fillBody(ctx, root, numLayers, texture, int, intensity, size, darker, color, fillMatrix);
     } finally {
       if (root !== this) Mix.ctx.endGpuFill();
     }
@@ -656,57 +717,58 @@ class FillPoly {
   }
 
   /** @private the layer schedule; see fill() for the producer routing. */
-  _fillBody(root, numLayers, texture, int, intensity, size, darker, color, fillMatrix) {
-    let pol = root.grow();
-    const sparse = root.scatter(0.1).grow().scatter(0.75).flipDirs();
+  _fillBody(ctx, root, numLayers, texture, int, intensity, size, darker, color, fillMatrix) {
+    let pol = root.grow(ctx);
+    const sparse = root.scatter(ctx, 0.1).grow(ctx).scatter(ctx, 0.75).flipDirs(ctx);
     let pols;
 
     for (let i = 0; i < numLayers; i++) {
       if (i % 4 === 0) {
-        pol = pol.grow();
+        pol = pol.grow(ctx);
       }
 
       if (i % 2 === 0) {
         pols = [
-          pol.grow(1 - 0.0125 * i),
-          pol.grow(0.7 - 0.0125 * i),
-          pol.grow(0.4 - 0.0125 * i),
+          pol.grow(ctx, 1 - 0.0125 * i),
+          pol.grow(ctx, 0.7 - 0.0125 * i),
+          pol.grow(ctx, 0.4 - 0.0125 * i),
         ];
       }
 
       for (const p of pols) {
-        const grown = p.grow(999).grow(997);
-        grown.layer(i, size, int, fillMatrix);
+        const grown = p.grow(ctx, 999).grow(ctx, 997);
+        grown.layer(ctx, i, size, int, fillMatrix);
       }
-      if (State.fill.scatter) {
-        const sparseLayer = sparse.grow(999).flipDirs().grow(997);
-        sparseLayer.layer(i, size, int * texture, fillMatrix);
+      if (ctx.state.fill.scatter) {
+        const sparseLayer = sparse.grow(ctx, 999).flipDirs(ctx).grow(ctx, 997);
+        sparseLayer.layer(ctx, i, size, int * texture, fillMatrix);
       }
       if (i % 2 === 0) {
-        const darkerLayer = pol.grow(darker).grow(999);
-        darkerLayer.layer(i, size, int * 2, fillMatrix);
+        const darkerLayer = pol.grow(ctx, darker).grow(ctx, 999);
+        darkerLayer.layer(ctx, i, size, int * 2, fillMatrix);
       }
 
       if (i % 8 === 0 || i === numLayers - 1) {
         if (texture !== 0) {
-          pol.erase(texture * 3, intensity, fillMatrix);
+          pol.erase(ctx, texture * 3, intensity, fillMatrix);
         }
-        Mix.blend(color, true);
+        ctx.mix.blend(ctx, color, true);
       }
     }
   }
 
   /**
    * Draws a layer of the fill polygon with stroke and fill.
+   * @param {import("../core/context.js").BrushContext} ctx
    * @param {number} i - The layer index.
    */
-  layer(i, size, int, matrix) {
+  layer(ctx, i, size, int, matrix) {
     if (Stats.enabled) {
       Stats.recordLayer(i, this.v.length);
       for (let k = 0; k < this.v.length; k++) Stats.hashNums(this.v[k].x, this.v[k].y);
     }
-    const { lineWidth, fillAlpha, borderAlpha } = this._layerStyle(i, size, int);
-    Mix.ctx.layer(this.v, matrix, fillAlpha, lineWidth, borderAlpha);
+    const { lineWidth, fillAlpha, borderAlpha } = this._layerStyle(ctx, i, size, int);
+    ctx.mix.ctx.layer(this.v, matrix, fillAlpha, lineWidth, borderAlpha);
   }
 
   /**
@@ -735,7 +797,11 @@ class FillPoly {
     };
   }
 
-  erase(texture, intensity, matrix) {
+  /**
+   * @param {import("../core/context.js").BrushContext} ctx
+   */
+  erase(ctx, texture, intensity, matrix) {
+    const { rh, nh } = ctx.rng;
     const salt = nextOpSalt();
     const p = this._eraseParams(texture, intensity);
     const numCircles = ~~(rh(STREAM.ERASE_COUNT, salt, 0, 80, 110) * p.countFactor);
@@ -758,7 +824,7 @@ class FillPoly {
       if (Stats.enabled) Stats.hashNums(x, y, radius);
       if (i % 5 !== 0) circles.push(x, y, radius);
     }
-    Mix.ctx.erase(circles, matrix, alpha);
+    ctx.mix.ctx.erase(circles, matrix, alpha);
   }
 }
 
@@ -790,11 +856,11 @@ class GpuFillPoly {
     return new GpuFillPoly(this.s, handle, this.sizeX, this.sizeY, this.midP);
   }
 
-  grow(f = 1) {
+  grow(_ctx, f = 1) {
     return this._wrap(this.s.gpuFill.recordGrow(this.h, f, this.flip));
   }
 
-  scatter(ratio = 0.3) {
+  scatter(_ctx, ratio = 0.3) {
     if (this.flip) {
       // fill() never does this; a copy kernel would be needed if it did.
       throw new Error("gpu-fill: scatter() after flipDirs() is unsupported");
@@ -802,7 +868,7 @@ class GpuFillPoly {
     return this._wrap(this.s.gpuFill.recordScatter(this.h, ratio));
   }
 
-  flipDirs() {
+  flipDirs(_ctx) {
     return new GpuFillPoly(
       this.s,
       this.h,
@@ -813,9 +879,10 @@ class GpuFillPoly {
     );
   }
 
-  layer(i, size, int, matrix) {
+  layer(ctx, i, size, int, matrix) {
     const { lineWidth, fillAlpha, borderAlpha } = FillPoly.prototype._layerStyle.call(
       this,
+      ctx,
       i,
       size,
       int,
@@ -823,7 +890,7 @@ class GpuFillPoly {
     this.s.layerGpu(this.h, matrix, fillAlpha, lineWidth, borderAlpha);
   }
 
-  erase(texture, intensity, matrix) {
+  erase(_ctx, texture, intensity, matrix) {
     const p = FillPoly.prototype._eraseParams.call(this, texture, intensity);
     // rh(..., 80, 110) bounds the count draw, so the arena reservation is a
     // pure CPU decision even though the count itself is resolved GPU-side.
@@ -839,15 +906,17 @@ class GpuFillPoly {
  *   - `Stats.enabled` — structural capture reads CPU vertex arrays.
  *   - `brush.cpuGeometry()` — the documented CPU producer switch.
  *   - no WebGPU fill driver, or a polygon past the poly-buffer capacity.
+ *
+ * @param {import("../core/context.js").BrushContext} ctx
  */
-function _tryGpuFill(poly, matrix, size) {
+function _tryGpuFill(ctx, poly, matrix, size) {
   if (Stats.enabled || _getUseCpuWalk()) return null;
-  const surface = Mix.ctx;
+  const surface = ctx.mix.ctx;
   const driver = surface?.gpuFill;
   if (!driver || typeof surface.beginGpuFill !== "function") return null;
   const n = poly.v.length;
   if (n < 3 || n > driver.capacity) return null;
-  if (_gaussians[0].length === 0) _fillGaussianPools();
+  if (_gaussians[0].length === 0) _fillGaussianPools(ctx);
   // The gaussian pools are DATA (drawn by the seeded sequential generator at
   // seed() time); the shader only hashes an INDEX into them.
   driver.uploadPoolsIfStale(_poolsVersion, _gaussians[0], _gaussians[1]);
@@ -873,12 +942,12 @@ function _tryGpuFill(poly, matrix, size) {
     polygonBBox: { minX: _bbMinX, minY: _bbMinY, maxX: _bbMaxX, maxY: _bbMaxY },
     fillId: _fillId,
     opCounter: _fillOp,
-    bleedStrength: State.fill.bleed_strength,
-    direction: State.fill.direction,
+    bleedStrength: ctx.state.fill.bleed_strength,
+    direction: ctx.state.fill.direction,
     growCap: GROW_CAP,
     matrix,
     // The border is widest at layer 0 — that sets the dirty-rect padding.
-    maxLineWidth: (size / 25) * State.fill.border_strength,
+    maxLineWidth: (size / 25) * ctx.state.fill.border_strength,
   });
   return new GpuFillPoly(surface, handle, poly.sizeX, poly.sizeY, poly.midP);
 }
@@ -896,7 +965,7 @@ function _tryGpuFill(poly, matrix, size) {
  * the oracle can assert routing rather than infer it from pixels.
  */
 export function _fillDriverStats() {
-  return Mix.ctx?.gpuFill?.stats ?? null;
+  return defaultContext.mix.ctx?.gpuFill?.stats ?? null;
 }
 
 export const _test = {
@@ -938,17 +1007,18 @@ Polygon.prototype.fill = function (
   _direction,
   _angle,
 ) {
-  let state = FillState();
+  const ctx = this.owner ?? defaultContext;
+  let state = FillState(ctx);
   if (_color) {
-    fill(_color, _opacity);
-    fillBleed(_bleed, _direction, _angle);
-    fillTexture(_texture, _border);
+    _fill(ctx, _color, _opacity);
+    _fillBleed(ctx, _bleed, _direction, _angle);
+    _fillTexture(ctx, _texture, _border);
   }
   if (state.isActive) {
-    isFieldReady();
-    createFill(this);
+    isFieldReady(ctx);
+    createFill(ctx, this);
   }
-  FillSetState(state);
+  FillSetState(ctx, state);
   return this;
 };
 
@@ -959,15 +1029,17 @@ Polygon.prototype.fill = function (
  * @param {number} scale - Scaling factor.
  */
 Plot.prototype.fill = function (x, y, scale) {
-  if (FillState().isActive) {
+  const ctx = this.owner ?? defaultContext;
+  if (FillState(ctx).isActive) {
     if (this.origin) ((x = this.origin[0]), (y = this.origin[1]), (scale = 1));
+    const bleed = ctx.state.fill.bleed_strength;
     this.pol = this.genPol(
       x,
       y,
       scale,
-      State.fill.bleed_strength < 0.06
+      bleed < 0.06
       ? 0
-      : map(State.fill.bleed_strength, 0, 0.6, 0.2, 0.60, true),
+      : map(bleed, 0, 0.6, 0.2, 0.60, true),
     );
     this.pol.fill();
   }

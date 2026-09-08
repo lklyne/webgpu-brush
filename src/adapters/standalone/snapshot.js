@@ -22,6 +22,7 @@
 
 import { Renderer, isCanvasReady } from "../../core/target.js";
 import { flushActiveComposite } from "../../core/color.js";
+import { defaultContext } from "../../core/context.js";
 
 /** Live snapshot bound; the oldest handle is dropped when exceeded. */
 export const MAX_SNAPSHOTS = 20;
@@ -84,7 +85,7 @@ function release(id) {
  */
 export function snapshot() {
   const host = requireHost();
-  flushActiveComposite();
+  flushActiveComposite(defaultContext);
   if (order.length >= MAX_SNAPSHOTS) release(order[0]);
   const texture = acquireTexture(host);
   const enc = host.gpu.device.createCommandEncoder({ label: "snapshot-copy" });
@@ -123,7 +124,7 @@ export function restore(handle) {
   }
   // Flush + reset composite state so stale masks / dirty rects cannot land
   // on the restored painting; whatever it composites is overwritten below.
-  flushActiveComposite();
+  flushActiveComposite(defaultContext);
   const enc = host.gpu.device.createCommandEncoder({ label: "snapshot-restore" });
   enc.copyTextureToTexture(
     { texture },

@@ -1517,3 +1517,81 @@ tsc), `pnpm test:smoke` 3/3 PASS, `pnpm test:goldens` 54 tiles · worst
 4.7957 · mean 1.2771 · failing 2 (edge-subpixel 3.7466, edge-self-intersect
 4.7957) — every number bit-identical to before, `assert-structure
 --identity` PASS with geomHash `3878505443` (the W1b/W4a value).
+
+### Step 2 — `ctx` threaded through the draw stack
+
+Step 2 of the plan's order of work: introduce a drawing context and make every
+internal function that reads library state read it through that context. **No
+state moved.** The context is a facade, so this step is a pure refactor and
+every gate number below is bit-identical to step 1's.
+
+- **`src/core/context.js`.** `createContext()` returns a `BrushContext`; the
+  module-level API draws into `defaultContext`. Fields: `state` and `mix`
+  (getters onto `State` / `Mix` in core/color.js), `width` / `height` /
+  `density` / `renderer` (getters onto core/target.js's live `Cwidth`,
+  `Cheight`, `Density`, `Renderer`), `rng` (getters onto core/utils.js —
+  `random`, `rr2`, `randInt2`, `rArray`, `gaussian`, `weightedRand`, `noise`,
+  `noise2`, `hashU32`, `hash01`, `rh`, `nh`, `seed`, `noiseSeed`, `onSeed`,
+  `seedU32`), the runtime hooks as forwarding calls (`usesRadians`,
+  `fromDegrees`, `createColor`, `getAffineMatrix`, `notifyDraw`), and
+  `recorder`, installed by `setRecorder()` from the standalone entry so core
+  still never imports an adapter. Everything is a getter or a forwarding call,
+  never a copied reference: `noise`/`noise2` and the target bindings are
+  reassignable, and the unit suites mock core/color.js, core/target.js and
+  core/utils.js partially, so an eager read would touch exports a mock does
+  not define.
+- **The threading rule.** A function takes `ctx` as its FIRST parameter when it
+  reads context state directly, or when it calls something that does, or when
+  it constructs a `Polygon` / `Plot` / `Position` (step 5 sets the owner
+  there). Where a function is part of the public surface, its exported name
+  keeps its exact signature and JSDoc and delegates one line to a
+  `_name(ctx, …)` implementation — that is what keeps
+  `types/index.standalone.d.ts` (whose entries are `typeof prim.rect` and
+  friends) byte-identical for consumers, and it is why
+  `src/index.standalone.js` still reads `guard(prim.rect)`.
+- **Modules threaded** (≈121 functions and methods): `core/primitives.js`,
+  `core/plot.js`, `core/polygon.js`, `core/save.js`, `core/flowfield.js`,
+  `core/color.js` (the dirty-rect / scissor helpers, `isMixReady`,
+  `flushActiveComposite`, `load`, and every `Mix` method), `stroke/stroke.js`,
+  `stroke/gl_draw.js`, `fill/fill.js` (including `FillPoly` and its GPU twin
+  `GpuFillPoly`, whose interfaces must stay identical), `fill/wash.js`,
+  `hatch/hatch.js`, `hatch/mass.js`, the compositor hooks in
+  `stroke/composite.js` and `fill/composite.js` (`ensureResources`,
+  `getShaderMask` and `flushPending` take the context first now; the fill
+  surface closes over it for `Mix.markDirtyRect`), and the standalone adapters
+  that call into them (`frame.js`, `snapshot.js`, `runtime.js`'s push/pop,
+  `precheck.js`'s arm callback). `webgpu/inspect.js`'s `readGeometry()` picks
+  up `defaultContext` through the same dynamic import it already used for
+  `flushWalkBatch`.
+- **Owners.** `Polygon`, `Plot` and `Position` gained an optional `owner`
+  field, unset everywhere; every prototype patch (`show`, `draw`, `fill`,
+  `wash`, `hatch`, `mass` in fill.js, wash.js, hatch.js, mass.js, stroke.js)
+  resolves `this.owner ?? defaultContext`. `Position` also takes an optional
+  third constructor argument so internal creation sites can pass a context
+  before the constructor's own reads — additive, so existing calls are
+  unaffected.
+- **One new build warning:** rollup reports the cycle
+  `core/context.js -> core/color.js -> core/context.js`. It is inherent to a
+  facade: the context reads `State` / `Mix` from color.js, and color.js hosts
+  the public `load()` wrapper that binds the default context. Only deferred
+  (in-function, getter) access crosses it, and it disappears in step 3 when the
+  state slices move onto the context.
+- **Test updates** (signature changes only, no behavior): the four unit suites
+  that call threaded internals directly (`getHatchLines`, `createFill`,
+  `createMass`, `isFieldReady`, `_fieldSnapshot`) bind `defaultContext` in a
+  one-line local wrapper; `mass.test.js`'s mocks were renamed to the
+  ctx-taking exports (`_arc`, `_hatch`, `_set`, `_wiggle`) and its argument
+  assertions shifted by one. `test/webgpu/grow-cpu-ref.js` — which extracts the
+  shipped `FillPoly.trim()`/`grow()` source text at runtime — matches the new
+  `(ctx, f = 1)` signature and rewrites the ctx parameter and the ctx argument
+  of the internal calls to a closure binding, so the oracle still executes the
+  shipped arithmetic unmodified.
+
+Verification (all identical to step 1): `vitest` 111/111, `pnpm build` clean
+(rollup + tsc, plus the cycle warning above), `git diff types/` shows
+`types/index.standalone.d.ts` and `types/three/index.d.ts` unchanged,
+`pnpm test:smoke` 3/3 PASS, `pnpm test:goldens` 54 tiles · worst 4.7957 · mean
+1.2771 · failing 2 (edge-subpixel 3.7466, edge-self-intersect 4.7957),
+`assert-structure --identity` PASS with geomHash `3878505443`,
+`oracle-w8.mjs` 7/7 with pixel hash `2970327761`, `oracle-grow.mjs` 8/8.
+Bundle: `dist/brush.esm.js` 233 422 → 238 897 bytes (+2.3%).

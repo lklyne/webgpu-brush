@@ -1,4 +1,3 @@
-import { State } from "./color.js";
 import { isFieldReady } from "./flowfield.js";
 
 // =============================================================================
@@ -15,9 +14,12 @@ const _stateStack = [];
 
 /**
  * Pushes the current brush state onto the stack.
+ *
+ * @param {import("./context.js").BrushContext} ctx
  */
-export function push() {
-  isFieldReady();
+export function push(ctx) {
+  isFieldReady(ctx);
+  const State = ctx.state;
   _stateStack.push({
     fill: { ...State.fill },
     wash: State.wash ? { ...State.wash } : null,
@@ -30,10 +32,13 @@ export function push() {
 
 /**
  * Pops the top brush state from the stack and restores it.
+ *
+ * @param {import("./context.js").BrushContext} ctx
  */
-export function pop() {
+export function pop(ctx) {
   const saved = _stateStack.pop();
   if (!saved) return;
+  const State = ctx.state;
   State.stroke = { ...saved.stroke };
   State.field = { ...saved.field };
   State.hatch = { ...saved.hatch };

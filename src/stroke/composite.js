@@ -37,6 +37,9 @@ function needsStrokeMask(Renderer, Cwidth, Cheight, Density) {
  * canvas dimensions. Stroke stamps are rendered into this mask in WebGL before
  * being blended into the main target.
  *
+ * @param {import("../core/context.js").BrushContext} _ctx - Unused here; the
+ *   compositor hooks take the drawing context first so the ones that need it
+ *   (getShaderMask, flushPending) can be called uniformly.
  * @param {object} Renderer - Active host renderer.
  * @param {number} Cwidth - Target width in sketch units.
  * @param {number} Cheight - Target height in sketch units.
@@ -44,6 +47,7 @@ function needsStrokeMask(Renderer, Cwidth, Cheight, Density) {
  * @returns {object} The framebuffer used as stroke mask.
  */
 export function ensureStrokeCompositeResources(
+  _ctx,
   Renderer,
   Cwidth,
   Cheight,
@@ -118,14 +122,15 @@ export function getStrokeCompositeRect(
  * Returns the resource that should be bound to the blend shader's `u_mask`
  * uniform for stroke compositing.
  *
+ * @param {import("../core/context.js").BrushContext} ctx
  * @param {object} _Renderer - Active host renderer.
  * @param {object} mask - Stroke mask framebuffer.
  * @returns {object} Stroke mask framebuffer.
  */
-export function getStrokeShaderMask(_Renderer, mask) {
+export function getStrokeShaderMask(ctx, _Renderer, mask) {
   // Any GPU-walked strokes still pending must land in the mask before
   // the composite samples it.
-  flushWalkBatch();
+  flushWalkBatch(ctx);
   return mask;
 }
 
@@ -145,7 +150,7 @@ export function initStrokeComposite() {
     getShaderMask: getStrokeShaderMask,
     // Deferred GPU-walk groups must land in the painting before anything
     // else writes it (fill composites, frame end, snapshots, clear).
-    flushPending: flushWalkBatch,
+    flushPending: (ctx) => flushWalkBatch(ctx),
   });
   isStrokeCompositeRegistered = true;
 }

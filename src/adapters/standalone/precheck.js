@@ -18,7 +18,7 @@
 // reads the same either way.
 // =============================================================================
 
-import { State } from "../../core/color.js";
+import { defaultContext } from "../../core/context.js";
 import { assertBrush } from "../../stroke/stroke.js";
 import { assertField } from "../../core/flowfield.js";
 import { DEGREES, RADIANS } from "./runtime.js";
@@ -35,6 +35,7 @@ const shadow = {
 };
 
 onArm(() => {
+  const State = defaultContext.state;
   shadow.strokeActive = !!(State.stroke.isActive && State.stroke.color);
   shadow.fieldActive = !!(State.field.isActive && State.field.current);
   shadow.shapeOpen = false;

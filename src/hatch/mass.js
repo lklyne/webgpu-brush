@@ -2,21 +2,20 @@
 // Module: Mass
 // =============================================================================
 
-import { State } from "../core/color.js";
-import { arc } from "../core/primitives.js";
+import { defaultContext } from "../core/context.js";
+import { _arc } from "../core/primitives.js";
 import { Polygon } from "../core/polygon.js";
 import { Plot } from "../core/plot.js";
-import { rr2, dist, calcAngle } from "../core/utils.js";
-import { fromDegrees, usesRadians } from "../core/runtime.js";
-import { HatchState, HatchSetState, hatch, getHatchLines } from "./hatch.js";
-import { BrushState, BrushSetState, getBrushParams, set } from "../stroke/stroke.js";
-import { wiggle } from "../core/flowfield.js";
+import { dist, calcAngle } from "../core/utils.js";
+import { HatchState, HatchSetState, _hatch, getHatchLines } from "./hatch.js";
+import { BrushState, BrushSetState, getBrushParams, _set } from "../stroke/stroke.js";
+import { _wiggle } from "../core/flowfield.js";
 
 // ---------------------------------------------------------------------------
 // Mass State
 // ---------------------------------------------------------------------------
 
-State.mass = {
+defaultContext.state.mass = {
   isActive: false,
   brush: null,
   color: null,
@@ -31,20 +30,43 @@ State.mass = {
  * @param {object} [options={}] - Massing options such as precision, strength, gradient, and outline.
  */
 export function mass(brush, color, options = {}) {
-  State.mass.brush = brush;
-  State.mass.color = color;
-  State.mass.options = options;
-  State.mass.isActive = true;
+  return _mass(defaultContext, brush, color, options);
+}
+
+/**
+ * Context-taking implementation of mass().
+ *
+ * @param {import("../core/context.js").BrushContext} ctx
+ * @param {string} brush - Brush name to use for the mass pass.
+ * @param {string|Color} color - Color to use for the mass pass.
+ * @param {object} [options={}] - Massing options.
+ */
+export function _mass(ctx, brush, color, options = {}) {
+  const state = ctx.state.mass;
+  state.brush = brush;
+  state.color = color;
+  state.options = options;
+  state.isActive = true;
 }
 
 /**
  * Disables massing mode for subsequent geometry.
  */
 export function noMass() {
-  State.mass.isActive = false;
-  State.mass.brush = null;
-  State.mass.color = null;
-  State.mass.options = {};
+  return _noMass(defaultContext);
+}
+
+/**
+ * Context-taking implementation of noMass().
+ *
+ * @param {import("../core/context.js").BrushContext} ctx
+ */
+export function _noMass(ctx) {
+  const state = ctx.state.mass;
+  state.isActive = false;
+  state.brush = null;
+  state.color = null;
+  state.options = {};
 }
 
 // ---------------------------------------------------------------------------
@@ -73,15 +95,17 @@ function jitterPolygons(polygons, jitterX, jitterY) {
  * Builds the three polygons used for a mass pass.
  * Both polygon and plot inputs use one base polygon plus two translated copies,
  * so plot-based massing only needs a single `genPol(...)` call.
+ * @param {import("../core/context.js").BrushContext} ctx
  * @param {Polygon|Polygon[]|Plot} shape
  * @param {number|false} x
  * @param {number} y
  * @param {number} scale
  * @returns {(Polygon|Polygon[])[]}
  */
-function getMassPolygons(shape, x, y, scale) {
+function getMassPolygons(ctx, shape, x, y, scale) {
+  const rr2 = ctx.rng.rr2;
   const isPolygon = x === false;
-  const scatter = getBrushParams(State.mass.brush)?.scatter ?? 0;
+  const scatter = getBrushParams(ctx.state.mass.brush)?.scatter ?? 0;
   const basePolygon = isPolygon ? shape : shape.genPol(x, y, scale, 0.15);
   const maxJitter = Math.min(scatter * 2, 5);
   const jitters = [
@@ -110,17 +134,21 @@ function getMassPolygons(shape, x, y, scale) {
 
 /**
  * Converts degree values into the current runtime angle units.
- * @param {number} angle
- * @returns {number}
+ * @param {import("../core/context.js").BrushContext} ctx
+ * @returns {(angle: number) => number}
  */
-function getAngleConverter() {
-  return usesRadians()
+function getAngleConverter(ctx) {
+  return ctx.usesRadians()
     ? (angle) => (angle * Math.PI) / 180
     : (angle) => angle;
 }
 
-function getAngleInverseConverter() {
-  return usesRadians()
+/**
+ * @param {import("../core/context.js").BrushContext} ctx
+ * @returns {(angle: number) => number}
+ */
+function getAngleInverseConverter(ctx) {
+  return ctx.usesRadians()
     ? (angle) => (angle * 180) / Math.PI
     : (angle) => angle;
 }
@@ -161,10 +189,12 @@ function getPolygonBounds(polygon) {
  * Chooses the diagonal corner family for a whole mass gesture.
  * Positive-angle hatching uses either bottom-right or top-left; negative-angle
  * hatching uses either bottom-left or top-right.
+ * @param {import("../core/context.js").BrushContext} ctx
  * @param {number} angleDeg
  * @returns {[number, number]}
  */
-function getPivotBias(angleDeg) {
+function getPivotBias(ctx, angleDeg) {
+  const rr2 = ctx.rng.rr2;
   const normalizedAngle = ((((angleDeg + 90) % 180) + 180) % 180) - 90;
   if (normalizedAngle >= 0) {
     return rr2() < 0.5 ? [1, 1] : [-1, -1];
@@ -176,13 +206,14 @@ function getPivotBias(angleDeg) {
 /**
  * Places the global pivot anchor outside the polygon, along the selected bias.
  * Distance varies per layer while the bias stays fixed for the whole mass.
+ * @param {import("../core/context.js").BrushContext} ctx
  * @param {Polygon|Polygon[]} polygon
  * @param {[number, number]} bias
  * @returns {{x:number,y:number}}
  */
-function getPivotAnchor(polygon, bias) {
+function getPivotAnchor(ctx, polygon, bias) {
   const bounds = getPolygonBounds(polygon);
-  const offset = bounds.size * rr2(0.6, 1.4);
+  const offset = bounds.size * ctx.rng.rr2(0.6, 1.4);
   const [sx, sy] = bias;
   return {
     x: bounds.cx + sx * offset,
@@ -313,10 +344,12 @@ function getMassArcAngles(shape, cx, cy, radius, x1, y1, x2, y2, toAngleUnit, to
 /**
  * Splits a hatch line into two slightly separated segments so some gestures
  * read as interrupted rather than perfectly continuous.
+ * @param {import("../core/context.js").BrushContext} ctx
  * @param {{x1:number,y1:number,x2:number,y2:number}} seg
  * @returns {Array<{x1:number,y1:number,x2:number,y2:number}>}
  */
-function splitSegment(seg) {
+function splitSegment(ctx, seg) {
+  const rr2 = ctx.rng.rr2;
   const t = rr2(0.35, 0.65);
   const mx = seg.x1 + (seg.x2 - seg.x1) * t;
   const my = seg.y1 + (seg.y2 - seg.y1) * t;
@@ -340,13 +373,15 @@ function splitSegment(seg) {
  * Draws one polygon of the mass as a family of arcs derived from hatch lines.
  * The same pivot bias is used across layers, while each layer gets its own
  * anchor distance from the shape.
+ * @param {import("../core/context.js").BrushContext} ctx
  * @param {Polygon|Polygon[]} polygon
  * @param {[number, number]} pivotBias
  */
-function drawMassArcs(polygon, pivotBias, toAngleUnit, toDegreesUnit) {
-  const anchor = getPivotAnchor(polygon, pivotBias);
-  for (const seg of getHatchLines(polygon)) {
-    const parts = !seg.isConnector && rr2() < 0.35 ? splitSegment(seg) : [seg];
+function drawMassArcs(ctx, polygon, pivotBias, toAngleUnit, toDegreesUnit) {
+  const rr2 = ctx.rng.rr2;
+  const anchor = getPivotAnchor(ctx, polygon, pivotBias);
+  for (const seg of getHatchLines(ctx, polygon)) {
+    const parts = !seg.isConnector && rr2() < 0.35 ? splitSegment(ctx, seg) : [seg];
     for (const part of parts) {
       const projectedCenter = projectAnchorToBisector(anchor, part.x1, part.y1, part.x2, part.y2);
       const center = projectedCenter
@@ -369,22 +404,23 @@ function drawMassArcs(polygon, pivotBias, toAngleUnit, toDegreesUnit) {
       );
       if (!arcAngles) continue;
       const [startAngle, endAngle] = arcAngles;
-      arc(center.x, center.y, radius, startAngle, endAngle);
+      _arc(ctx, center.x, center.y, radius, startAngle, endAngle);
     }
   }
 }
 
 /**
  * Configures a hatch pass and immediately reinterprets the generated lines as arcs.
+ * @param {import("../core/context.js").BrushContext} ctx
  * @param {Polygon|Polygon[]} polygon
  * @param {number} dist
  * @param {number} angle
  * @param {object} options
  * @param {[number, number]} pivotBias
  */
-function drawMassPass(polygon, dist, angle, options, pivotBias, toAngleUnit, toDegreesUnit) {
-  hatch(dist, angle, Array.isArray(polygon) ? { ...options, continuous: false } : options);
-  drawMassArcs(polygon, pivotBias, toAngleUnit, toDegreesUnit);
+function drawMassPass(ctx, polygon, dist, angle, options, pivotBias, toAngleUnit, toDegreesUnit) {
+  _hatch(ctx, dist, angle, Array.isArray(polygon) ? { ...options, continuous: false } : options);
+  drawMassArcs(ctx, polygon, pivotBias, toAngleUnit, toDegreesUnit);
 }
 
 function drawMassOutline(shape) {
@@ -399,15 +435,18 @@ function drawMassOutline(shape) {
  * Creates the built-in "massing" effect for a polygon or plot.
  * A mass is built from up to three jittered polygon layers, each hatched and
  * then redrawn as arc gestures around a shared pivot bias.
+ * @param {import("../core/context.js").BrushContext} ctx
  * @param {Polygon|Polygon[]|Plot} shape
  * @param {number|false} x
  * @param {number} y
  * @param {number} scale
  */
-export function createMass(shape, x, y, scale) {
-  const pols = getMassPolygons(shape, x, y, scale);
-  const hatchState = HatchState();
-  const brushState = BrushState();
+export function createMass(ctx, shape, x, y, scale) {
+  const State = ctx.state;
+  const rr2 = ctx.rng.rr2;
+  const pols = getMassPolygons(ctx, shape, x, y, scale);
+  const hatchState = HatchState(ctx);
+  const brushState = BrushState(ctx);
   const fieldState = { ...State.field };
   const precision = State.mass.options?.precision ?? 0.5;
   const strength = State.mass.options?.strength ?? 1;
@@ -416,18 +455,19 @@ export function createMass(shape, x, y, scale) {
   const scatter = getBrushParams(State.mass.brush)?.scatter ?? 0;
   const hatchDist = 1.6 * rr2(scatter * 0.65, scatter * 0.85) - 0.4 * gradient;
   const baseAngle = rr2(-90, 90);
-  const pivotBias = getPivotBias(baseAngle);
-  const toAngleUnit = getAngleConverter();
-  const toDegreesUnit = getAngleInverseConverter();
+  const pivotBias = getPivotBias(ctx, baseAngle);
+  const toAngleUnit = getAngleConverter(ctx);
+  const toDegreesUnit = getAngleInverseConverter(ctx);
 
-  set(State.mass.brush, State.mass.color, 1);
-  wiggle(2 - precision);
+  _set(ctx, State.mass.brush, State.mass.color, 1);
+  _wiggle(ctx, 2 - precision);
   if (outline) drawMassOutline(pols[0]);
 
   drawMassPass(
+    ctx,
     pols[0],
     hatchDist * 0.9,
-    fromDegrees(baseAngle),
+    ctx.fromDegrees(baseAngle),
     {
       gradient,
       rand: 2 - 2 * precision,
@@ -440,9 +480,10 @@ export function createMass(shape, x, y, scale) {
 
   if (strength > 0.33) {
     drawMassPass(
+      ctx,
       pols[1],
       hatchDist,
-      fromDegrees(baseAngle + 20 * rr2(-1, 1)),
+      ctx.fromDegrees(baseAngle + 20 * rr2(-1, 1)),
       {
         gradient,
         rand: 0.6 - 0.6 * precision,
@@ -456,9 +497,10 @@ export function createMass(shape, x, y, scale) {
 
   if (strength > 0.66) {
     drawMassPass(
+      ctx,
       pols[2],
       hatchDist * 0.8,
-      fromDegrees(baseAngle + 15 * rr2(-1, 1)),
+      ctx.fromDegrees(baseAngle + 15 * rr2(-1, 1)),
       {
         gradient,
         rand: 0.6 - 0.6 * precision,
@@ -470,13 +512,13 @@ export function createMass(shape, x, y, scale) {
     );
   }
 
-  BrushSetState(brushState);
-  HatchSetState(hatchState);
+  BrushSetState(ctx, brushState);
+  HatchSetState(ctx, hatchState);
   State.field = { ...fieldState };
 }
 
 export function createMassArray(polygons) {
-  return createMass(polygons, false);
+  return createMass(defaultContext, polygons, false);
 }
 
 // ---------------------------------------------------------------------------
@@ -487,8 +529,9 @@ export function createMassArray(polygons) {
  * Applies massing to polygon geometry.
  */
 Polygon.prototype.mass = function () {
-  if (State.mass?.isActive) {
-    createMass(this, false);
+  const ctx = this.owner ?? defaultContext;
+  if (ctx.state.mass?.isActive) {
+    createMass(ctx, this, false);
   }
   return this;
 };
@@ -500,9 +543,10 @@ Polygon.prototype.mass = function () {
  * @param {number} scale
  */
 Plot.prototype.mass = function (x, y, scale) {
-  if (State.mass?.isActive) {
+  const ctx = this.owner ?? defaultContext;
+  if (ctx.state.mass?.isActive) {
     if (this.origin) ((x = this.origin[0]), (y = this.origin[1]), (scale = 1));
-    createMass(this, x, y, scale);
+    createMass(ctx, this, x, y, scale);
   }
   return this;
 };

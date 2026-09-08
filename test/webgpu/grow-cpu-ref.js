@@ -8,8 +8,12 @@
 // two methods by brace matching, and instantiates them via new Function
 // with their module-level dependencies injected:
 //
-//   rh / hashU32 / STREAM / cossin  → the real exports of core/utils.js
-//   State / GROW_CAP / _gaussians / nextOpSalt → oracle-controlled
+//   ctx                             → a drawing context (core/context.js)
+//                                     whose rng is the real core/utils.js
+//                                     hash stream and whose state is the
+//                                     oracle-controlled fill state
+//   STREAM / cossin                 → the real exports of core/utils.js
+//   GROW_CAP / _gaussians / nextOpSalt → oracle-controlled
 //   _grow* scratch arrays / _fillGaussianPools → fresh locals / noop
 //
 // So the reference EXECUTES the shipped CPU implementation. If fill.js
@@ -19,13 +23,13 @@
 
 import { rh, hashU32, STREAM, cossin } from "../../src/core/utils.js";
 
-/** Extracts the full text of `  name(f = 1) { ... }` from fill.js source. */
+/** Extracts the full text of `  name(ctx, f = 1) { ... }` from fill.js source. */
 export function extractMethod(source, name) {
-  const sig = `\n  ${name}(f = 1) {`;
+  const sig = `\n  ${name}(ctx, f = 1) {`;
   const at = source.indexOf(sig);
   if (at < 0) {
     throw new Error(
-      `grow oracle: could not find "${name}(f = 1) {" in src/fill/fill.js — ` +
+      `grow oracle: could not find "${name}(ctx, f = 1) {" in src/fill/fill.js — ` +
         "method signature changed; update grow-cpu-ref.js extraction",
     );
   }
@@ -36,10 +40,26 @@ export function extractMethod(source, name) {
     if (ch === "{") depth++;
     else if (ch === "}") {
       depth--;
-      if (depth === 0) return source.slice(at + 1, i + 1);
+      if (depth === 0) return bindContext(source.slice(at + 1, i + 1));
     }
   }
   throw new Error(`grow oracle: unbalanced braces extracting ${name}()`);
+}
+
+/**
+ * The shipped methods take the drawing context as their first parameter.
+ * The reference class supplies one from its closure instead, so the ctx
+ * parameter and the ctx argument of every internal call are dropped — the
+ * arithmetic, the stream draws and the control flow are untouched, and the
+ * oracle keeps the pre-context call shape. Anything the extraction misses
+ * throws at `new Function` rather than comparing against a stale copy.
+ */
+function bindContext(src) {
+  return src
+    .replace(/^(\s*)(trim|grow)\(ctx, /, "$1$2(")
+    .replaceAll("this.trim(ctx, ", "this.trim(")
+    .replaceAll("new FillPoly(ctx, ", "new FillPoly(")
+    .replaceAll("_fillGaussianPools(ctx)", "_fillGaussianPools()");
 }
 
 /**
@@ -59,12 +79,13 @@ export function buildFillPolyRef({ source, state, growCap, gaussians, op, fillId
   const growSrc = extractMethod(source, "grow");
 
   const nextOpSalt = () => (((fillId << 10) + op.value++) >>> 0);
+  // The context the extracted bodies read: the real hash streams plus the
+  // oracle's fill state.
+  const ctx = { rng: { rh, hashU32 }, state };
   const factory = new Function(
-    "rh",
-    "hashU32",
+    "ctx",
     "STREAM",
     "cossin",
-    "State",
     "GROW_CAP",
     "_gaussians",
     "_fillGaussianPools",
@@ -87,11 +108,9 @@ return FillPoly;`,
   );
 
   return factory(
-    rh,
-    hashU32,
+    ctx,
     STREAM,
     cossin,
-    state,
     growCap,
     gaussians,
     () => {}, // pools are prefilled by the oracle; refill hook is a noop

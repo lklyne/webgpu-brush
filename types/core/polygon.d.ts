@@ -14,6 +14,12 @@ export class Polygon {
     sides: any[][];
     _intersectionCache: {};
     /**
+     * Drawing context this polygon belongs to. Unset means the default
+     * context; an instance's factory methods set it.
+     * @type {import("./context.js").BrushContext|undefined}
+     */
+    owner: import("./context.js").BrushContext | undefined;
+    /**
      * Intersects a given line with the polygon, returning all intersection points.
      * @param {Object} line - The line to intersect with the polygon, having two properties 'point1' and 'point2'.
      * @returns {Array} An array of intersection points (each with 'x' and 'y' properties) or an empty array if no intersections.

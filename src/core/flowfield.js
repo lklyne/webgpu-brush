@@ -1,16 +1,12 @@
-import { Cwidth, Cheight } from "./target.js";
-import { isMixReady, State } from "./color.js";
+import { isMixReady } from "./color.js";
+import { defaultContext } from "./context.js";
 import {
-  randInt2,
-  noise2,
-  rr2,
   sin,
   cos,
   cossin,
   map,
   toDegreesSigned,
 } from "./utils.js";
-import { getAffineMatrix } from "./runtime.js";
 
 // =============================================================================
 // Section: Matrix transformations
@@ -25,18 +21,21 @@ let isLoaded = false;
 /**
  * Ensures the field system is initialized and ready for use.
  * If the field is not loaded, it initializes the mixing system and creates the field.
+ *
+ * @param {import("./context.js").BrushContext} ctx
  */
-export function isFieldReady() {
+export function isFieldReady(ctx) {
   if (isLoaded) return;
-  isMixReady(); // Ensure the mixing system is ready
-  createField(); // Initialize the field
+  isMixReady(ctx); // Ensure the mixing system is ready
+  createField(ctx); // Initialize the field
   isLoaded = true;
   // The grid was just built against the current target size. If a field is
   // already active its cached grid was sized for the previous target and has
   // been discarded, so regenerate it before anything reads it.
-  if (State.field.isActive && State.field.current) {
-    const entry = list.get(State.field.current);
-    entry.field = generateField(entry, 0);
+  const field = ctx.state.field;
+  if (field.isActive && field.current) {
+    const entry = list.get(field.current);
+    entry.field = generateField(ctx, entry, 0);
     _fieldEpoch++;
   }
 }
@@ -55,10 +54,15 @@ export class Position {
    * Constructs a new Position instance.
    * @param {number} x - The initial x-coordinate.
    * @param {number} y - The initial y-coordinate.
+   * @param {import("./context.js").BrushContext} [owner] - Drawing context this
+   *   position belongs to. Unset means the default context.
    */
-  constructor(x, y) {
-    isFieldReady();
-    const m = getAffineMatrix();
+  constructor(x, y, owner) {
+    /** @type {import("./context.js").BrushContext|undefined} */
+    this.owner = owner;
+    const ctx = owner ?? defaultContext;
+    isFieldReady(ctx);
+    const m = ctx.getAffineMatrix();
     this.mx = m.x;
     this.my = m.y;
     this.update(x, y);
@@ -73,7 +77,7 @@ export class Position {
   update(x, y) {
     this.x = x;
     this.y = y;
-    if (State.field.isActive) {
+    if ((this.owner ?? defaultContext).state.field.isActive) {
       this.colIdx = Math.round((x + this.mx - left_x) / resolution);
       this.rowIdx = Math.round((y + this.my - top_y) / resolution);
     }
@@ -91,7 +95,7 @@ export class Position {
    * @returns {boolean} - True if the position is within the flow field, false otherwise.
    */
   isIn() {
-    return State.field.isActive
+    return (this.owner ?? defaultContext).state.field.isActive
       ? Position.isIn(this.colIdx, this.rowIdx)
       : this.isInCanvas(this.x, this.y);
   }
@@ -101,9 +105,10 @@ export class Position {
    * @returns {boolean} - True if the position is within bounds, false otherwise.
    */
   isInCanvas() {
+    const ctx = this.owner ?? defaultContext;
     const margin = 0.5;
-    const w = Cwidth;
-    const h = Cheight;
+    const w = ctx.width;
+    const h = ctx.height;
     const x = this.x + this.mx;
     const y = this.y + this.my;
     return (
@@ -119,9 +124,10 @@ export class Position {
    * @returns {number} - The internal flow angle in degrees, or 0 if the position is not in the field or if no field is active.
    */
   angle(skipCheck = false) {
-    if (!State.field.isActive) return 0;
+    const ctx = this.owner ?? defaultContext;
+    if (!ctx.state.field.isActive) return 0;
     return skipCheck || this.isIn()
-      ? flow_field()[this.colIdx][this.rowIdx] * State.field.wiggle
+      ? flow_field(ctx)[this.colIdx][this.rowIdx] * ctx.state.field.wiggle
       : 0;
   }
 
@@ -133,7 +139,7 @@ export class Position {
    */
   moveTo(_dir, _length, _step_length = 1) {
     const dir = toDegreesSigned(_dir);
-    if (State.field.isActive) {
+    if ((this.owner ?? defaultContext).state.field.isActive) {
       this.movePos(dir, _length, _step_length);
     } else {
       this._moveConstant(dir, _length, _step_length);
@@ -144,7 +150,7 @@ export class Position {
    * Internal variant of moveTo() that expects a degree value already normalized to the library's internal representation.
    */
   _moveToDegrees(_dir, _length, _step_length = 1) {
-    if (State.field.isActive) {
+    if ((this.owner ?? defaultContext).state.field.isActive) {
       this.movePos(_dir, _length, _step_length);
     } else {
       this._moveConstant(_dir, _length, _step_length);
@@ -201,7 +207,7 @@ export class Position {
       return;
     }
     const steps = _length / _step;
-    const fieldActive = State.field.isActive;
+    const fieldActive = (this.owner ?? defaultContext).state.field.isActive;
     const usePlot = !!_scale;
     for (let i = 0; i < steps; i++) {
       const plotAngle =
@@ -226,7 +232,7 @@ export class Position {
    * @returns {number} - The row index.
    */
   static getRowIndex(y, d = 1) {
-    const y_offset = y + getAffineMatrix().y - top_y;
+    const y_offset = y + defaultContext.getAffineMatrix().y - top_y;
     return Math.round(y_offset / resolution / d);
   }
 
@@ -236,7 +242,7 @@ export class Position {
    * @returns {number} - The column index.
    */
   static getColIndex(x, d = 1) {
-    const x_offset = x + getAffineMatrix().x - left_x;
+    const x_offset = x + defaultContext.getAffineMatrix().x - left_x;
     return Math.round(x_offset / resolution / d);
   }
 
@@ -260,7 +266,7 @@ export class Position {
  * @property {boolean} isActive - Indicates if the vector field is active.
  * @property {string|null} current - The name of the currently active vector field.
  */
-State.field = {
+defaultContext.state.field = {
   isActive: false,
   current: null,
   wiggle: 1,
@@ -277,20 +283,22 @@ const FIELD_ANGLE_MODES = new Set(["degrees", "radians"]);
 // generated lazily once the target exists) so field(name) can validate a
 // name before the WebGPU device is ready. createField() re-registers them
 // exactly as upstream does when the grid is first built.
-addStandard();
+addStandard(defaultContext);
 
 /**
  * Initializes the field grid and sets up the vector field's structure based on the renderer's dimensions.
+ *
+ * @param {import("./context.js").BrushContext} ctx
  */
-function createField() {
-  resolution = Cwidth * 0.01; // Determine the resolution of the field grid
-  left_x = -0.5 * Cwidth; // Left boundary of the field
-  top_y = -0.5 * Cheight; // Top boundary of the field
-  num_columns = Math.round((2 * Cwidth) / resolution); // Number of columns in the grid
-  num_rows = Math.round((2 * Cheight) / resolution); // Number of columns in the grid
-  gridWidth = Cwidth;
-  gridHeight = Cheight;
-  addStandard(); // Add default vector field
+function createField(ctx) {
+  resolution = ctx.width * 0.01; // Determine the resolution of the field grid
+  left_x = -0.5 * ctx.width; // Left boundary of the field
+  top_y = -0.5 * ctx.height; // Top boundary of the field
+  num_columns = Math.round((2 * ctx.width) / resolution); // Number of columns in the grid
+  num_rows = Math.round((2 * ctx.height) / resolution); // Number of columns in the grid
+  gridWidth = ctx.width;
+  gridHeight = ctx.height;
+  addStandard(ctx); // Add default vector field
 }
 
 /**
@@ -317,10 +325,11 @@ export function _onTargetResized(width, height) {
 
 /**
  * Retrieves the field values for the current vector field.
+ * @param {import("./context.js").BrushContext} ctx
  * @returns {Float32Array[]} The current vector field grid.
  */
-function flow_field() {
-  return list.get(State.field.current).field;
+function flow_field(ctx) {
+  return list.get(ctx.state.field.current).field;
 }
 
 function normalizeFieldAngleMode(options = {}) {
@@ -349,7 +358,12 @@ function normalizeFieldAngles(field, angleMode) {
   return field;
 }
 
-function generateField(entry, t) {
+/**
+ * @param {import("./context.js").BrushContext} ctx
+ * @param {object} entry - Registry entry (generator + angle mode).
+ * @param {number} t - Time parameter handed to the generator.
+ */
+function generateField(ctx, entry, t) {
   return normalizeFieldAngles(entry.gen(t, genField()), entry.angleMode);
 }
 
@@ -358,14 +372,25 @@ function generateField(entry, t) {
  * @param {number} [t=0] - An optional time parameter that can affect field generation.
  */
 export function refreshField(t = 0) {
-  if (!State.field.isActive || !State.field.current) {
+  return _refreshField(defaultContext, t);
+}
+
+/**
+ * Context-taking implementation of refreshField().
+ *
+ * @param {import("./context.js").BrushContext} ctx
+ * @param {number} [t=0] - An optional time parameter that can affect field generation.
+ */
+export function _refreshField(ctx, t = 0) {
+  const field = ctx.state.field;
+  if (!field.isActive || !field.current) {
     throw new Error(
       "No field is currently active. Call brush.field('name') to activate one before refreshing.",
     );
   }
-  isFieldReady(); // Rebuild the grid first if the target was resized.
-  const currentField = list.get(State.field.current);
-  currentField.field = generateField(currentField, t);
+  isFieldReady(ctx); // Rebuild the grid first if the target was resized.
+  const currentField = list.get(field.current);
+  currentField.field = generateField(ctx, currentField, t);
   _fieldEpoch++;
 }
 
@@ -381,10 +406,13 @@ let _fieldEpoch = 0;
  * Flattened snapshot of the active flow field for GPU upload (col-major,
  * c * numRows + r — the layout strokewalk-compute expects), or null when
  * no field is active. Internal API for the GPU-walk stroke router.
+ *
+ * @param {import("./context.js").BrushContext} ctx
  */
-export function _fieldSnapshot() {
-  if (!State.field.isActive || !State.field.current) return null;
-  const entry = list.get(State.field.current);
+export function _fieldSnapshot(ctx) {
+  const field = ctx.state.field;
+  if (!field.isActive || !field.current) return null;
+  const entry = list.get(field.current);
   if (!entry?.field) return null;
   const f = entry.field;
   const data = new Float32Array(num_columns * num_rows);
@@ -397,7 +425,7 @@ export function _fieldSnapshot() {
     leftX: left_x,
     topY: top_y,
     epoch: _fieldEpoch,
-    name: State.field.current,
+    name: field.current,
   };
 }
 
@@ -434,15 +462,26 @@ export function assertField(name) {
  * @param {string} a - The name of the vector field to activate.
  */
 export function field(a) {
-  if (!State.field.wiggle) {
-    State.field.wiggle = 1;
+  return _field(defaultContext, a);
+}
+
+/**
+ * Context-taking implementation of field().
+ *
+ * @param {import("./context.js").BrushContext} ctx
+ * @param {string} a - The name of the vector field to activate.
+ */
+export function _field(ctx, a) {
+  const state = ctx.state.field;
+  if (!state.wiggle) {
+    state.wiggle = 1;
   } // Set default wiggle value
-  isFieldReady();
+  isFieldReady(ctx);
   assertField(a);
-  State.field.isActive = true;
-  State.field.current = a;
+  state.isActive = true;
+  state.current = a;
   const entry = list.get(a);
-  if (!entry.field) entry.field = generateField(entry, 0);
+  if (!entry.field) entry.field = generateField(ctx, entry, 0);
   _fieldEpoch++;
 }
 
@@ -450,8 +489,17 @@ export function field(a) {
  * Deactivates the current vector field.
  */
 export function noField() {
-  isFieldReady();
-  State.field.isActive = false;
+  return _noField(defaultContext);
+}
+
+/**
+ * Context-taking implementation of noField().
+ *
+ * @param {import("./context.js").BrushContext} ctx
+ */
+export function _noField(ctx) {
+  isFieldReady(ctx);
+  ctx.state.field.isActive = false;
 }
 
 /**
@@ -480,8 +528,18 @@ export function listFields() {
 }
 
 export function wiggle(a = 1) {
-  field("hand");
-  State.field.wiggle = a;
+  return _wiggle(defaultContext, a);
+}
+
+/**
+ * Context-taking implementation of wiggle().
+ *
+ * @param {import("./context.js").BrushContext} ctx
+ * @param {number} [a=1] - Wiggle strength.
+ */
+export function _wiggle(ctx, a = 1) {
+  _field(ctx, "hand");
+  ctx.state.field.wiggle = a;
 }
 
 /**
@@ -495,32 +553,37 @@ function fillField(field, fn) {
 
 /**
  * Adds standard predefined vector fields to the list with unique behaviors.
+ *
+ * @param {import("./context.js").BrushContext} ctx
  */
-function addStandard() {
+function addStandard(ctx) {
+  // Read through ctx.rng at every call site: `noise2` is reassigned by
+  // noiseSeed(), so a hoisted reference would freeze the pre-reseed stream.
+  const rng = ctx.rng;
   // Organic noise — basis for brush.wiggle()
   addField("hand", (t, field) => {
-    const bs = rr2(0.2, 0.8),
-      ba = randInt2(5, 10);
+    const bs = rng.rr2(0.2, 0.8),
+      ba = rng.randInt2(5, 10);
     return fillField(field, (c, r) => {
-      const angle = 0.5 * ba * sin(bs * r * c + randInt2(15, 25));
-      return 0.2 * angle * cos(t) + noise2(c, r) * ba * 0.7;
+      const angle = 0.5 * ba * sin(bs * r * c + rng.randInt2(15, 25));
+      return 0.2 * angle * cos(t) + rng.noise2(c, r) * ba * 0.7;
     });
   });
   // Smooth large-scale noise curves
   addField("curved", (t, field) => {
-    let ar = randInt2(-10, 10);
-    if (randInt2(0, 100) % 2 == 0) ar *= -1;
+    let ar = rng.randInt2(-10, 10);
+    if (rng.randInt2(0, 100) % 2 == 0) ar *= -1;
     return fillField(
       field,
       (c, r) =>
         3 *
-        map(noise2(c * 0.02 + t * 0.03, r * 0.02 + t * 0.03), 0, 1, -ar, ar),
+        map(rng.noise2(c * 0.02 + t * 0.03, r * 0.02 + t * 0.03), 0, 1, -ar, ar),
     );
   });
   // Sharp alternating angles per cell — herringbone / wicker look
   addField("zigzag", (t, field) => {
-    let ar = randInt2(-30, -15) + Math.abs(44 * sin(t));
-    if (randInt2(0, 100) % 2 == 0) ar *= -1;
+    let ar = rng.randInt2(-30, -15) + Math.abs(44 * sin(t));
+    if (rng.randInt2(0, 100) % 2 == 0) ar *= -1;
     let dif = ar,
       angle = 0;
     for (let c = 0; c < num_columns; c++) {
@@ -536,31 +599,31 @@ function addStandard() {
   });
   // Sinusoidal wave bands
   addField("waves", (t, field) => {
-    const sr = randInt2(10, 15) + 5 * sin(t),
-      cr = randInt2(3, 6) + 3 * cos(t),
-      ba = randInt2(20, 35);
+    const sr = rng.randInt2(10, 15) + 5 * sin(t),
+      cr = rng.randInt2(3, 6) + 3 * cos(t),
+      ba = rng.randInt2(20, 35);
     return fillField(
       field,
-      (c, r) => sin(sr * c) * ba * cos(r * cr) + randInt2(-3, 3),
+      (c, r) => sin(sr * c) * ba * cos(r * cr) + rng.randInt2(-3, 3),
     );
   });
   // Dense oscillation from row×col product
   addField("seabed", (t, field) => {
-    const bs = rr2(0.4, 0.8),
-      ba = randInt2(18, 26);
+    const bs = rng.rr2(0.4, 0.8),
+      ba = rng.randInt2(18, 26);
     return fillField(
       field,
-      (c, r) => 1.1 * ba * sin(bs * r * c + randInt2(15, 20)) * cos(t),
+      (c, r) => 1.1 * ba * sin(bs * r * c + rng.randInt2(15, 20)) * cos(t),
     );
   });
   // Radial vortex — angles spiral around the field centre
   addField("spiral", (_t, field) => {
-    const n = randInt2(5, 10);
-    const dir = randInt2(0, 2) * 2 - 1;
-    const offset = randInt2(65, 80); // <90 = inward spiral
+    const n = rng.randInt2(5, 10);
+    const dir = rng.randInt2(0, 2) * 2 - 1;
+    const offset = rng.randInt2(65, 80); // <90 = inward spiral
     const attractors = Array.from({ length: n }, () => ({
-      x: rr2(0.1, 0.9) * num_columns,
-      y: rr2(0.1, 0.9) * num_rows,
+      x: rng.rr2(0.1, 0.9) * num_columns,
+      y: rng.rr2(0.1, 0.9) * num_rows,
     }));
     return fillField(field, (c, r) => {
       let wx = 0,
@@ -579,8 +642,8 @@ function addStandard() {
   });
   // Column-banded stripes — parallel rake marks
   addField("columns", (_t, field) => {
-    const freq = randInt2(3, 8),
-      amp = randInt2(25, 45);
+    const freq = rng.randInt2(3, 8),
+      amp = rng.randInt2(25, 45);
     return fillField(field, (c, _r) => sin(c * freq) * amp);
   });
 }

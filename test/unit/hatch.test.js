@@ -60,8 +60,12 @@ vi.mock("../../src/core/plot.js", () => ({
   Plot: class Plot {},
 }));
 
-import { hatch, getHatchLines, noHatch } from "../../src/hatch/hatch.js";
+import { hatch, getHatchLines as getHatchLinesCtx, noHatch } from "../../src/hatch/hatch.js";
+import { defaultContext } from "../../src/core/context.js";
 import { seed } from "../../src/core/utils.js";
+
+// getHatchLines() takes the drawing context first (core/context.js).
+const getHatchLines = (polygons) => getHatchLinesCtx(defaultContext, polygons);
 
 // ---- Polygon factory ----
 // hatch.js uses polygon.a — an array of [x, y] tuples

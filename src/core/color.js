@@ -1,8 +1,4 @@
 import {
-  Cwidth,
-  Cheight,
-  Renderer,
-  Density,
   load as loadTarget,
   isCanvasReady,
   syncDensity,
@@ -23,7 +19,7 @@ import {
   blitSourceToFramebuffer,
 } from "./compositor_runtime.js";
 
-import { notifyDraw } from "./runtime.js";
+import { defaultContext } from "./context.js";
 
 // =============================================================================
 // Module: Configure and Initiate
@@ -45,8 +41,12 @@ export const registerFillComposite = (composite) => {
   fillComposite = composite;
 };
 
-const clearTarget = (target) => {
-  clearRenderTarget(Renderer, target, isFramebufferTarget);
+/**
+ * @param {import("./context.js").BrushContext} ctx
+ * @param {object} target - Render target to clear.
+ */
+const clearTarget = (ctx, target) => {
+  clearRenderTarget(ctx.renderer, target, isFramebufferTarget);
 };
 
 // =============================================================================
@@ -54,25 +54,31 @@ const clearTarget = (target) => {
 // =============================================================================
 /**
  * Returns the current render target size in physical pixels.
+ * @param {import("./context.js").BrushContext} ctx
  * @returns {{width: number, height: number}} Pixel size of the active target.
  */
-const getTargetPixelSize = () => ({
-  width: Math.max(1, Math.round(Cwidth * Density)),
-  height: Math.max(1, Math.round(Cheight * Density)),
+const getTargetPixelSize = (ctx) => ({
+  width: Math.max(1, Math.round(ctx.width * ctx.density)),
+  height: Math.max(1, Math.round(ctx.height * ctx.density)),
 });
 
-const normalizeDirtyRect = (rect) => {
+/**
+ * @param {import("./context.js").BrushContext} ctx
+ * @param {{minX:number,minY:number,maxX:number,maxY:number}|null} rect
+ */
+const normalizeDirtyRect = (ctx, rect) => {
   if (!rect) return null;
-  const { width, height } = getTargetPixelSize();
+  const { width, height } = getTargetPixelSize(ctx);
   return clampDirtyRect(rect, width, height);
 };
 
 /**
  * Returns a dirty rectangle covering the full active target.
+ * @param {import("./context.js").BrushContext} ctx
  * @returns {{minX:number,minY:number,maxX:number,maxY:number}} Full-target rect.
  */
-const getFullDirtyRect = () => {
-  const { width, height } = getTargetPixelSize();
+const getFullDirtyRect = (ctx) => {
+  const { width, height } = getTargetPixelSize(ctx);
   return getFullRect(width, height);
 };
 
@@ -81,14 +87,15 @@ const getFullDirtyRect = () => {
 // =============================================================================
 /**
  * Converts a top-left-based dirty rectangle into a device-pixel scissor box.
+ * @param {import("./context.js").BrushContext} ctx
  * @param {{minX:number,minY:number,maxX:number,maxY:number}|null} rect - Dirty rect.
  * @returns {{x:number,y:number,width:number,height:number}|null} Scissor box or null.
  */
-const toScissorBox = (rect, flipY = true) => {
-  const normalized = normalizeDirtyRect(rect);
+const toScissorBox = (ctx, rect, flipY = true) => {
+  const normalized = normalizeDirtyRect(ctx, rect);
   if (!normalized) return null;
 
-  const { height } = getTargetPixelSize();
+  const { height } = getTargetPixelSize(ctx);
   return {
     x: normalized.minX,
     y: flipY ? height - normalized.maxY : normalized.minY,
@@ -99,12 +106,13 @@ const toScissorBox = (rect, flipY = true) => {
 
 /**
  * Runs a draw callback with a temporary scissor region.
+ * @param {import("./context.js").BrushContext} ctx
  * @param {unknown} gl - Unused by the WebGPU host; kept for signature stability.
  * @param {{minX:number,minY:number,maxX:number,maxY:number}|null} rect - Dirty rect.
  * @param {Function} draw - Draw callback executed under the scissor box.
  */
-const withScissor = (gl, rect, draw, flipY = true) => {
-  const box = toScissorBox(rect, flipY);
+const withScissor = (ctx, gl, rect, draw, flipY = true) => {
+  const box = toScissorBox(ctx, rect, flipY);
   if (!box) {
     draw();
     return;
@@ -137,11 +145,12 @@ export const State = {};
 // =============================================================================
 /**
  * Ensures the Mix object is initialized and ready for blending.
+ * @param {import("./context.js").BrushContext} ctx
  */
-export const isMixReady = () => {
-  if (!Renderer?.loaded) {
+export const isMixReady = (ctx) => {
+  if (!ctx.renderer?.loaded) {
     isCanvasReady();
-    Mix.load();
+    ctx.mix.load(ctx);
   }
 };
 
@@ -159,11 +168,12 @@ export const Mix = {
 
   /**
    * Merges a new dirty rectangle into the target's accumulated draw bounds.
+   * @param {import("./context.js").BrushContext} ctx
    * @param {object} target - Mask buffer receiving draw output.
    * @param {{minX:number,minY:number,maxX:number,maxY:number}|null} rect - Rect to merge.
    */
-  markDirtyRect(target, rect) {
-    const normalized = normalizeDirtyRect(rect);
+  markDirtyRect(ctx, target, rect) {
+    const normalized = normalizeDirtyRect(ctx, rect);
     if (!target || !normalized) return;
     target.dirtyRect = unionDirtyRect(target.dirtyRect, normalized);
     target.isDrawn = true;
@@ -171,28 +181,30 @@ export const Mix = {
 
   /**
    * Clears a mask buffer and resets its dirty-rect tracking.
+   * @param {import("./context.js").BrushContext} ctx
    * @param {object} target - Mask buffer to reset.
    */
-  clearMask(target) {
+  clearMask(ctx, target) {
     if (!target) return;
     const composite = target === this.glMask ? strokeComposite : fillComposite;
-    composite?.clearMask?.(target, clearTarget);
+    composite?.clearMask?.(target, (t) => clearTarget(ctx, t));
   },
 
   /**
    * Resolves the region that should be composited back into the destination.
+   * @param {import("./context.js").BrushContext} ctx
    * @param {object} target - Mask buffer being sampled.
    * @param {boolean} isBrushMask - True when compositing the GL brush mask.
    * @returns {{minX:number,minY:number,maxX:number,maxY:number}|null} Composite rect.
    */
-  getCompositeRect(target, isBrushMask) {
+  getCompositeRect(ctx, target, isBrushMask) {
     const composite = isBrushMask ? strokeComposite : fillComposite;
     return composite?.getCompositeRect?.(
       target,
       getActiveFramebuffer,
-      getFullDirtyRect,
+      () => getFullDirtyRect(ctx),
       expandDirtyRect,
-      normalizeDirtyRect,
+      (rect) => normalizeDirtyRect(ctx, rect),
     );
   },
 
@@ -201,41 +213,45 @@ export const Mix = {
   // =============================================================================
   /**
    * Ensures the mask buffers and blend shader exist for the current renderer.
+   * @param {import("./context.js").BrushContext} ctx
    */
-  load() {
+  load(ctx) {
     syncDensity();
+    const renderer = ctx.renderer;
     const needsBlendSourceFramebuffer =
-      !Renderer.blendSourceFramebuffer ||
-        Renderer.blendSourceFramebuffer.width !== Cwidth ||
-        Renderer.blendSourceFramebuffer.height !== Cheight ||
-        (typeof Renderer.blendSourceFramebuffer.pixelDensity === "function" &&
-          Renderer.blendSourceFramebuffer.pixelDensity() !== Density);
-    ensureBlendShaderProgram(Renderer);
+      !renderer.blendSourceFramebuffer ||
+        renderer.blendSourceFramebuffer.width !== ctx.width ||
+        renderer.blendSourceFramebuffer.height !== ctx.height ||
+        (typeof renderer.blendSourceFramebuffer.pixelDensity === "function" &&
+          renderer.blendSourceFramebuffer.pixelDensity() !== ctx.density);
+    ensureBlendShaderProgram(renderer);
 
     this.glMask = strokeComposite?.ensureResources?.(
-      Renderer,
-      Cwidth,
-      Cheight,
-      Density,
+      ctx,
+      renderer,
+      ctx.width,
+      ctx.height,
+      ctx.density,
     );
     const fillResources = fillComposite?.ensureResources?.(
-      Renderer,
-      Cwidth,
-      Cheight,
-      Density,
-      clearTarget,
+      ctx,
+      renderer,
+      ctx.width,
+      ctx.height,
+      ctx.density,
+      (t) => clearTarget(ctx, t),
     ) ?? {
       mask: null,
       ctx: null,
     };
 
     if (needsBlendSourceFramebuffer) {
-      Renderer.blendSourceFramebuffer = ensureBlendSourceFramebuffer(
-        Renderer,
-        Renderer.blendSourceFramebuffer,
-        Cwidth,
-        Cheight,
-        Density,
+      renderer.blendSourceFramebuffer = ensureBlendSourceFramebuffer(
+        renderer,
+        renderer.blendSourceFramebuffer,
+        ctx.width,
+        ctx.height,
+        ctx.density,
       );
     }
 
@@ -248,11 +264,12 @@ export const Mix = {
   // =============================================================================
   /**
    * Flushes pending mask work when the blend color changes or a frame ends.
+   * @param {import("./context.js").BrushContext} ctx
    * @param {Color|false} [_color=false] - New blend color.
    * @param {boolean} [_isLast=false] - True when this is the final blend flush.
    */
-  blend(_color = false, _isLast = false) {
-    isMixReady();
+  blend(ctx, _color = false, _isLast = false) {
+    isMixReady(ctx);
     // Only one mask is "active" for the current drawing mode; the other one
     // may still need flushing if the mode just changed mid-frame.
     const isBrushMask = this.isBrush === true;
@@ -268,19 +285,19 @@ export const Mix = {
     if (!this.isBlending && nextColor) {
       this.isBlending = true;
       this.cachedColor = nextColor;
-      notifyDraw();
+      ctx.notifyDraw();
       // Reset the brush mask fully at the start of each blend cycle so stale
       // dirty-rect bookkeeping cannot leak an old stroke into the next color.
-      this.clearMask(this.glMask);
+      this.clearMask(ctx, this.glMask);
     }
 
     if (_isLast || colorChanged) {
       if (this.justChanged) {
-        this.applyShader(otherMask, !isBrushMask);
+        this.applyShader(ctx, otherMask, !isBrushMask);
         this.justChanged = false;
       }
       if (this.isBlending) {
-        this.applyShader(mask, isBrushMask);
+        this.applyShader(ctx, mask, isBrushMask);
       }
       if (nextColor) this.cachedColor = nextColor;
       if (_isLast) {
@@ -293,78 +310,86 @@ export const Mix = {
 
   /**
    * Runs the blend shader over a mask and composites the result into the active renderer.
+   * @param {import("./context.js").BrushContext} ctx
    * @param {object} mask - Mask buffer to composite.
    * @param {boolean} isBrushMask - True when compositing the GL brush mask.
    */
-  applyShader(mask, isBrushMask) {
+  applyShader(ctx, mask, isBrushMask) {
     // Deferred GPU-walk stroke groups precede this composite in draw order:
     // flush them into the painting first (they were never rasterized into
     // the brush mask, so they are invisible to isDrawn below).
-    if (!isBrushMask) strokeComposite?.flushPending?.();
+    if (!isBrushMask) strokeComposite?.flushPending?.(ctx);
     if (!mask?.isDrawn) return;
 
-    const dirtyRect = this.getCompositeRect(mask, isBrushMask);
+    const dirtyRect = this.getCompositeRect(ctx, mask, isBrushMask);
     if (!dirtyRect) {
-      this.clearMask(mask);
+      this.clearMask(ctx, mask);
       return;
     }
 
-    const gl = Renderer.drawingContext;
-    const shader = Renderer.shaderProgram;
+    const renderer = ctx.renderer;
+    const gl = renderer.drawingContext;
+    const shader = renderer.shaderProgram;
     const activeFramebuffer = getActiveFramebuffer();
     const source = blitSourceToFramebuffer({
-      renderer: Renderer,
-      sourceTarget: activeFramebuffer ?? Renderer,
-      sourceFramebuffer: Renderer.blendSourceFramebuffer,
+      renderer,
+      sourceTarget: activeFramebuffer ?? renderer,
+      sourceFramebuffer: renderer.blendSourceFramebuffer,
       dirtyRect,
       isFramebufferTarget,
-      Cwidth,
-      Cheight,
-      getTargetPixelSize,
-      toScissorBox,
-      withScissor,
+      Cwidth: ctx.width,
+      Cheight: ctx.height,
+      getTargetPixelSize: () => getTargetPixelSize(ctx),
+      toScissorBox: (rect, flipY) => toScissorBox(ctx, rect, flipY),
+      withScissor: (glCtx, rect, draw, flipY) =>
+        withScissor(ctx, glCtx, rect, draw, flipY),
     });
     const targetIsFramebuffer = !!activeFramebuffer;
     const composite = isBrushMask ? strokeComposite : fillComposite;
     const shaderMask = composite.getShaderMask(
-      Renderer,
+      ctx,
+      renderer,
       mask,
       dirtyRect,
-      getFullDirtyRect,
-      clearTarget,
+      () => getFullDirtyRect(ctx),
+      (t) => clearTarget(ctx, t),
     );
 
     runBlendShaderPass({
-      renderer: Renderer,
+      renderer,
       shader,
       source,
       mask: shaderMask,
       color: this.cachedColor,
       isBrushMask,
-      Cwidth,
-      Cheight,
+      Cwidth: ctx.width,
+      Cheight: ctx.height,
       dirtyRect,
       targetIsFramebuffer,
-      withScissor,
+      withScissor: (glCtx, rect, draw, flipY) =>
+        withScissor(ctx, glCtx, rect, draw, flipY),
     });
-    this.clearMask(mask);
+    this.clearMask(ctx, mask);
   },
 };
 
 /**
  * Flushes any pending stroke/fill mask work into the current target and resets
  * the shared compositor back to its initial idle state.
+ *
+ * @param {import("./context.js").BrushContext} ctx
  */
-export const flushActiveComposite = () => {
-  isMixReady();
-  strokeComposite?.flushPending?.();
-  Mix.blend(false, true);
-  Mix.clearMask(Mix.glMask);
-  Mix.clearMask(Mix.mask);
-  Mix.justChanged = false;
-  Mix.isBlending = false;
-  Mix.isBrush = null;
-  Mix.cachedColor = null;
+export const flushActiveComposite = (ctx) => {
+  isMixReady(ctx);
+  strokeComposite?.flushPending?.(ctx);
+  const mix = ctx.mix;
+  mix.blend(ctx, false, true);
+  mix.clearMask(ctx, mix.glMask);
+  mix.clearMask(ctx, mix.mask);
+  mix.justChanged = false;
+  mix.isBlending = false;
+  mix.isBrush = null;
+  mix.cachedColor = null;
 };
 
 /**
@@ -375,7 +400,16 @@ export const flushActiveComposite = () => {
  * @param {object} [options] - Host options forwarded to the target adapter
  *   (standalone: `{ device, adapter }` to adopt an external WebGPU device).
  */
-export const load = (buffer = false, options) => {
+export const load = (buffer = false, options) => _load(defaultContext, buffer, options);
+
+/**
+ * Context-taking implementation of load().
+ *
+ * @param {import("./context.js").BrushContext} ctx
+ * @param {object|false} [buffer=false] - Optional offscreen target.
+ * @param {object} [options] - Host options forwarded to the target adapter.
+ */
+export const _load = (ctx, buffer = false, options) => {
   loadTarget(buffer, options);
-  if (Renderer.loaded) Mix.load();
+  if (ctx.renderer.loaded) ctx.mix.load(ctx);
 };

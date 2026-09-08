@@ -3,6 +3,7 @@
 // =============================================================================
 
 import { setRuntime } from "../../core/runtime.js";
+import { defaultContext } from "../../core/context.js";
 import { push as pushState, pop as popState } from "../../core/save.js";
 
 const clamp = (value, min, max) => Math.max(min, Math.min(value, max));
@@ -156,7 +157,7 @@ export function getAngleMode() {
  * Pushes the current standalone transform onto the stack.
  */
 export function push() {
-  pushState();
+  pushState(defaultContext);
   transformStack.push({ ...currentTransform });
 }
 
@@ -166,7 +167,7 @@ export function push() {
 export function pop() {
   if (transformStack.length === 0) return;
   currentTransform = transformStack.pop();
-  popState();
+  popState(defaultContext);
 }
 
 /**

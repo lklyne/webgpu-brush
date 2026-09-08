@@ -20,6 +20,12 @@ export class Plot {
     suma: number;
     pol: boolean;
     /**
+     * Drawing context this plot belongs to. Unset means the default context;
+     * an instance's factory methods set it.
+     * @type {import("./context.js").BrushContext|undefined}
+     */
+    owner: import("./context.js").BrushContext | undefined;
+    /**
      * Adds a segment to the plot with specified angle, length, and pressure.
      * @param {number} _a - The angle of the segment.
      * @param {number} _length - The length of the segment.

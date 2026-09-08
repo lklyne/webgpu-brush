@@ -25,7 +25,7 @@ vi.mock("../../src/core/color.js", () => ({
 }));
 
 vi.mock("../../src/core/primitives.js", () => ({
-  arc,
+  _arc: arc,
 }));
 
 vi.mock("../../src/core/plot.js", () => ({
@@ -40,7 +40,7 @@ vi.mock("../../src/core/runtime.js", () => ({
 vi.mock("../../src/hatch/hatch.js", () => ({
   HatchState: () => ({}),
   HatchSetState: () => {},
-  hatch: () => {},
+  _hatch: () => {},
   getHatchLines,
 }));
 
@@ -48,11 +48,11 @@ vi.mock("../../src/stroke/stroke.js", () => ({
   BrushState: () => ({}),
   BrushSetState,
   getBrushParams: () => ({ scatter: 1 }),
-  set,
+  _set: set,
 }));
 
 vi.mock("../../src/core/flowfield.js", () => ({
-  wiggle,
+  _wiggle: wiggle,
 }));
 
 vi.mock("../../src/core/utils.js", () => ({
@@ -75,8 +75,12 @@ vi.mock("../../src/core/polygon.js", () => ({
   },
 }));
 
-import { createMass, createMassArray, mass } from "../../src/hatch/mass.js";
+import { createMass as createMassCtx, createMassArray, mass } from "../../src/hatch/mass.js";
+import { defaultContext } from "../../src/core/context.js";
 import { Polygon } from "../../src/core/polygon.js";
+
+// createMass() takes the drawing context first (core/context.js).
+const createMass = (shape, x, y, scale) => createMassCtx(defaultContext, shape, x, y, scale);
 
 function makeSquarePolygon(x0 = 0, y0 = 0, size = 10) {
   return new Polygon([
@@ -112,8 +116,9 @@ describe("createMassArray()", () => {
 
     expect(() => createMassArray([outer, inner])).not.toThrow();
     expect(getHatchLines).toHaveBeenCalled();
-    expect(getHatchLines.mock.calls[0][0]).toHaveLength(2);
-    expect(Array.isArray(getHatchLines.mock.calls[0][0])).toBe(true);
+    // getHatchLines(ctx, polygons) — the polygons are the second argument.
+    expect(getHatchLines.mock.calls[0][1]).toHaveLength(2);
+    expect(Array.isArray(getHatchLines.mock.calls[0][1])).toBe(true);
     expect(arc).toHaveBeenCalled();
   });
 
@@ -124,8 +129,8 @@ describe("createMassArray()", () => {
 
     expect(arc).toHaveBeenCalled();
     const firstCall = arc.mock.calls[0];
-    // arc(cx, cy, radius, startAngle, endAngle)
-    const [_cx, _cy, radius, startAngle, endAngle] = firstCall;
+    // _arc(ctx, cx, cy, radius, startAngle, endAngle)
+    const [_ctx, _cx, _cy, radius, startAngle, endAngle] = firstCall;
     expect(Number.isFinite(radius)).toBe(true);
     expect(radius).toBeGreaterThan(0);
     expect(Number.isFinite(startAngle)).toBe(true);
@@ -161,7 +166,8 @@ describe("createMassArray()", () => {
     createMassArray([makeSquarePolygon(0, 0, 10)]);
     // BrushSetState should have been called to restore the saved brush state
     expect(BrushSetState).toHaveBeenCalled();
-    // The value passed is what BrushState() returned — an empty object in our mock
-    expect(BrushSetState.mock.calls[BrushSetState.mock.calls.length - 1][0]).toEqual({});
+    // BrushSetState(ctx, state); the state is what BrushState() returned —
+    // an empty object in our mock.
+    expect(BrushSetState.mock.calls[BrushSetState.mock.calls.length - 1][1]).toEqual({});
   });
 });

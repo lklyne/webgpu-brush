@@ -25,10 +25,11 @@ const clamp01 = (v) => Math.max(0, Math.min(1, v));
 
 /**
  * Creates the fill surface bound to a renderer's WebGPU host.
+ * @param {import("../core/context.js").BrushContext} ctx
  * @param {object} Renderer active renderer (host attached)
  * @param {object} mask the fill-mask wrapper (dirty-rect bookkeeping)
  */
-function createFillSurface(Renderer, mask) {
+function createFillSurface(ctx, Renderer, mask) {
   const host = Renderer.host;
   const SS = host.fillSS ?? 1; // supersampling factor of the fill target
   // The fill renderer records ops CPU-side (no encoder needed until
@@ -90,7 +91,7 @@ function createFillSurface(Renderer, mask) {
       // Same padding rule as the old mask.js: stroke half-width + 1.
       // Dirty rects are tracked in FINAL device px.
       const pad = 1 + lwDevice / 2;
-      Color.Mix.markDirtyRect(mask, {
+      Color.Mix.markDirtyRect(ctx, mask, {
         minX: bounds.minX / SS - pad,
         minY: bounds.minY / SS - pad,
         maxX: bounds.maxX / SS + pad,
@@ -214,8 +215,11 @@ function createFillSurface(Renderer, mask) {
  * Ensures fill compositing resources exist for the active renderer.
  * Returns { mask, ctx } — mask carries dirty-rect bookkeeping and exposes
  * the resolve texture; ctx is the fill surface (see header).
+ *
+ * @param {import("../core/context.js").BrushContext} drawContext
  */
 export function ensureFillCompositeResources(
+  drawContext,
   Renderer,
   Cwidth,
   Cheight,
@@ -253,7 +257,7 @@ export function ensureFillCompositeResources(
         Renderer.mask.surface.clear();
       },
     };
-    mask.surface = createFillSurface(Renderer, mask);
+    mask.surface = createFillSurface(drawContext, Renderer, mask);
     Renderer.mask = mask;
   }
 
@@ -308,8 +312,11 @@ export function getFillCompositeRect(
 /**
  * Flushes pending fill passes and returns the mask resource the composite
  * binds as u_mask (the single-sample resolve texture).
+ *
+ * @param {import("../core/context.js").BrushContext} _ctx - Unused here.
  */
 export function getFillShaderMask(
+  _ctx,
   Renderer,
   mask,
   _dirtyRect,

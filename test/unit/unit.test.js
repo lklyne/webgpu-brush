@@ -86,7 +86,11 @@ import {
 } from "../../src/core/utils.js";
 import { arc, beginShape, vertex, endShape } from "../../src/core/primitives.js";
 import { Position, addField, field as activateField, noField } from "../../src/core/flowfield.js";
-import { getHatchLines, hatch } from "../../src/hatch/hatch.js";
+import { getHatchLines as getHatchLinesCtx, hatch } from "../../src/hatch/hatch.js";
+import { defaultContext } from "../../src/core/context.js";
+
+// getHatchLines() takes the drawing context first (core/context.js).
+const getHatchLines = (polygons) => getHatchLinesCtx(defaultContext, polygons);
 
 beforeEach(() => {
   currentAngleMode.value = "radians";

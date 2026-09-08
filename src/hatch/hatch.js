@@ -1,8 +1,8 @@
-import { State } from "../core/color.js";
-import { toDegreesSigned, map, rh, STREAM, _onSeed } from "../core/utils.js";
+import { defaultContext } from "../core/context.js";
+import { toDegreesSigned, map, STREAM } from "../core/utils.js";
 import { Polygon } from "../core/polygon.js";
 import { Plot } from "../core/plot.js";
-import { BrushState, BrushSetState, set, line } from "../stroke/stroke.js";
+import { BrushState, BrushSetState, _set, _line } from "../stroke/stroke.js";
 
 // =============================================================================
 // Module: Classic Hatch
@@ -12,7 +12,7 @@ import { BrushState, BrushSetState, set, line } from "../stroke/stroke.js";
 // Hatch State
 // ---------------------------------------------------------------------------
 
-State.hatch = {
+defaultContext.state.hatch = {
   isActive: false,
   dist: 5,
   angle: 45,
@@ -22,26 +22,28 @@ State.hatch = {
 
 // Hash-stream scope counter: one id per getHatchLines() invocation.
 let _hatchId = 0;
-_onSeed(() => {
+defaultContext.rng.onSeed(() => {
   _hatchId = 0;
 });
 
 /**
  * Returns a shallow snapshot of the current hatch modifier state.
  *
+ * @param {import("../core/context.js").BrushContext} ctx
  * @returns {{isActive:boolean, dist:number, angle:number, options:Object, hBrush:Object|false}}
  */
-export function HatchState() {
-  return { ...State.hatch };
+export function HatchState(ctx) {
+  return { ...ctx.state.hatch };
 }
 
 /**
  * Restores hatch modifier state from a previously captured snapshot.
  *
+ * @param {import("../core/context.js").BrushContext} ctx
  * @param {{isActive:boolean, dist:number, angle:number, options:Object, hBrush:Object|false}} state
  */
-export function HatchSetState(state) {
-  State.hatch = { ...state };
+export function HatchSetState(ctx, state) {
+  ctx.state.hatch = { ...state };
 }
 
 // ---------------------------------------------------------------------------
@@ -60,7 +62,24 @@ export function hatch(
   angle = 45,
   options = { rand: false, continuous: false, gradient: false }
 ) {
-  let s = State.hatch;
+  return _hatch(defaultContext, dist, angle, options);
+}
+
+/**
+ * Context-taking implementation of hatch().
+ *
+ * @param {import("../core/context.js").BrushContext} ctx
+ * @param {number} [dist=5] Distance between scanlines.
+ * @param {number} [angle=45] Hatch angle in the current runtime angle units.
+ * @param {{rand?: number|false, continuous?: boolean, gradient?: number|false}} [options]
+ */
+export function _hatch(
+  ctx,
+  dist = 5,
+  angle = 45,
+  options = { rand: false, continuous: false, gradient: false }
+) {
+  let s = ctx.state.hatch;
   s.isActive = true;
   s.dist = dist;
   s.angle = toDegreesSigned(angle);
@@ -75,15 +94,37 @@ export function hatch(
  * @param {number} [weight=1]
  */
 export function hatchStyle(brush, color = "black", weight = 1) {
-  State.hatch.hBrush = { brush, color, weight };
+  return _hatchStyle(defaultContext, brush, color, weight);
+}
+
+/**
+ * Context-taking implementation of hatchStyle().
+ *
+ * @param {import("../core/context.js").BrushContext} ctx
+ * @param {string} brush
+ * @param {string|object} [color="black"]
+ * @param {number} [weight=1]
+ */
+export function _hatchStyle(ctx, brush, color = "black", weight = 1) {
+  ctx.state.hatch.hBrush = { brush, color, weight };
 }
 
 /**
  * Deactivates hatching and clears any hatch-specific brush override.
  */
 export function noHatch() {
-  State.hatch.isActive = false;
-  State.hatch.hBrush = false;
+  return _noHatch(defaultContext);
+}
+
+/**
+ * Context-taking implementation of noHatch().
+ *
+ * @param {import("../core/context.js").BrushContext} ctx
+ */
+export function _noHatch(ctx) {
+  const hatchState = ctx.state.hatch;
+  hatchState.isActive = false;
+  hatchState.hBrush = false;
 }
 
 // ---------------------------------------------------------------------------
@@ -242,24 +283,27 @@ function getHatchSegments(polygons, dist, angle, gradient) {
  * Runs hatch drawing with the temporary hatch-specific brush style if one is active,
  * then restores the outer stroke state.
  *
+ * @param {import("../core/context.js").BrushContext} ctx
  * @param {() => void} drawFn
  */
-function withHatchStyle(drawFn) {
-  const save = BrushState();
+function withHatchStyle(ctx, drawFn) {
+  const save = BrushState(ctx);
   drawFn();
-  BrushSetState(save);
+  BrushSetState(ctx, save);
 }
 
 /**
  * Resolves the active hatch parameters and precomputes the ordered scanline segments.
  *
+ * @param {import("../core/context.js").BrushContext} ctx
  * @param {Polygon|Polygon[]} polygons
  * @returns {{dist:number, options:Object, segs:Object[]}}
  */
-function getActiveHatchConfig(polygons) {
-  const dist = State.hatch.dist;
-  const angle = ((State.hatch.angle % 180) + 180) % 180;
-  const options = State.hatch.options;
+function getActiveHatchConfig(ctx, polygons) {
+  const hatchState = ctx.state.hatch;
+  const dist = hatchState.dist;
+  const angle = ((hatchState.angle % 180) + 180) % 180;
+  const options = hatchState.options;
   const gradient = options.gradient ? map(options.gradient, 0, 1, 1, 1.1, true) : 1;
   const segs = getHatchSegments(polygons, dist, angle, gradient);
   return { dist, options, segs };
@@ -275,11 +319,13 @@ function getActiveHatchConfig(polygons) {
  * This includes endpoint jitter when `rand` is active and inserts the serpentine
  * connector lines when `continuous` is enabled.
  *
+ * @param {import("../core/context.js").BrushContext} ctx
  * @param {Polygon|Polygon[]} polygons
  * @returns {{x1:number, y1:number, x2:number, y2:number, scanY:number, isConnector:boolean}[]}
  */
-export function getHatchLines(polygons) {
-  const { dist, options, segs } = getActiveHatchConfig(polygons);
+export function getHatchLines(ctx, polygons) {
+  const rh = ctx.rng.rh;
+  const { dist, options, segs } = getActiveHatchConfig(ctx, polygons);
   const r = options.rand || 0;
   const lines = [];
   _hatchId++;
@@ -323,12 +369,13 @@ export function getHatchLines(polygons) {
  * Iterates the generated hatch lines and delegates the actual rendering of each
  * segment to the provided callback.
  *
+ * @param {import("../core/context.js").BrushContext} ctx
  * @param {Polygon|Polygon[]} polygons
  * @param {(x1:number, y1:number, x2:number, y2:number, index:number, segs:Object[]) => void} drawSegment
  */
-function renderHatchSegments(polygons, drawSegment) {
-  const segs = getHatchLines(polygons);
-  withHatchStyle(() => {
+function renderHatchSegments(ctx, polygons, drawSegment) {
+  const segs = getHatchLines(ctx, polygons);
+  withHatchStyle(ctx, () => {
     for (let j = 0; j < segs.length; j++) {
       const s = segs[j];
       drawSegment(s.x1, s.y1, s.x2, s.y2, j, segs);
@@ -342,9 +389,21 @@ function renderHatchSegments(polygons, drawSegment) {
  * @param {Polygon|Polygon[]} polygons
  */
 export function createHatch(polygons) {
-  renderHatchSegments(polygons, (x1, y1, x2, y2, j) => {
-    if (State.hatch.hBrush) set(State.hatch.hBrush.brush, State.hatch.hBrush.color, State.hatch.hBrush.weight * rh(STREAM.HATCH_WEIGHT, _hatchId, j, 0.9, 1.1));
-    line(x1, y1, x2, y2);
+  return _createHatch(defaultContext, polygons);
+}
+
+/**
+ * Context-taking implementation of createHatch().
+ *
+ * @param {import("../core/context.js").BrushContext} ctx
+ * @param {Polygon|Polygon[]} polygons
+ */
+export function _createHatch(ctx, polygons) {
+  const rh = ctx.rng.rh;
+  renderHatchSegments(ctx, polygons, (x1, y1, x2, y2, j) => {
+    const hBrush = ctx.state.hatch.hBrush;
+    if (hBrush) _set(ctx, hBrush.brush, hBrush.color, hBrush.weight * rh(STREAM.HATCH_WEIGHT, _hatchId, j, 0.9, 1.1));
+    _line(ctx, x1, y1, x2, y2);
   });
 }
 
@@ -361,10 +420,11 @@ export function createHatch(polygons) {
  * @param {{rand?: number|false, continuous?: boolean, gradient?: number|false}} [_options]
  */
 Polygon.prototype.hatch = function (_dist = false, _angle, _options) {
-  let state = HatchState();
-  if (_dist) hatch(_dist, _angle, _options);
-  if (State.hatch.isActive) createHatch(this);
-  HatchSetState(state);
+  const ctx = this.owner ?? defaultContext;
+  let state = HatchState(ctx);
+  if (_dist) _hatch(ctx, _dist, _angle, _options);
+  if (ctx.state.hatch.isActive) _createHatch(ctx, this);
+  HatchSetState(ctx, state);
   return this;
 };
 
@@ -376,7 +436,8 @@ Polygon.prototype.hatch = function (_dist = false, _angle, _options) {
  * @param {number} scale
  */
 Plot.prototype.hatch = function (x, y, scale) {
-  if (HatchState().isActive) {
+  const ctx = this.owner ?? defaultContext;
+  if (HatchState(ctx).isActive) {
     if (this.origin) (x = this.origin[0]), (y = this.origin[1]), (scale = 1);
     this.pol = this.genPol(x, y, scale, 0.3);
     this.pol.hatch();

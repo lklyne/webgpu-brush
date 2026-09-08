@@ -12,28 +12,17 @@
  */
 
 // Core imports
-import { Cwidth, Cheight, isCanvasReady } from "../core/target.js";
-import {
-  Mix,
-  State,
-} from "../core/color.js";
+import { isCanvasReady } from "../core/target.js";
+import { defaultContext } from "../core/context.js";
 import {
   map,
   dist,
   calcAngle,
   toDegrees,
-  gaussian,
-  noise,
-  _onSeed,
   cos,
   sin,
   STREAM,
-  hashU32,
-  hash01,
-  rh,
-  nh,
 } from "../core/utils.js";
-import { createColor } from "../core/runtime.js";
 import { Stats } from "../core/stats.js";
 import { Position, isFieldReady } from "../core/flowfield.js";
 import { Polygon } from "../core/polygon.js";
@@ -65,7 +54,7 @@ initStrokeComposite(); // Register the stroke composite system for offscreen mas
 /**
  * Global stroke state settings.
  */
-State.stroke = {
+defaultContext.state.stroke = {
   color: null,
   weight: 1,
   type: "HB",
@@ -84,18 +73,20 @@ const DEFAULT_CUSTOM_PRESSURE_VARIATION = {
 
 /**
  * Retrieves a shallow copy of the current stroke state.
+ * @param {import("../core/context.js").BrushContext} ctx
  * @returns {object} The stroke state.
  */
-export function BrushState() {
-  return { ...State.stroke };
+export function BrushState(ctx) {
+  return { ...ctx.state.stroke };
 }
 
 /**
  * Updates the stroke state.
+ * @param {import("../core/context.js").BrushContext} ctx
  * @param {object} state - The new stroke state.
  */
-export function BrushSetState(state) {
-  State.stroke = { ...state };
+export function BrushSetState(ctx, state) {
+  ctx.state.stroke = { ...state };
 }
 
 // =============================================================================
@@ -258,8 +249,17 @@ export function scaleBrushes(scaleFactor) {
  * @param {string} brushName - The name of the brush.
  */
 export function pick(brushName) {
+  return _pick(defaultContext, brushName);
+}
+
+/**
+ * Context-taking implementation of pick().
+ * @param {import("../core/context.js").BrushContext} ctx
+ * @param {string} brushName - The name of the brush.
+ */
+export function _pick(ctx, brushName) {
   assertBrush(brushName);
-  State.stroke.type = brushName;
+  ctx.state.stroke.type = brushName;
 }
 
 /**
@@ -281,9 +281,19 @@ export function assertBrush(brushName) {
  * @param {number} [b] - Blue component.
  */
 export function stroke(r, g, b) {
+  return _stroke(defaultContext, ...arguments);
+}
+
+/**
+ * Context-taking implementation of stroke().
+ * @param {import("../core/context.js").BrushContext} ctx
+ * @param {...*} args - Color arguments, forwarded verbatim to the host.
+ */
+export function _stroke(ctx, ...args) {
   isCanvasReady();
-  State.stroke.color = createColor(...arguments);
-  State.stroke.isActive = true;
+  const state = ctx.state.stroke;
+  state.color = ctx.createColor(...args);
+  state.isActive = true;
 }
 
 /**
@@ -291,7 +301,16 @@ export function stroke(r, g, b) {
  * @param {number} weight - The weight value.
  */
 export function strokeWeight(weight) {
-  State.stroke.weight = weight;
+  return _strokeWeight(defaultContext, weight);
+}
+
+/**
+ * Context-taking implementation of strokeWeight().
+ * @param {import("../core/context.js").BrushContext} ctx
+ * @param {number} weight - The weight value.
+ */
+export function _strokeWeight(ctx, weight) {
+  ctx.state.stroke.weight = weight;
 }
 
 /**
@@ -301,16 +320,35 @@ export function strokeWeight(weight) {
  * @param {number} [weight=1] - The brush weight.
  */
 export function set(brushName, color, weight = 1) {
-  pick(brushName);
-  stroke(color);
-  strokeWeight(weight);
+  return _set(defaultContext, brushName, color, weight);
+}
+
+/**
+ * Context-taking implementation of set().
+ * @param {import("../core/context.js").BrushContext} ctx
+ * @param {string} brushName - The brush name.
+ * @param {string|Color} color - The brush color.
+ * @param {number} [weight=1] - The brush weight.
+ */
+export function _set(ctx, brushName, color, weight = 1) {
+  _pick(ctx, brushName);
+  _stroke(ctx, color);
+  _strokeWeight(ctx, weight);
 }
 
 /**
  * Disables the stroke effect.
  */
 export function noStroke() {
-  State.stroke.isActive = false;
+  return _noStroke(defaultContext);
+}
+
+/**
+ * Context-taking implementation of noStroke().
+ * @param {import("../core/context.js").BrushContext} ctx
+ */
+export function _noStroke(ctx) {
+  ctx.state.stroke.isActive = false;
 }
 
 /**
@@ -340,14 +378,15 @@ const current = {};
 
 /**
  * Initializes the drawing state.
+ * @param {import("../core/context.js").BrushContext} ctx
  * @param {number} x - Starting x-coordinate.
  * @param {number} y - Starting y-coordinate.
  * @param {number} length - Length of stroke.
  * @param {Plot|false} [plot=false] - Plot object for path-following strokes.
  */
-function initializeDrawingState(x, y, length, plot = false) {
-  snapshotMatrix();
-  _position = new Position(x + Cwidth / 2, y + Cheight / 2);
+function initializeDrawingState(ctx, x, y, length, plot = false) {
+  snapshotMatrix(ctx);
+  _position = new Position(x + ctx.width / 2, y + ctx.height / 2, ctx);
   _length = length;
   _plot = plot;
   if (_plot) _plot.calcIndex(0);
@@ -361,37 +400,42 @@ const GAUSS_POOL_N = 512;
 const gaussians = new Array(GAUSS_POOL_N);
 let _gaussPoolReady = false;
 
-function fillGaussPool() {
+/**
+ * @param {import("../core/context.js").BrushContext} ctx
+ */
+function fillGaussPool(ctx) {
+  const gaussian = ctx.rng.gaussian;
   for (let i = 0; i < GAUSS_POOL_N; i++) gaussians[i] = gaussian();
   _gaussPoolReady = true;
 }
 
 /** Hash-picked gaussian pool sample. */
-const gaussPick = (streamId, salt, index) =>
-  gaussians[hashU32(streamId, salt, index) % GAUSS_POOL_N];
+const gaussPick = (ctx, streamId, salt, index) =>
+  gaussians[ctx.rng.hashU32(streamId, salt, index) % GAUSS_POOL_N];
 
 // Per-stroke scope counter for the hash streams. The stamp salt reserves the
 // low 2 bits for the draw phase: 0 = main stamp loop, 1 = markerTip at stroke
 // start, 2 = markerTip at stroke end.
 let _strokeId = 0;
 
-_onSeed(() => {
+defaultContext.rng.onSeed(() => {
   _gaussPoolReady = false;
   _strokeId = 0;
 });
 
 /**
  * Executes the drawing operation.
+ * @param {import("../core/context.js").BrushContext} ctx
  * @param {number} angleScale - Angle (in degrees) or scaling factor.
  * @param {boolean} isPlot - True if plotting a shape.
  */
-function draw(angleScale, isPlot) {
+function draw(ctx, angleScale, isPlot) {
   if (!isPlot) _dir = angleScale;
   // Route eligible line/flowLine strokes to the GPU flow-field walk.
   // Plots, image/custom tips, function-curve pressures, non-translation
   // transforms, and Stats-instrumented runs take the retained CPU walk.
-  if (!isPlot && tryGpuWalk(angleScale)) return;
-  saveState();
+  if (!isPlot && tryGpuWalk(ctx, angleScale)) return;
+  saveState(ctx);
 
   const stepSize = spacing();
   const totalSteps = Math.round(
@@ -403,14 +447,14 @@ function draw(angleScale, isPlot) {
 
   for (let i = 0; i < totalSteps; i++) {
     if (isPlot) _cachedPlotAngle = _plot.angle(_position.plotted);
-    tip(i);
+    tip(ctx, i);
     if (isPlot) {
       _position.plotTo(_plot, stepSize, stepSize, angleScale, _cachedPlotAngle);
     } else {
       _position._moveToDegrees(angleScale, stepSize, stepSize);
     }
   }
-  restoreState();
+  restoreState(ctx);
 }
 
 /**
@@ -420,27 +464,30 @@ function draw(angleScale, isPlot) {
  * The cross-stroke pressure-cache chain (upstream's leak) is synced
  * through the descriptor builder so CPU- and GPU-walked strokes can
  * interleave without diverging from the all-CPU sequence.
+ * @param {import("../core/context.js").BrushContext} ctx
  * @param {number} dirDegrees internal-degrees stroke direction
  * @returns {boolean} true when the stroke was queued on the GPU path
  */
-function tryGpuWalk(dirDegrees) {
+function tryGpuWalk(ctx, dirDegrees) {
+  const State = ctx.state;
+  const Mix = ctx.mix;
   const param = list.get(State.stroke.type)?.param;
   if (!walkEligible(param)) return false;
 
-  if (!_gaussPoolReady) fillGaussPool(); // same lazy fill point as saveState
+  if (!_gaussPoolReady) fillGaussPool(ctx); // same lazy fill point as saveState
   _strokeId++;
 
-  isReady();
+  isReady(ctx);
   const switchingToBrush = Mix.isBrush !== true;
   Mix.isBrush = true;
   if (switchingToBrush) Mix.justChanged = true;
-  Mix.blend(State.stroke.color);
+  Mix.blend(ctx, State.stroke.color);
 
-  const chain = queueWalkStroke({
+  const chain = queueWalkStroke(ctx, {
     strokeId: _strokeId,
     kind: param.type === "marker" || param.type === "spray" ? param.type : "default",
-    x: _position.x - Cwidth / 2,
-    y: _position.y - Cheight / 2,
+    x: _position.x - ctx.width / 2,
+    y: _position.y - ctx.height / 2,
     dir: dirDegrees,
     length: _length,
     brush: param,
@@ -457,10 +504,14 @@ function tryGpuWalk(dirDegrees) {
 
 /**
  * Prepares the environment for a brush stroke.
+ * @param {import("../core/context.js").BrushContext} ctx
  */
-function saveState() {
+function saveState(ctx) {
+  const State = ctx.state;
+  const Mix = ctx.mix;
+  const { rh, nh, hash01 } = ctx.rng;
   if (Stats.enabled) Stats.beginStroke();
-  if (!_gaussPoolReady) fillGaussPool();
+  if (!_gaussPoolReady) fillGaussPool(ctx);
   _strokeId++;
   // Inspection seam: latch the stream/hook decision for this CPU-walked stroke.
   if (_iflag.active) _notifyStrokeBegin(_strokeId);
@@ -502,49 +553,52 @@ function saveState() {
   }
 
   // Ensure GL is ready and blend state
-  isReady();
+  isReady(ctx);
   const switchingToBrush = Mix.isBrush !== true;
   Mix.isBrush = true;
   if (switchingToBrush) Mix.justChanged = true;
-  Mix.blend(State.stroke.color);
+  Mix.blend(ctx, State.stroke.color);
 
   // Set additional state values
   // Stroke-level noise: modulate alpha once per stroke so whole strokes are
   // subtly lighter or darker — organic variation without per-tip cost.
-  const baseAlpha = calculateAlpha();
+  const baseAlpha = calculateAlpha(ctx);
   const noiseStrength = 0.1 * (current.p.noise ?? 0);
   current.alpha = noiseStrength > 0
     ? Math.max(0, baseAlpha * (1 + nh(STREAM.STROKE_ALPHA_NOISE, salt, 0, 0, noiseStrength)))
     : baseAlpha;
-  current.overscan = getImageTipOverscan();
+  current.overscan = getImageTipOverscan(ctx);
   current.drawFn =
     current.p.type === "spray"  ? drawSpray :
     current.p.type === "marker" ? drawMarker :
     (current.p.type === "custom" || current.p.type === "image") ? drawImageTip :
     drawDefault;
 
-  markerTip(1);
+  markerTip(ctx, 1);
 }
 
 /**
  * Restores drawing state after completing a stroke.
+ * @param {import("../core/context.js").BrushContext} ctx
  */
-function restoreState() {
-  markerTip(2);
+function restoreState(ctx) {
+  markerTip(ctx, 2);
   if (Stats.enabled) Stats.endStroke();
-  glDraw();
+  glDraw(ctx);
   const type = current.p?.type;
-  if (type === "image") glDrawImages(T.tips.get(current.p.image.src), current.p.image.src);
-  else if (type === "custom") glDrawImages(T.tips.get(current.p.tipKey), current.p.tipKey);
+  if (type === "image") glDrawImages(ctx, T.tips.get(current.p.image.src), current.p.image.src);
+  else if (type === "custom") glDrawImages(ctx, T.tips.get(current.p.tipKey), current.p.tipKey);
 }
 
 /**
  * Renders the brush tip based on current pressure and position.
+ * @param {import("../core/context.js").BrushContext} ctx
+ * @param {number} index - Stamp index along the stroke.
  */
-function tip(index) {
+function tip(ctx, index) {
   const pressure = calculatePressure();
 
-  current.drawFn(pressure, index);
+  current.drawFn(ctx, pressure, index);
 }
 
 /**
@@ -615,12 +669,13 @@ function gauss(
 
 /**
  * Calculates the alpha (opacity) level for a brush stroke.
+ * @param {import("../core/context.js").BrushContext} ctx
  * @returns {number} The calculated opacity.
  */
-function calculateAlpha() {
+function calculateAlpha(ctx) {
   return ["default", "spray"].includes(current.p.type)
     ? current.p.opacity
-    : current.p.opacity / Math.min(State.stroke.weight, 1.3);
+    : current.p.opacity / Math.min(ctx.state.stroke.weight, 1.3);
 }
 
 /**
@@ -631,10 +686,14 @@ function spacing() {
   return current.p?.spacing ?? 1;
 }
 
-function getImageTipOverscan() {
+/**
+ * @param {import("../core/context.js").BrushContext} ctx
+ */
+function getImageTipOverscan(ctx) {
+  const weight = ctx.state.stroke.weight;
   const maxPressure = Math.max(1, current.max ?? 1);
-  const scatterReach = State.stroke.weight * current.p.scatter;
-  const tipReach = State.stroke.weight * current.p.weight * maxPressure;
+  const scatterReach = weight * current.p.scatter;
+  const tipReach = weight * current.p.weight * maxPressure;
 
   // Custom/image tips can extend beyond their nominal square because the tip
   // drawing itself may be large and because high scatter creates sparse large
@@ -648,13 +707,16 @@ function getImageTipOverscan() {
 
 /**
  * Draws the spray tip effect.
+ * @param {import("../core/context.js").BrushContext} ctx
  * @param {number} pressure - Current pressure.
  */
-function drawSpray(pressure, idx) {
+function drawSpray(ctx, pressure, idx) {
+  const rh = ctx.rng.rh;
+  const weight = ctx.state.stroke.weight;
   const salt = (current.salt | current.phase) >>> 0;
   const vibration =
-    State.stroke.weight * current.p.scatter * pressure +
-    (State.stroke.weight * gaussPick(STREAM.SPRAY_GAUSS, salt, idx) * current.p.scatter) / 3;
+    weight * current.p.scatter * pressure +
+    (weight * gaussPick(ctx, STREAM.SPRAY_GAUSS, salt, idx) * current.p.scatter) / 3;
   const sw = current.p.weight * rh(STREAM.SPRAY_SW, salt, idx, 0.9, 1.1);
   const iterations = Math.ceil(current.p.grain / pressure);
   for (let j = 0; j < iterations; j++) {
@@ -674,18 +736,21 @@ function drawSpray(pressure, idx) {
 
 /**
  * Draws the marker tip effect.
+ * @param {import("../core/context.js").BrushContext} ctx
  * @param {number} pressure - Current pressure.
  * @param {boolean} [vibrate=true] - Whether to apply vibration.
  */
-function drawMarker(pressure, idx, vibrate = true, alpha = current.alpha) {
+function drawMarker(ctx, pressure, idx, vibrate = true, alpha = current.alpha) {
+  const rh = ctx.rng.rh;
+  const weight = ctx.state.stroke.weight;
   const salt = (current.salt | current.phase) >>> 0;
-  const vibration = vibrate ? State.stroke.weight * current.p.scatter : 0;
+  const vibration = vibrate ? weight * current.p.scatter : 0;
   const rx = vibrate ? vibration * rh(STREAM.MARKER_VIB_X, salt, idx, -1, 1) : 0;
   const ry = vibrate ? vibration * rh(STREAM.MARKER_VIB_Y, salt, idx, -1, 1) : 0;
   circle(
     _position.x + rx,
     _position.y + ry,
-    State.stroke.weight * current.p.weight * pressure,
+    weight * current.p.weight * pressure,
     alpha * Math.max(0.8, pressure) * rh(STREAM.MARKER_ALPHA, salt, idx, 0.9, 1.1),
   );
 }
@@ -693,15 +758,18 @@ function drawMarker(pressure, idx, vibrate = true, alpha = current.alpha) {
 /**
  * Queues a stamp for instanced GL rendering.
  * Handles both "image" and "custom" tip types.
+ * @param {import("../core/context.js").BrushContext} ctx
  * @param {number} pressure - Current pressure.
  * @param {number} alpha - Opacity [0..255].
  */
-function drawImageTip(pressure, idx, alpha = current.alpha) {
+function drawImageTip(ctx, pressure, idx, alpha = current.alpha) {
+  const rh = ctx.rng.rh;
+  const weight = ctx.state.stroke.weight;
   const salt = (current.salt | current.phase) >>> 0;
-  const vibration = State.stroke.weight * current.p.scatter;
+  const vibration = weight * current.p.scatter;
   const rx = vibration * rh(STREAM.TIP_VIB_X, salt, idx, -1, 1);
   const ry = vibration * rh(STREAM.TIP_VIB_Y, salt, idx, -1, 1);
-  const size = current.p.weight * State.stroke.weight * pressure;
+  const size = current.p.weight * weight * pressure;
   const overscan = current.overscan;
   let angle = 0;
   if (current.p.rotate === "random") {
@@ -721,16 +789,19 @@ function drawImageTip(pressure, idx, alpha = current.alpha) {
 
 /**
  * Draws the default brush tip.
+ * @param {import("../core/context.js").BrushContext} ctx
  * @param {number} pressure - Current pressure.
  */
-function drawDefault(pressure, idx) {
+function drawDefault(ctx, pressure, idx) {
+  const rh = ctx.rng.rh;
+  const weight = ctx.state.stroke.weight;
   const salt = (current.salt | current.phase) >>> 0;
-  if (hash01(STREAM.DEFAULT_GATE, salt, idx) >= current.p.grain * pressure) return;
+  if (ctx.rng.hash01(STREAM.DEFAULT_GATE, salt, idx) >= current.p.grain * pressure) return;
   const vibration =
-    State.stroke.weight *
+    weight *
     current.p.scatter *
     (current.p.sharpness +
-      ((1 - current.p.sharpness) * gaussPick(STREAM.DEFAULT_SCATTER, salt, idx)) / pressure);
+      ((1 - current.p.sharpness) * gaussPick(ctx, STREAM.DEFAULT_SCATTER, salt, idx)) / pressure);
     let dx, dy;
     if (_plot) {
       const plotAngle = _cachedPlotAngle;
@@ -751,7 +822,7 @@ function drawDefault(pressure, idx) {
       pressure *
       current.p.weight *
       rh(STREAM.DEFAULT_SIZE, salt, idx, 0.85, 1.15) *
-      State.stroke.weight;
+      weight;
     const alpha = Math.max(0.9, pressure) * current.alpha * rh(STREAM.DEFAULT_ALPHA, salt, idx, 0.75, 1.1);
     circle(
       _position.x + dx,
@@ -764,8 +835,10 @@ function drawDefault(pressure, idx) {
 
 /**
  * Draws the marker tip with a blend effect.
+ * @param {import("../core/context.js").BrushContext} ctx
+ * @param {number} phase - 1 = stroke start, 2 = stroke end.
  */
-function markerTip(phase) {
+function markerTip(ctx, phase) {
   if (current.p.markerTip === false) return;
   const prevPhase = current.phase;
   current.phase = phase; // 1 = stroke start, 2 = stroke end
@@ -773,11 +846,11 @@ function markerTip(phase) {
   let alpha = current.alpha;
   if (current.p.type === "marker") {
     for (let s = 1; s < 10; s++) {
-      drawMarker((pressure * s) / 10, s, true, alpha * 8);
+      drawMarker(ctx, (pressure * s) / 10, s, true, alpha * 8);
     }
   } else if (current.p.type === "custom" || current.p.type === "image") {
     for (let s = 1; s < 5; s++) {
-      drawImageTip((pressure * s) / 10, s, alpha * 2);
+      drawImageTip(ctx, (pressure * s) / 10, s, alpha * 2);
     }
   }
   current.phase = prevPhase;
@@ -795,17 +868,30 @@ function markerTip(phase) {
  * @param {number} y2 - End y-coordinate.
  */
 export function line(x1, y1, x2, y2) {
-  if (!State.stroke.isActive || !State.stroke.color) {
+  return _line(defaultContext, x1, y1, x2, y2);
+}
+
+/**
+ * Context-taking implementation of line().
+ * @param {import("../core/context.js").BrushContext} ctx
+ * @param {number} x1 - Start x-coordinate.
+ * @param {number} y1 - Start y-coordinate.
+ * @param {number} x2 - End x-coordinate.
+ * @param {number} y2 - End y-coordinate.
+ */
+export function _line(ctx, x1, y1, x2, y2) {
+  const stroke = ctx.state.stroke;
+  if (!stroke.isActive || !stroke.color) {
     throw new Error(
       "No brush or color set. Call brush.set('brushName', color) before drawing.",
     );
   }
-  isFieldReady();
+  isFieldReady(ctx);
   let d = dist(x1, y1, x2, y2);
   if (d == 0) return;
-  initializeDrawingState(x1, y1, d);
+  initializeDrawingState(ctx, x1, y1, d);
   let angle = calcAngle(x1, y1, x2, y2);
-  draw(angle, false);
+  draw(ctx, angle, false);
 }
 
 /**
@@ -816,27 +902,41 @@ export function line(x1, y1, x2, y2) {
  * @param {number} dir - Direction, interpreted using the current runtime angle units.
  */
 export function flowLine(x, y, length, dir) {
-  if (!State.stroke.isActive || !State.stroke.color) {
+  return _flowLine(defaultContext, x, y, length, dir);
+}
+
+/**
+ * Context-taking implementation of flowLine().
+ * @param {import("../core/context.js").BrushContext} ctx
+ * @param {number} x - Starting x-coordinate.
+ * @param {number} y - Starting y-coordinate.
+ * @param {number} length - Length of the stroke.
+ * @param {number} dir - Direction, interpreted using the current runtime angle units.
+ */
+export function _flowLine(ctx, x, y, length, dir) {
+  const stroke = ctx.state.stroke;
+  if (!stroke.isActive || !stroke.color) {
     throw new Error(
       "No brush or color set. Call brush.set('brushName', color) before drawing.",
     );
   }
-  isFieldReady();
-  initializeDrawingState(x, y, length);
-  draw(toDegrees(dir), false);
+  isFieldReady(ctx);
+  initializeDrawingState(ctx, x, y, length);
+  draw(ctx, toDegrees(dir), false);
 }
 
 /**
  * Draws a predefined plot.
+ * @param {import("../core/context.js").BrushContext} ctx
  * @param {object} p - Shape object representing the plot.
  * @param {number} x - Starting x-coordinate.
  * @param {number} y - Starting y-coordinate.
  * @param {number} scale - Scale factor.
  */
-function plot(p, x, y, scale) {
-  isFieldReady();
-  initializeDrawingState(x, y, p.length, p);
-  draw(scale, true);
+function plot(ctx, p, x, y, scale) {
+  isFieldReady(ctx);
+  initializeDrawingState(ctx, x, y, p.length, p);
+  draw(ctx, scale, true);
 }
 
 // ---------------------------------------------------------------------------
@@ -978,14 +1078,15 @@ for (let s of _standard_brushes) {
  * @param {number} [_weight] - Optional weight override.
  */
 Polygon.prototype.draw = function (_brush = false, _color, _weight) {
-  let state = BrushState();
-  if (_brush) set(_brush, _color, _weight);
+  const ctx = this.owner ?? defaultContext;
+  let state = BrushState(ctx);
+  if (_brush) _set(ctx, _brush, _color, _weight);
   if (state.isActive) {
     for (let s of this.sides) {
-      line(s[0].x, s[0].y, s[1].x, s[1].y);
+      _line(ctx, s[0].x, s[0].y, s[1].x, s[1].y);
     }
   }
-  BrushSetState(state);
+  BrushSetState(ctx, state);
   return this;
 };
 
@@ -996,9 +1097,10 @@ Polygon.prototype.draw = function (_brush = false, _color, _weight) {
  * @param {number} scale - Scale factor.
  */
 Plot.prototype.draw = function (x, y, scale) {
-  if (BrushState().isActive) {
+  const ctx = this.owner ?? defaultContext;
+  if (BrushState(ctx).isActive) {
     if (this.origin) ((x = this.origin[0]), (y = this.origin[1]), (scale = 1));
-    plot(this, x, y, scale);
+    plot(ctx, this, x, y, scale);
   }
   return this;
 };

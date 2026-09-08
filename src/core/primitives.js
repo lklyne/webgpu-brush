@@ -1,6 +1,4 @@
 import {
-  rr2,
-  randInt2,
   sin,
   cos,
   toDegreesSigned,
@@ -11,6 +9,7 @@ import {
 } from "./utils.js";
 import { Polygon } from "./polygon.js";
 import { Plot } from "./plot.js";
+import { defaultContext } from "./context.js";
 
 // =============================================================================
 // Section: Primitives and Geommetry
@@ -22,6 +21,15 @@ import { Plot } from "./plot.js";
  * @param {Array<Array<number>>} pointsArray - Array of points [x, y, pressure]
  */
 export function polygon(pointsArray) {
+  return _polygon(defaultContext, pointsArray);
+}
+
+/**
+ * Context-taking implementation of polygon().
+ * @param {import("./context.js").BrushContext} ctx
+ * @param {Array<Array<number>>} pointsArray - Array of points [x, y, pressure]
+ */
+export function _polygon(ctx, pointsArray) {
   // Create a new Polygon instance
   const polygon = new Polygon(pointsArray);
   polygon.show();
@@ -37,16 +45,29 @@ export function polygon(pointsArray) {
  * @param {boolean} [mode="corner"] - "corner" (default) or "center".
  */
 export function rect(x, y, w, h, mode = "corner") {
+  return _rect(defaultContext, x, y, w, h, mode);
+}
+
+/**
+ * Context-taking implementation of rect().
+ * @param {import("./context.js").BrushContext} ctx
+ * @param {number} x - X-coordinate.
+ * @param {number} y - Y-coordinate.
+ * @param {number} w - Width.
+ * @param {number} h - Height.
+ * @param {string} [mode="corner"] - "corner" (default) or "center".
+ */
+export function _rect(ctx, x, y, w, h, mode = "corner") {
   if (mode === "center") {
     x -= w / 2;
     y -= h / 2;
   }
-  beginShape(0);
-  vertex(x, y);
-  vertex(x + w, y);
-  vertex(x + w, y + h);
-  vertex(x, y + h);
-  endShape(true);
+  _beginShape(ctx, 0);
+  _vertex(ctx, x, y);
+  _vertex(ctx, x + w, y);
+  _vertex(ctx, x + w, y + h);
+  _vertex(ctx, x, y + h);
+  _endShape(ctx, true);
 }
 
 /**
@@ -57,10 +78,23 @@ export function rect(x, y, w, h, mode = "corner") {
  * @param {boolean} [r=false] - Randomizes segment lengths if true.
  */
 export function circle(x, y, radius, r = false) {
+  return _circle(defaultContext, x, y, radius, r);
+}
+
+/**
+ * Context-taking implementation of circle().
+ * @param {import("./context.js").BrushContext} ctx
+ * @param {number} x - Center x.
+ * @param {number} y - Center y.
+ * @param {number} radius - Circle radius.
+ * @param {boolean} [r=false] - Randomizes segment lengths if true.
+ */
+export function _circle(ctx, x, y, radius, r = false) {
+  const rng = ctx.rng;
   const p = new Plot("curve");
   const arcLength = Math.PI * radius;
-  const angleOffset = rr2(0, 360);
-  const randomFactor = r ? () => 1 + r * 0.2 * rr2() : () => 1;
+  const angleOffset = rng.rr2(0, 360);
+  const randomFactor = r ? () => 1 + r * 0.2 * rng.rr2() : () => 1;
 
   // Divide circle into 4 segments
   for (let i = 0; i < 4; i++) {
@@ -75,7 +109,7 @@ export function circle(x, y, radius, r = false) {
 
   // Optionally add a random final angle for the last segment
   if (r) {
-    const randomAngle = r * randInt2(-5, 5);
+    const randomAngle = r * rng.randInt2(-5, 5);
     p.addSegment(
       angleOffset,
       Math.abs(randomAngle) * (Math.PI / 180) * radius,
@@ -104,6 +138,20 @@ export function circle(x, y, radius, r = false) {
  * @returns {Plot|null} The drawn Plot, or null when the sweep is zero.
  */
 export function arc(x, y, radius, start, end) {
+  return _arc(defaultContext, x, y, radius, start, end);
+}
+
+/**
+ * Context-taking implementation of arc().
+ * @param {import("./context.js").BrushContext} ctx
+ * @param {number} x - Center x.
+ * @param {number} y - Center y.
+ * @param {number} radius - Radius.
+ * @param {number} start - Start angle in the current runtime angle units.
+ * @param {number} end - End angle in the current runtime angle units.
+ * @returns {Plot|null} The drawn Plot, or null when the sweep is zero.
+ */
+export function _arc(ctx, x, y, radius, start, end) {
   const startDeg = toDegreesSigned(start);
   const endDeg = toDegreesSigned(end);
   const sweepDeg = ((endDeg - startDeg) % 360 + 360) % 360;
@@ -146,9 +194,10 @@ class SubPath {
   }
   /**
    * Renders the subpath by creating a spline from its vertices.
+   * @param {import("./context.js").BrushContext} ctx
    */
-  show() {
-    let plot = _createSpline(this.vert, this.curvature, this.isClosed);
+  show(ctx) {
+    let plot = _createSpline(ctx, this.vert, this.curvature, this.isClosed);
     plot.show();
     return plot;
   }
@@ -159,6 +208,15 @@ class SubPath {
  * @param {number} [curvature=0] - Curvature from 0 to 1.
  */
 export function beginShape(curvature = 0) {
+  return _beginShape(defaultContext, curvature);
+}
+
+/**
+ * Context-taking implementation of beginShape().
+ * @param {import("./context.js").BrushContext} ctx
+ * @param {number} [curvature=0] - Curvature from 0 to 1.
+ */
+export function _beginShape(ctx, curvature = 0) {
   _curvature = constrain(curvature, 0, 1);
   _current = new SubPath();
 }
@@ -170,6 +228,17 @@ export function beginShape(curvature = 0) {
  * @param {number} [pressure=1] - Pressure value.
  */
 export function vertex(x, y, pressure = 1) {
+  return _vertex(defaultContext, x, y, pressure);
+}
+
+/**
+ * Context-taking implementation of vertex().
+ * @param {import("./context.js").BrushContext} ctx
+ * @param {number} x - X-coordinate.
+ * @param {number} y - Y-coordinate.
+ * @param {number} [pressure=1] - Pressure value.
+ */
+export function _vertex(ctx, x, y, pressure = 1) {
   if (!_current) {
     throw new Error(
       "vertex() called outside of beginShape()/endShape(). Call beginShape() first.",
@@ -183,6 +252,16 @@ export function vertex(x, y, pressure = 1) {
  * @returns {Plot} The rendered Plot for the completed shape.
  */
 export function endShape(close = false) {
+  return _endShape(defaultContext, close);
+}
+
+/**
+ * Context-taking implementation of endShape().
+ * @param {import("./context.js").BrushContext} ctx
+ * @param {boolean} [close=false] - Whether to close the shape.
+ * @returns {Plot} The rendered Plot for the completed shape.
+ */
+export function _endShape(ctx, close = false) {
   if (!_current) {
     throw new Error(
       "endShape() called without beginShape(). Call beginShape() first.",
@@ -197,7 +276,7 @@ export function endShape(close = false) {
     _current.vertex(..._current.vert[0]);
     _current.isClosed = true;
   }
-  const plot = _current.show();
+  const plot = _current.show(ctx);
   _current = false;
   return plot;
 }
@@ -211,6 +290,17 @@ let _strokeArray, _strokeOrigin;
  * @param {number} y - Starting y.
  */
 export function beginStroke(type, x, y) {
+  return _beginStroke(defaultContext, type, x, y);
+}
+
+/**
+ * Context-taking implementation of beginStroke().
+ * @param {import("./context.js").BrushContext} ctx
+ * @param {string} type - Stroke type.
+ * @param {number} x - Starting x.
+ * @param {number} y - Starting y.
+ */
+export function _beginStroke(ctx, type, x, y) {
   if (type !== "curve" && type !== "segments") {
     throw new Error(
       `beginStroke() type must be "curve" or "segments", got "${type}".`,
@@ -227,6 +317,17 @@ export function beginStroke(type, x, y) {
  * @param {number} pressure - Segment pressure.
  */
 export function move(angle, length, pressure) {
+  return _move(defaultContext, angle, length, pressure);
+}
+
+/**
+ * Context-taking implementation of move().
+ * @param {import("./context.js").BrushContext} ctx
+ * @param {number} angle - Segment angle.
+ * @param {number} length - Segment length.
+ * @param {number} pressure - Segment pressure.
+ */
+export function _move(ctx, angle, length, pressure) {
   if (!_strokeArray) {
     throw new Error(
       "move() called without beginStroke(). Call beginStroke() first.",
@@ -241,6 +342,16 @@ export function move(angle, length, pressure) {
  * @param {number} pressure - End pressure.
  */
 export function endStroke(angle, pressure) {
+  return _endStroke(defaultContext, angle, pressure);
+}
+
+/**
+ * Context-taking implementation of endStroke().
+ * @param {import("./context.js").BrushContext} ctx
+ * @param {number} angle - End angle.
+ * @param {number} pressure - End pressure.
+ */
+export function _endStroke(ctx, angle, pressure) {
   if (!_strokeArray) {
     throw new Error(
       "endStroke() called without beginStroke(). Call beginStroke() first.",
@@ -257,12 +368,22 @@ export function endStroke(angle, pressure) {
  * @param {number} [curvature=0.5] - Curvature from 0 to 1.
  */
 export function spline(_array_points, _curvature = 0.5) {
+  return _spline(defaultContext, _array_points, _curvature);
+}
+
+/**
+ * Context-taking implementation of spline().
+ * @param {import("./context.js").BrushContext} ctx
+ * @param {Array<Array<number>>} _array_points - Array of points [x, y, pressure].
+ * @param {number} [_curvature=0.5] - Curvature from 0 to 1.
+ */
+export function _spline(ctx, _array_points, _curvature = 0.5) {
   if (!_array_points || _array_points.length < 2) {
     throw new Error(
       "spline() requires at least 2 points. Each point should be [x, y, pressure].",
     );
   }
-  let p = _createSpline(_array_points, _curvature);
+  let p = _createSpline(ctx, _array_points, _curvature);
   p.show();
   return p;
 }
@@ -276,12 +397,13 @@ export function spline(_array_points, _curvature = 0.5) {
  *
  * If no curvature is specified, a simple straight segment is used.
  *
+ * @param {import("./context.js").BrushContext} ctx
  * @param {Array<Array<number>>} points - Array of points [x, y, pressure].
  * @param {number} [curvature=0.5] - Curvature value between 0 and 1.
  * @param {boolean} [close=false] - Whether to close the spline.
  * @returns {Plot} - The generated Plot object.
  */
-function _createSpline(points, curvature = 0.5, close = false) {
+function _createSpline(ctx, points, curvature = 0.5, close = false) {
   const plotType = curvature === 0 ? "segments" : "curve";
   const p = new Plot(plotType);
   const PI2 = Math.PI * 2;

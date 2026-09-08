@@ -1,4 +1,4 @@
-import { State } from "./color.js";
+import { defaultContext } from "./context.js";
 import { intersectLines } from "./utils.js";
 
 // =============================================================================
@@ -25,6 +25,12 @@ export class Polygon {
       arr[(i + 1) % arr.length],
     ]);
     this._intersectionCache = {}; // Cache for intersection results
+    /**
+     * Drawing context this polygon belongs to. Unset means the default
+     * context; an instance's factory methods set it.
+     * @type {import("./context.js").BrushContext|undefined}
+     */
+    this.owner = undefined;
   }
 
   /**
@@ -53,6 +59,7 @@ export class Polygon {
    * Displays the polygon with optional stroke, hatch, and fill effects.
    */
   show() {
+    const State = (this.owner ?? defaultContext).state;
     if (State.wash) this.wash();
     if (State.fill) this.fill();
     if (State.mass) this.mass();

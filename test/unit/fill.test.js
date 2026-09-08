@@ -74,8 +74,12 @@ vi.mock("../../src/core/runtime.js", () => ({
   }),
 }));
 
-import { createFill, fill, fillBleed, noFill } from "../../src/fill/fill.js";
+import { createFill as createFillCtx, fill, fillBleed, noFill } from "../../src/fill/fill.js";
+import { defaultContext } from "../../src/core/context.js";
 import { seed } from "../../src/core/utils.js";
+
+// createFill() takes the drawing context first (core/context.js).
+const createFill = (polygon) => createFillCtx(defaultContext, polygon);
 
 // Helper: builds a simple convex polygon object that fill.js expects.
 function makePolygon(vertices) {

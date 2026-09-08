@@ -2,8 +2,10 @@
  * Ensures fill compositing resources exist for the active renderer.
  * Returns { mask, ctx } — mask carries dirty-rect bookkeeping and exposes
  * the resolve texture; ctx is the fill surface (see header).
+ *
+ * @param {import("../core/context.js").BrushContext} drawContext
  */
-export function ensureFillCompositeResources(Renderer: any, Cwidth: any, Cheight: any, Density: any, _clearTarget: any): {
+export function ensureFillCompositeResources(drawContext: import("../core/context.js").BrushContext, Renderer: any, Cwidth: any, Cheight: any, Density: any, _clearTarget: any): {
     mask: any;
     ctx: any;
 };
@@ -18,8 +20,10 @@ export function getFillCompositeRect(target: any, _getActiveFramebuffer: any, ge
 /**
  * Flushes pending fill passes and returns the mask resource the composite
  * binds as u_mask (the single-sample resolve texture).
+ *
+ * @param {import("../core/context.js").BrushContext} _ctx - Unused here.
  */
-export function getFillShaderMask(Renderer: any, mask: any, _dirtyRect: any, _getFullDirtyRect: any, _clearTarget: any): any;
+export function getFillShaderMask(_ctx: import("../core/context.js").BrushContext, Renderer: any, mask: any, _dirtyRect: any, _getFullDirtyRect: any, _clearTarget: any): any;
 /**
  * Registers the fill compositor with the shared color/composite core.
  * Safe to call multiple times.

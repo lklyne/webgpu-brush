@@ -1,6 +1,5 @@
-import { Cwidth, Cheight } from "./target.js";
-import { State } from "./color.js";
-import { toDegrees, rr2 } from "./utils.js";
+import { defaultContext } from "./context.js";
+import { toDegrees } from "./utils.js";
 import { Position, isFieldReady } from "./flowfield.js";
 import { Polygon } from "./polygon.js";
 
@@ -29,6 +28,12 @@ export class Plot {
     this.index = 0;
     this.suma = 0;
     this.pol = false;
+    /**
+     * Drawing context this plot belongs to. Unset means the default context;
+     * an instance's factory methods set it.
+     * @type {import("./context.js").BrushContext|undefined}
+     */
+    this.owner = undefined;
   }
 
   /**
@@ -141,11 +146,12 @@ export class Plot {
    * @returns {Polygon} - The generated polygon.
    */
   genPol(_x, _y, _scale = 1, _side) {
-    isFieldReady(); // Ensure that the drawing environment is prepared
+    const ctx = this.owner ?? defaultContext;
+    isFieldReady(ctx); // Ensure that the drawing environment is prepared
     const step = _side < 0 ? 4 : 1;
     const vertices = [];
     const numSteps = Math.round(this.length / step);
-    const pos = new Position(_x + Cwidth / 2, _y + Cheight / 2);
+    const pos = new Position(_x + ctx.width / 2, _y + ctx.height / 2, ctx);
     let pside = 0;
     let prevIdx = 0;
 
@@ -153,9 +159,9 @@ export class Plot {
       pos.plotTo(this, step, step);
       const idx = this.index; // already set by angle() inside plotTo
       pside += step;
-      let maxSize = _side <= 0 ? 8 : Math.max(this.segments[idx] * _side * rr2(0.7, 1.3), 20);
+      let maxSize = _side <= 0 ? 8 : Math.max(this.segments[idx] * _side * ctx.rng.rr2(0.7, 1.3), 20);
       if ((pside >= maxSize || idx >= prevIdx) && pos.x) {
-        vertices.push([pos.x - Cwidth / 2, pos.y - Cheight / 2]);
+        vertices.push([pos.x - ctx.width / 2, pos.y - ctx.height / 2]);
         pside = 0;
         if (idx >= prevIdx) prevIdx++;
       }
@@ -170,6 +176,7 @@ export class Plot {
    * @param {number} scale - The scale factor.
    */
   show(x, y, scale = 1) {
+    const State = (this.owner ?? defaultContext).state;
     if (State.wash) this.wash(x, y, scale);
     if (State.fill) this.fill(x, y, scale);
     if (State.mass) this.mass(x, y, scale);

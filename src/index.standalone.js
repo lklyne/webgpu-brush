@@ -12,7 +12,9 @@
  * (immediate + replayed), deferred (everything that mutates state or draws).
  */
 
+import * as recorder from "./adapters/standalone/deferred.js";
 import { guard, guardReplay } from "./adapters/standalone/deferred.js";
+import { defaultContext, setRecorder } from "./core/context.js";
 import { precheck as pre } from "./adapters/standalone/precheck.js";
 import * as runtime from "./adapters/standalone/runtime.js";
 import * as frame from "./adapters/standalone/frame.js";
@@ -146,6 +148,12 @@ Plot.prototype.show = guard(Plot.prototype.show);
 // the GPU producers. Toggle pair, matching fill()/noFill(), field()/noField().
 export const cpuGeometry = guard(() => _setUseCpuWalk(true));
 export const noCpuGeometry = guard(() => _setUseCpuWalk(false));
+
+// The public functions above are the default context's own wrappers (each
+// module exports one, bound to `defaultContext`), so the guarded export list
+// and its declared signatures are exactly what they were before the context
+// was threaded through. Building a second instance's surface is step 5.
+setRecorder(defaultContext, recorder);
 
 import { initStandaloneTargetRuntime } from "./adapters/standalone/target.js";
 import { initStandaloneCompositorRuntime } from "./adapters/standalone/compositor.js";
