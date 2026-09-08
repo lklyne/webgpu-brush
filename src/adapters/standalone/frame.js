@@ -4,7 +4,7 @@
 
 import { isCanvasReady } from "../../core/target.js";
 import { flushActiveComposite } from "../../core/color.js";
-import { defaultContext } from "../../core/context.js";
+import { defaultContext, registerContextInit } from "../../core/context.js";
 import { setRuntime } from "../../core/runtime.js";
 import { flushWalkBatch } from "../../stroke/gl_draw.js";
 
@@ -30,7 +30,9 @@ function onDraw() {
   });
 }
 
-setRuntime({ notifyDraw: onDraw });
+// The reminder is a property of the page, not of a painting, but the hook
+// is a context field: install it on every context.
+registerContextInit((ctx) => setRuntime(ctx, { notifyDraw: onDraw }));
 
 /**
  * @param {import("../../core/context.js").BrushContext} ctx

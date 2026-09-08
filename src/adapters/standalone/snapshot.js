@@ -20,7 +20,7 @@
 // bound silently drops the OLDEST live snapshot and reuses its texture.
 // =============================================================================
 
-import { Renderer, isCanvasReady } from "../../core/target.js";
+import { isCanvasReady } from "../../core/target.js";
 import { flushActiveComposite } from "../../core/color.js";
 import { defaultContext } from "../../core/context.js";
 
@@ -37,7 +37,7 @@ const spare = [];
 
 function requireHost() {
   isCanvasReady();
-  const host = Renderer.host;
+  const host = defaultContext.renderer.host;
   if (!host) {
     throw new Error("brush-gpu: renderer has no WebGPU host — was a target loaded?");
   }

@@ -13,7 +13,7 @@
  */
 
 // Core imports
-import { defaultContext } from "../core/context.js";
+import { defaultContext, registerContextInit } from "../core/context.js";
 import {
   constrain,
   map,
@@ -37,7 +37,11 @@ initFillComposite(); // Register the fill composite with the core color module
 // Fill State and helpers
 // =============================================================================
 
-// Vertex cap for grow() — set to 0 or false to disable
+// Vertex cap for grow() — set to 0 or false to disable. Still module-level,
+// with the fill-id/op counters and the gaussian pools below: they are the
+// randomness scope, which moves onto the context with the seed. The oracle in
+// test/webgpu/grow-cpu-ref.js injects all of them as free variables of the
+// extracted trim()/grow() source.
 const GROW_MAX_VERTS = 2024;
 let GROW_CAP;
 
@@ -48,18 +52,43 @@ let _growMods = [];
 let _growDirs = [];
 
 /**
- * Global fill state settings.
+ * A context's fill state.
+ * @returns {object} The `ctx.state.fill` slice.
  */
-defaultContext.state.fill = {
-  opacity: 150,
-  bleed_strength: 0.07,
-  texture_strength: 0.8,
-  border_strength: 0.5,
-  direction: "out",
-  angle: null,
-  scatter: true,
-  isActive: false,
-};
+export function createFillState() {
+  return {
+    opacity: 150,
+    bleed_strength: 0.07,
+    texture_strength: 0.8,
+    border_strength: 0.5,
+    direction: "out",
+    angle: null,
+    scatter: true,
+    isActive: false,
+  };
+}
+
+/**
+ * The in-flight fill: the polygon createFill() is filling and its bounding
+ * box, both read by FillPoly's constructor and scatter(). One per context.
+ *
+ * @returns {object} The `ctx.fillCursor` object.
+ */
+function createFillCursor() {
+  return {
+    /** @type {Polygon|undefined} the polygon being filled */
+    polygon: undefined,
+    bbMinX: Infinity,
+    bbMinY: Infinity,
+    bbMaxX: -Infinity,
+    bbMaxY: -Infinity,
+  };
+}
+
+registerContextInit((ctx) => {
+  ctx.state.fill = createFillState();
+  ctx.fillCursor = createFillCursor();
+});
 
 // Cache the current state
 /** @param {import("../core/context.js").BrushContext} ctx */
@@ -121,7 +150,7 @@ export function _fillBleed(ctx, _i, _direction = "out", _angle = null) {
   const state = ctx.state.fill;
   state.bleed_strength = constrain(_i, 0, 1);
   state.direction = _direction;
-  state.angle = _angle == null ? null : toDegreesSigned(_angle);
+  state.angle = _angle == null ? null : toDegreesSigned(ctx, _angle);
 }
 
 /**
@@ -168,9 +197,6 @@ export function _noFill(ctx) {
 // ---------------------------------------------------------------------------
 // Fill Manager Functions
 // ---------------------------------------------------------------------------
-
-let _polygon;
-let _bbMinX, _bbMinY, _bbMaxX, _bbMaxY;
 
 // Hash-stream scope counters. Each createFill() gets a fresh fill id;
 // each randomized FillPoly operation (constructor setup, trim, grow, scatter,
@@ -266,13 +292,14 @@ export function createFill(ctx, polygon) {
     );
   }
   if (Stats.enabled) Stats.beginFill();
-  _polygon = polygon;
-  _bbMinX = Infinity; _bbMinY = Infinity; _bbMaxX = -Infinity; _bbMaxY = -Infinity;
+  const fc = ctx.fillCursor;
+  fc.polygon = polygon;
+  fc.bbMinX = Infinity; fc.bbMinY = Infinity; fc.bbMaxX = -Infinity; fc.bbMaxY = -Infinity;
   for (const [a] of polygon.sides) {
-    if (a.x < _bbMinX) _bbMinX = a.x;
-    if (a.x > _bbMaxX) _bbMaxX = a.x;
-    if (a.y < _bbMinY) _bbMinY = a.y;
-    if (a.y > _bbMaxY) _bbMaxY = a.y;
+    if (a.x < fc.bbMinX) fc.bbMinX = a.x;
+    if (a.x > fc.bbMaxX) fc.bbMaxX = a.x;
+    if (a.y < fc.bbMinY) fc.bbMinY = a.y;
+    if (a.y > fc.bbMaxY) fc.bbMaxY = a.y;
   }
   _fillId++;
   _fillOp = 0;
@@ -365,7 +392,7 @@ class FillPoly {
       // Calculate directions — inline ray-polygon intersection to avoid
       // O(n) overhead of Polygon.intersect() (cache-key string building,
       // object allocation, intersectLines wrapper) per edge.
-      const polySides = _polygon.sides;
+      const polySides = ctx.fillCursor.polygon.sides;
       this.dir = Array(v.length);
       for (let i = 0; i < rayCalc.length; i++) {
         const rc = rayCalc[i];
@@ -484,7 +511,8 @@ class FillPoly {
       sm = [],
       sd = [];
     const mid = this.midP;
-    const sides = _polygon.sides;
+    const fc = ctx.fillCursor;
+    const sides = fc.polygon.sides;
 
     const salt = nextOpSalt();
     for (let i = 0; i < keep; i++) {
@@ -492,7 +520,7 @@ class FillPoly {
       let p = this.v[j];
       let outside = false;
       // Bounding box reject — vertex outside AABB is definitely outside polygon
-      if (p.x < _bbMinX || p.x > _bbMaxX || p.y < _bbMinY || p.y > _bbMaxY) {
+      if (p.x < fc.bbMinX || p.x > fc.bbMaxX || p.y < fc.bbMinY || p.y > fc.bbMaxY) {
         outside = true;
       } else {
         let crossings = 0;
@@ -920,7 +948,8 @@ function _tryGpuFill(ctx, poly, matrix, size) {
   // The gaussian pools are DATA (drawn by the seeded sequential generator at
   // seed() time); the shader only hashes an INDEX into them.
   driver.uploadPoolsIfStale(_poolsVersion, _gaussians[0], _gaussians[1]);
-  const polyVerts = _polygon.vertices;
+  const fc = ctx.fillCursor;
+  const polyVerts = fc.polygon.vertices;
   const rootVerts = new Float32Array(2 * n);
   for (let i = 0; i < n; i++) {
     rootVerts[2 * i] = poly.v[i].x;
@@ -939,7 +968,7 @@ function _tryGpuFill(ctx, poly, matrix, size) {
     sizeX: poly.sizeX,
     sizeY: poly.sizeY,
     polygonVerts: sides,
-    polygonBBox: { minX: _bbMinX, minY: _bbMinY, maxX: _bbMaxX, maxY: _bbMaxY },
+    polygonBBox: { minX: fc.bbMinX, minY: fc.bbMinY, maxX: fc.bbMaxX, maxY: fc.bbMaxY },
     fillId: _fillId,
     opCounter: _fillOp,
     bleedStrength: ctx.state.fill.bleed_strength,

@@ -434,7 +434,7 @@ export function walkEligible(param) {
  */
 function ensureEnvironment(ctx, gaussPool) {
   const seed = ctx.rng.seedU32();
-  const fieldEpoch = _fieldEpochNow();
+  const fieldEpoch = _fieldEpochNow(ctx);
   const field = _fieldSnapshot(ctx);
   const fieldName = field?.name ?? null;
   if (

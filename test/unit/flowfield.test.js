@@ -9,50 +9,14 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // ---- Hoisted mock state ----
-const { currentAngleMode, mockState, plotInstances, canvasSize } = vi.hoisted(
-  () => ({
-    currentAngleMode: { value: "radians" },
-    mockState: {},
-    plotInstances: [],
-    // Mutable so the field-grid tests can swap the target size the way a
-    // second createCanvas() would.
-    canvasSize: { width: 800, height: 600 },
-  }),
-);
+const { currentAngleMode, plotInstances } = vi.hoisted(() => ({
+  currentAngleMode: { value: "radians" },
+  plotInstances: [],
+}));
 
 vi.mock("../../src/core/color.js", () => ({
-  Mix: {},
-  State: mockState,
   isCanvasReady: () => {},
   isMixReady: () => {},
-}));
-
-vi.mock("../../src/core/runtime.js", () => ({
-  usesRadians: () => currentAngleMode.value === "radians",
-  fromDegrees: (angle) =>
-    currentAngleMode.value === "radians" ? (angle * Math.PI) / 180 : angle,
-  createColor: () => ({}),
-  getAffineMatrix: () => ({ a: 1, b: 0, c: 0, d: 1, x: 0, y: 0 }),
-  setRuntime: () => {},
-}));
-
-vi.mock("../../src/core/target.js", () => ({
-  Renderer: {
-    angleMode: () => currentAngleMode.value,
-    RADIANS: "radians",
-    DEGREES: "degrees",
-    _renderer: {
-      uModelMatrix: {
-        mat4: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
-      },
-    },
-  },
-  get Cwidth() {
-    return canvasSize.width;
-  },
-  get Cheight() {
-    return canvasSize.height;
-  },
 }));
 
 vi.mock("../../src/stroke/stroke.js", () => ({
@@ -86,16 +50,38 @@ import {
   noField,
   isFieldReady as isFieldReadyCtx,
   listFields,
-  _onTargetResized,
+  _onTargetResized as _onTargetResizedCtx,
   _fieldSnapshot as _fieldSnapshotCtx,
-  _fieldEpochNow,
+  _fieldEpochNow as _fieldEpochNowCtx,
 } from "../../src/core/flowfield.js";
 import { defaultContext } from "../../src/core/context.js";
 
-// isFieldReady() / _fieldSnapshot() take the drawing context first
-// (core/context.js).
+// The state, the target and the host hooks all live on the context now, so
+// the suite drives it directly instead of mocking core/target.js and
+// core/runtime.js away. Mutable size: the field-grid tests swap the target
+// the way a second createCanvas() would.
+const canvasSize = { width: 800, height: 600 };
+Object.defineProperties(defaultContext, {
+  width: { get: () => canvasSize.width },
+  height: { get: () => canvasSize.height },
+});
+Object.assign(defaultContext, {
+  renderer: {},
+  density: 1,
+  usesRadians: () => currentAngleMode.value === "radians",
+  fromDegrees: (angle) =>
+    currentAngleMode.value === "radians" ? (angle * Math.PI) / 180 : angle,
+  createColor: () => ({}),
+  getAffineMatrix: () => ({ a: 1, b: 0, c: 0, d: 1, x: 0, y: 0 }),
+});
+const mockState = defaultContext.state;
+
+// isFieldReady() / _fieldSnapshot() / _onTargetResized() / _fieldEpochNow()
+// take the drawing context first (core/context.js).
 const isFieldReady = () => isFieldReadyCtx(defaultContext);
 const _fieldSnapshot = () => _fieldSnapshotCtx(defaultContext);
+const _onTargetResized = (w, h) => _onTargetResizedCtx(defaultContext, w, h);
+const _fieldEpochNow = () => _fieldEpochNowCtx(defaultContext);
 
 // Canvas is 800×600 (mocked in target.js).
 // isInCanvas margin = 0.5

@@ -2,32 +2,21 @@
 // Runtime Hooks
 // =============================================================================
 
-const identityMatrix = {
-  a: 1,
-  b: 0,
-  c: 0,
-  d: 1,
-  x: 0,
-  y: 0,
-};
-
-export let usesRadians = () => false;
-export let fromDegrees = (angle) => angle;
-export let createColor = () => {
-  throw new Error("No runtime color adapter registered.");
-};
-export let getAffineMatrix = () => identityMatrix;
-export let notifyDraw = () => {};
-
 /**
- * Registers or updates host-runtime hooks used by core modules.
+ * Registers or updates host-runtime hooks on a drawing context.
  *
+ * The hooks are fields on the context, not module slots, so two contexts can
+ * run against different angle modes and transforms. Their neutral defaults
+ * live in `createContext()` (core/context.js), which is what core does when
+ * no adapter has registered.
+ *
+ * @param {import("./context.js").BrushContext} ctx
  * @param {object} hooks
  */
-export function setRuntime(hooks) {
-  if (hooks.usesRadians) usesRadians = hooks.usesRadians;
-  if (hooks.fromDegrees) fromDegrees = hooks.fromDegrees;
-  if (hooks.createColor) createColor = hooks.createColor;
-  if (hooks.getAffineMatrix) getAffineMatrix = hooks.getAffineMatrix;
-  if (hooks.notifyDraw) notifyDraw = hooks.notifyDraw;
+export function setRuntime(ctx, hooks) {
+  if (hooks.usesRadians) ctx.usesRadians = hooks.usesRadians;
+  if (hooks.fromDegrees) ctx.fromDegrees = hooks.fromDegrees;
+  if (hooks.createColor) ctx.createColor = hooks.createColor;
+  if (hooks.getAffineMatrix) ctx.getAffineMatrix = hooks.getAffineMatrix;
+  if (hooks.notifyDraw) ctx.notifyDraw = hooks.notifyDraw;
 }

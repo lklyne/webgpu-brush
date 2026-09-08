@@ -1,5 +1,4 @@
 import * as Color from "../core/color.js";
-import { createFramebuffer } from "../core/compositor_runtime.js";
 import { flushWalkBatch } from "./gl_draw.js";
 
 let isStrokeCompositeRegistered = false;
@@ -37,9 +36,9 @@ function needsStrokeMask(Renderer, Cwidth, Cheight, Density) {
  * canvas dimensions. Stroke stamps are rendered into this mask in WebGL before
  * being blended into the main target.
  *
- * @param {import("../core/context.js").BrushContext} _ctx - Unused here; the
- *   compositor hooks take the drawing context first so the ones that need it
- *   (getShaderMask, flushPending) can be called uniformly.
+ * @param {import("../core/context.js").BrushContext} ctx - Supplies the host
+ *   compositor hooks; the drawing context comes first on every compositor hook
+ *   so they can be called uniformly.
  * @param {object} Renderer - Active host renderer.
  * @param {number} Cwidth - Target width in sketch units.
  * @param {number} Cheight - Target height in sketch units.
@@ -47,7 +46,7 @@ function needsStrokeMask(Renderer, Cwidth, Cheight, Density) {
  * @returns {object} The framebuffer used as stroke mask.
  */
 export function ensureStrokeCompositeResources(
-  _ctx,
+  ctx,
   Renderer,
   Cwidth,
   Cheight,
@@ -55,7 +54,7 @@ export function ensureStrokeCompositeResources(
 ) {
   if (needsStrokeMask(Renderer, Cwidth, Cheight, Density)) {
     if (Renderer.glMask?.remove) Renderer.glMask.remove();
-    Renderer.glMask = createFramebuffer(Renderer, {
+    Renderer.glMask = ctx.compositor.createFramebuffer(Renderer, {
       width: Cwidth,
       height: Cheight,
       density: Density,

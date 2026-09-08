@@ -1,4 +1,4 @@
-import { defaultContext } from "../core/context.js";
+import { defaultContext, registerContextInit } from "../core/context.js";
 import { toDegreesSigned, map, STREAM } from "../core/utils.js";
 import { Polygon } from "../core/polygon.js";
 import { Plot } from "../core/plot.js";
@@ -12,13 +12,41 @@ import { BrushState, BrushSetState, _set, _line } from "../stroke/stroke.js";
 // Hatch State
 // ---------------------------------------------------------------------------
 
-defaultContext.state.hatch = {
-  isActive: false,
-  dist: 5,
-  angle: 45,
-  options: {},
-  hBrush: false,
-};
+/**
+ * A context's hatch state.
+ * @returns {object} The `ctx.state.hatch` slice.
+ */
+export function createHatchState() {
+  return {
+    isActive: false,
+    dist: 5,
+    angle: 45,
+    options: {},
+    hBrush: false,
+  };
+}
+
+/**
+ * Reusable scanline buffers for scanlineHatch(), one set per context so two
+ * paintings cannot hatch into each other's scratch. Grown on demand.
+ *
+ * @returns {object} The `ctx.hatchScratch` object.
+ */
+function createHatchScratch() {
+  return {
+    sRotX: new Float64Array(256),
+    sRotY: new Float64Array(256),
+    eX1: new Float64Array(512),
+    eY1: new Float64Array(512),
+    eX2: new Float64Array(512),
+    eY2: new Float64Array(512),
+  };
+}
+
+registerContextInit((ctx) => {
+  ctx.state.hatch = createHatchState();
+  ctx.hatchScratch = createHatchScratch();
+});
 
 // Hash-stream scope counter: one id per getHatchLines() invocation.
 let _hatchId = 0;
@@ -82,7 +110,7 @@ export function _hatch(
   let s = ctx.state.hatch;
   s.isActive = true;
   s.dist = dist;
-  s.angle = toDegreesSigned(angle);
+  s.angle = toDegreesSigned(ctx, angle);
   s.options = options;
 }
 
@@ -136,22 +164,16 @@ export function _noHatch(ctx) {
  * intersecting horizontal scanlines against its edges, and rotating the
  * resulting segments back into canvas space.
  *
- * @param {Polygon} polygon
+ * @param {import("../core/context.js").BrushContext} ctx
+ * @param {Polygon} polygons
  * @param {number} angle Hatch angle in degrees.
  * @param {number} dist Base scanline spacing.
  * @param {number} gradient Multiplicative spacing growth per scanline.
  * @returns {{scanY:number, x1:number, y1:number, x2:number, y2:number}[]}
  */
-// Reusable buffers for scanlineHatch to avoid per-call allocations
-let _sRotX = new Float64Array(256);
-let _sRotY = new Float64Array(256);
-let _eX1 = new Float64Array(512);
-let _eY1 = new Float64Array(512);
-let _eX2 = new Float64Array(512);
-let _eY2 = new Float64Array(512);
-
-function scanlineHatch(polygons, angle, dist, gradient) {
+function scanlineHatch(ctx, polygons, angle, dist, gradient) {
   if (!Array.isArray(polygons)) polygons = [polygons];
+  const scratch = ctx.hatchScratch;
 
   const rad = (angle * Math.PI) / 180;
   const cosA = Math.cos(rad),
@@ -164,9 +186,9 @@ function scanlineHatch(polygons, angle, dist, gradient) {
   if (totalVerts === 0) return [];
 
   // Grow reusable vertex buffers if needed
-  if (_sRotX.length < totalVerts) {
-    _sRotX = new Float64Array(totalVerts * 2);
-    _sRotY = new Float64Array(totalVerts * 2);
+  if (scratch.sRotX.length < totalVerts) {
+    scratch.sRotX = new Float64Array(totalVerts * 2);
+    scratch.sRotY = new Float64Array(totalVerts * 2);
   }
 
   // Rotate all contour vertices into scan space; track the combined Y extent
@@ -174,11 +196,11 @@ function scanlineHatch(polygons, angle, dist, gradient) {
     maxY = -Infinity;
   let eLen = 0;
   let vLen = 0;
-  if (_eX1.length < totalVerts) {
-    _eX1 = new Float64Array(totalVerts * 2);
-    _eY1 = new Float64Array(totalVerts * 2);
-    _eX2 = new Float64Array(totalVerts * 2);
-    _eY2 = new Float64Array(totalVerts * 2);
+  if (scratch.eX1.length < totalVerts) {
+    scratch.eX1 = new Float64Array(totalVerts * 2);
+    scratch.eY1 = new Float64Array(totalVerts * 2);
+    scratch.eX2 = new Float64Array(totalVerts * 2);
+    scratch.eY2 = new Float64Array(totalVerts * 2);
   }
 
   // Build one flat edge list across all contours so crossings pair globally.
@@ -190,10 +212,10 @@ function scanlineHatch(polygons, angle, dist, gradient) {
     for (let i = 0; i < n; i++) {
       const x = verts[i][0],
         y = verts[i][1];
-      _sRotX[vLen] = x * cosA - y * sinA;
-      _sRotY[vLen] = x * sinA + y * cosA;
-      if (_sRotY[vLen] < minY) minY = _sRotY[vLen];
-      if (_sRotY[vLen] > maxY) maxY = _sRotY[vLen];
+      scratch.sRotX[vLen] = x * cosA - y * sinA;
+      scratch.sRotY[vLen] = x * sinA + y * cosA;
+      if (scratch.sRotY[vLen] < minY) minY = scratch.sRotY[vLen];
+      if (scratch.sRotY[vLen] > maxY) maxY = scratch.sRotY[vLen];
       vLen++;
     }
 
@@ -201,12 +223,12 @@ function scanlineHatch(polygons, angle, dist, gradient) {
       const j = i + 1 < n ? i + 1 : 0;
       const ai = base + i;
       const bj = base + j;
-      const ay = _sRotY[ai], by = _sRotY[bj];
+      const ay = scratch.sRotY[ai], by = scratch.sRotY[bj];
       if (ay !== by) {
-        _eX1[eLen] = _sRotX[ai];
-        _eY1[eLen] = ay;
-        _eX2[eLen] = _sRotX[bj];
-        _eY2[eLen] = by;
+        scratch.eX1[eLen] = scratch.sRotX[ai];
+        scratch.eY1[eLen] = ay;
+        scratch.eX2[eLen] = scratch.sRotX[bj];
+        scratch.eY2[eLen] = by;
         eLen++;
       }
     }
@@ -221,10 +243,10 @@ function scanlineHatch(polygons, angle, dist, gradient) {
   while (Y < maxY) {
     cx.length = 0;
     for (let i = 0; i < eLen; i++) {
-      const y1 = _eY1[i], y2 = _eY2[i];
+      const y1 = scratch.eY1[i], y2 = scratch.eY2[i];
       // Simplified scanline crossing test: (y1<=Y) XOR (y2<=Y)
       if ((y1 <= Y) !== (y2 <= Y))
-        cx.push(_eX1[i] + ((Y - y1) / (y2 - y1)) * (_eX2[i] - _eX1[i]));
+        cx.push(scratch.eX1[i] + ((Y - y1) / (y2 - y1)) * (scratch.eX2[i] - scratch.eX1[i]));
     }
     // Fast path for the common case of exactly 2 crossings (convex polygon)
     const cxLen = cx.length;
@@ -263,14 +285,15 @@ function scanlineHatch(polygons, angle, dist, gradient) {
  * Segments are sorted in scanline traversal order so downstream rendering can
  * optionally connect them into a continuous serpentine path.
  *
+ * @param {import("../core/context.js").BrushContext} ctx
  * @param {Polygon|Polygon[]} polygons
  * @param {number} dist
  * @param {number} angle
  * @param {number} gradient
  * @returns {{scanY:number, x1:number, y1:number, x2:number, y2:number}[]}
  */
-function getHatchSegments(polygons, dist, angle, gradient) {
-  const segs = scanlineHatch(polygons, angle, dist, gradient);
+function getHatchSegments(ctx, polygons, dist, angle, gradient) {
+  const segs = scanlineHatch(ctx, polygons, angle, dist, gradient);
   segs.sort((a, b) => (a.scanY === b.scanY ? a.x1 - b.x1 : a.scanY - b.scanY));
   return segs;
 }
@@ -305,7 +328,7 @@ function getActiveHatchConfig(ctx, polygons) {
   const angle = ((hatchState.angle % 180) + 180) % 180;
   const options = hatchState.options;
   const gradient = options.gradient ? map(options.gradient, 0, 1, 1, 1.1, true) : 1;
-  const segs = getHatchSegments(polygons, dist, angle, gradient);
+  const segs = getHatchSegments(ctx, polygons, dist, angle, gradient);
   return { dist, options, segs };
 }
 

@@ -1,4 +1,9 @@
 /**
+ * A context's fill state.
+ * @returns {object} The `ctx.state.fill` slice.
+ */
+export function createFillState(): object;
+/**
  * Sets the fill color and opacity for subsequent drawing operations.
  * @param {number|string|Color} a - Either the red component, a CSS color string, or a Color object.
  * @param {number} [b] - The green component or the opacity if using grayscale.

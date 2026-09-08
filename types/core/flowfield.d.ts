@@ -15,10 +15,11 @@ export function isFieldReady(ctx: import("./context.js").BrushContext): void;
  * A reload at the same size changes nothing, and in particular draws nothing
  * from the random stream.
  *
+ * @param {import("./context.js").BrushContext} ctx
  * @param {number} width - The new logical target width.
  * @param {number} height - The new logical target height.
  */
-export function _onTargetResized(width: number, height: number): void;
+export function _onTargetResized(ctx: import("./context.js").BrushContext, width: number, height: number): void;
 /**
  * Regenerates the current vector field using its associated generator function.
  * @param {number} [t=0] - An optional time parameter that can affect field generation.
@@ -45,11 +46,15 @@ export function _fieldSnapshot(ctx: import("./context.js").BrushContext): {
     resolution: any;
     leftX: any;
     topY: any;
-    epoch: number;
+    epoch: any;
     name: any;
 };
-/** Current field epoch — bumps whenever any field content may have changed. */
-export function _fieldEpochNow(): number;
+/**
+ * Current field epoch — bumps whenever any field content may have changed.
+ *
+ * @param {import("./context.js").BrushContext} ctx
+ */
+export function _fieldEpochNow(ctx: import("./context.js").BrushContext): any;
 /**
  * Throws if no field is registered under `name`.
  * @param {string} name - Field name.

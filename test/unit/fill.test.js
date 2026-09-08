@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // W3: Mix.ctx is the GPU fill surface (fill/composite.js), not a
 // CanvasRenderingContext2D — mock its recorder API instead.
-const { blend, currentAngleMode, mockCtx, mockState } = vi.hoisted(() => ({
+const { blend, currentAngleMode, mockCtx } = vi.hoisted(() => ({
   blend: vi.fn(),
   currentAngleMode: { value: "degrees" },
   mockCtx: {
@@ -12,31 +12,10 @@ const { blend, currentAngleMode, mockCtx, mockState } = vi.hoisted(() => ({
     clear: vi.fn(),
     flush: vi.fn(),
   },
-  mockState: {},
 }));
 
 vi.mock("../../src/core/color.js", () => ({
-  Mix: {
-    blend,
-    ctx: mockCtx,
-    isBrush: true,
-    justChanged: false,
-  },
-  State: mockState,
   registerFillComposite: () => {},
-}));
-
-vi.mock("../../src/core/target.js", () => ({
-  Renderer: {
-    color: () => ({
-      _getBlue: () => 64,
-      _getGreen: () => 128,
-      _getRed: () => 255,
-    }),
-  },
-  Cwidth: 800,
-  Cheight: 600,
-  Density: 1,
 }));
 
 vi.mock("../../src/core/flowfield.js", () => ({
@@ -59,24 +38,36 @@ vi.mock("../../src/core/plot.js", () => ({
   Plot: class Plot {},
 }));
 
-vi.mock("../../src/core/runtime.js", () => ({
-  usesRadians: () => currentAngleMode.value === "radians",
-  createColor: (r, g, b) => ({
-    r: typeof r === 'string' ? 255 : r,
-    g: g ?? r ?? 0,
-    b: b ?? r ?? 0,
-    _getRed: function() { return this.r; },
-    _getGreen: function() { return this.g; },
-    _getBlue: function() { return this.b; },
-  }),
-  getAffineMatrix: () => ({
-    a: 1, b: 0, c: 0, d: 1, x: 0, y: 0,
-  }),
-}));
-
 import { createFill as createFillCtx, fill, fillBleed, noFill } from "../../src/fill/fill.js";
 import { defaultContext } from "../../src/core/context.js";
 import { seed } from "../../src/core/utils.js";
+
+// The compositor, the state, the target and the host hooks are context
+// fields now, so the suite drives the default context directly.
+Object.assign(defaultContext, {
+  mix: { blend, ctx: mockCtx, isBrush: true, justChanged: false },
+  renderer: {
+    color: () => ({
+      _getBlue: () => 64,
+      _getGreen: () => 128,
+      _getRed: () => 255,
+    }),
+  },
+  width: 800,
+  height: 600,
+  density: 1,
+  usesRadians: () => currentAngleMode.value === "radians",
+  createColor: (r, g, b) => ({
+    r: typeof r === "string" ? 255 : r,
+    g: g ?? r ?? 0,
+    b: b ?? r ?? 0,
+    _getRed: function () { return this.r; },
+    _getGreen: function () { return this.g; },
+    _getBlue: function () { return this.b; },
+  }),
+  getAffineMatrix: () => ({ a: 1, b: 0, c: 0, d: 1, x: 0, y: 0 }),
+});
+const mockState = defaultContext.state;
 
 // createFill() takes the drawing context first (core/context.js).
 const createFill = (polygon) => createFillCtx(defaultContext, polygon);

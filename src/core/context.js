@@ -3,28 +3,42 @@
 // =============================================================================
 /**
  * `ctx` — the object every internal drawing function takes as its first
- * argument.
+ * argument, and the object that OWNS the library's mutable drawing state.
  *
- * Right now it is a FACADE: it owns nothing. Every accessor reads straight
- * through to the module-level singletons that still hold the state — `State`
- * and `Mix` in core/color.js, the live target bindings in core/target.js, the
- * runtime hook table in core/runtime.js, the seeded generators in
- * core/utils.js, and (installed by the host adapter) the deferred-call
- * recorder. The value of the indirection is the READ SITES: once every
- * internal function reads `ctx.state.fill` instead of `State.fill`, the state
- * itself can move onto the context without touching a single read again.
+ * A context holds the brush state slices, the compositor (`mix`), the active
+ * target (`width` / `height` / `density` / `renderer`), the host hook tables,
+ * the push/pop stack, the flow-field grids and every in-flight drawing cursor.
+ * Two contexts therefore paint independently.
  *
- * Every accessor is a getter or a forwarding call, never a copied reference,
- * for two reasons: the target bindings and the runtime hooks are reassignable
- * `let`s whose current value must be read at call time, and a partially
- * mocked module (the unit suites mock core/color.js, core/target.js,
- * core/utils.js) is then only touched for what a caller actually uses.
+ * `ctx.rng` is still a facade over the module-level generators in
+ * core/utils.js: seeds, counters and gaussian pools have not moved yet, so
+ * two contexts share one random stream.
+ *
+ * ## How a context is assembled
+ *
+ * Core cannot import the modules that own the individual slices — stroke,
+ * fill, wash, hatch, mass and flowfield all import core — so those modules
+ * REGISTER an initializer here at import time (`registerContextInit`) and
+ * `createContext()` runs the registered set. Registering also runs the
+ * initializer against `defaultContext`, which exists before any of them are
+ * imported; that is exactly what the old `State.stroke = {...}` bolt-on at
+ * module scope did, minus the shared object.
+ *
+ * A context created while only part of the library has been imported gets
+ * only the slices of the modules actually in the graph. The unit suites rely
+ * on that: they mock whole modules away.
  */
 
-import * as color from "./color.js";
-import * as target from "./target.js";
-import * as runtime from "./runtime.js";
 import * as utils from "./utils.js";
+
+const identityMatrix = {
+  a: 1,
+  b: 0,
+  c: 0,
+  d: 1,
+  x: 0,
+  y: 0,
+};
 
 /**
  * Seeded randomness, in one place. `noise` / `noise2` are reassigned by
@@ -55,19 +69,21 @@ import * as utils from "./utils.js";
  *
  * @typedef {object} BrushContext
  * @property {object} state Brush state slices (stroke, fill, wash, hatch,
- *   mass, field).
- * @property {object} mix Compositor / blending object.
+ *   mass, field), each installed by its owning module.
+ * @property {object|null} mix Compositor / blending object (core/color.js).
  * @property {number} width Logical target width.
  * @property {number} height Logical target height.
  * @property {number} density Target pixel density.
  * @property {object} renderer Active renderer (host attached).
- * @property {BrushRng} rng Seeded randomness.
+ * @property {BrushRng} rng Seeded randomness (still module-global).
  * @property {() => boolean} usesRadians True when the host angle mode is radians.
  * @property {(angle: number) => number} fromDegrees Degrees → host angle units.
  * @property {(...args: unknown[]) => object} createColor Host color factory.
  * @property {() => {a:number,b:number,c:number,d:number,x:number,y:number}} getAffineMatrix
  *   Current host transform.
  * @property {() => void} notifyDraw Tells the host a draw call happened.
+ * @property {object} compositor Host compositor hooks (core/compositor_runtime.js).
+ * @property {object[]} stateStack push()/pop() brush-state stack (core/save.js).
  * @property {object|null} recorder Host deferred-call recorder, or null.
  */
 
@@ -128,43 +144,52 @@ function createRng() {
   };
 }
 
+/** @type {Array<(ctx: BrushContext) => void>} */
+const initializers = [];
+
 /**
- * Creates a drawing context.
- *
- * Every context created today is a view onto the same singletons, so calling
- * this twice does NOT give two independent paintings — it gives two handles
- * onto one. Ownership moves here in later steps.
+ * Creates a drawing context that owns its own state.
  *
  * @returns {BrushContext}
  */
 export function createContext() {
-  return {
-    get state() {
-      return color.State;
-    },
-    get mix() {
-      return color.Mix;
-    },
-    get width() {
-      return target.Cwidth;
-    },
-    get height() {
-      return target.Cheight;
-    },
-    get density() {
-      return target.Density;
-    },
-    get renderer() {
-      return target.Renderer;
-    },
+  /** @type {BrushContext} */
+  const ctx = {
+    // Brush state. Slices are added by their owning modules.
+    state: {},
+    mix: null,
+
+    // Active target. Written by the host adapter through setTarget().
+    width: undefined,
+    height: undefined,
+    density: undefined,
+    renderer: undefined,
+
+    // Seeded randomness. Still one module-global stream behind the facade.
     rng: createRng(),
-    usesRadians: () => runtime.usesRadians(),
-    fromDegrees: (angle) => runtime.fromDegrees(angle),
-    createColor: (...args) => runtime.createColor(...args),
-    getAffineMatrix: () => runtime.getAffineMatrix(),
-    notifyDraw: () => runtime.notifyDraw(),
+
+    // Host runtime hooks. These neutral defaults are what core does with no
+    // adapter registered; setRuntime() (core/runtime.js) replaces them.
+    usesRadians: () => false,
+    fromDegrees: (angle) => angle,
+    createColor: () => {
+      throw new Error("No runtime color adapter registered.");
+    },
+    getAffineMatrix: () => identityMatrix,
+    notifyDraw: () => {},
+
+    // Host compositor hooks, installed by core/compositor_runtime.js.
+    compositor: undefined,
+
+    // push()/pop(). A stack, not a slot: applyShader() nests a push/pop pair
+    // inside a draw, so a flat object would be overwritten mid-stroke.
+    stateStack: [],
+
+    // Host deferred-call recorder, installed by the standalone entry.
     recorder: null,
   };
+  for (const init of initializers) init(ctx);
+  return ctx;
 }
 
 /**
@@ -173,6 +198,21 @@ export function createContext() {
  * @type {BrushContext}
  */
 export const defaultContext = createContext();
+
+/**
+ * Registers a per-context initializer.
+ *
+ * Called at import time by every module that owns a piece of drawing state.
+ * The initializer runs for each context built from here on, and immediately
+ * against `defaultContext` — which is created before those modules load, so
+ * it would otherwise miss everything registered after it.
+ *
+ * @param {(ctx: BrushContext) => void} init
+ */
+export function registerContextInit(init) {
+  initializers.push(init);
+  init(defaultContext);
+}
 
 /**
  * Installs the host's deferred-call recorder on a context. Core never imports

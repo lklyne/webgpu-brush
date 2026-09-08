@@ -9,40 +9,13 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // ---- Hoisted mock state (mirrors unit.test.js pattern) ----
-const { currentAngleMode, mockState } = vi.hoisted(() => ({
+const { currentAngleMode } = vi.hoisted(() => ({
   currentAngleMode: { value: "radians" },
-  mockState: {},
 }));
 
 vi.mock("../../src/core/color.js", () => ({
-  Mix: {},
-  State: mockState,
   isCanvasReady: () => {},
   isMixReady: () => {},
-}));
-
-vi.mock("../../src/core/runtime.js", () => ({
-  usesRadians: () => currentAngleMode.value === "radians",
-  fromDegrees: (angle) =>
-    currentAngleMode.value === "radians" ? (angle * Math.PI) / 180 : angle,
-  createColor: () => ({}),
-  getAffineMatrix: () => ({ a: 1, b: 0, c: 0, d: 1, x: 0, y: 0 }),
-  setRuntime: () => {},
-}));
-
-vi.mock("../../src/core/target.js", () => ({
-  Renderer: {
-    angleMode: () => currentAngleMode.value,
-    RADIANS: "radians",
-    DEGREES: "degrees",
-    _renderer: {
-      uModelMatrix: {
-        mat4: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
-      },
-    },
-  },
-  Cwidth: 800,
-  Cheight: 600,
 }));
 
 vi.mock("../../src/stroke/stroke.js", () => ({
@@ -63,6 +36,21 @@ vi.mock("../../src/core/plot.js", () => ({
 import { hatch, getHatchLines as getHatchLinesCtx, noHatch } from "../../src/hatch/hatch.js";
 import { defaultContext } from "../../src/core/context.js";
 import { seed } from "../../src/core/utils.js";
+
+// The state, the target and the host hooks are context fields now, so the
+// suite drives the default context directly.
+Object.assign(defaultContext, {
+  renderer: {},
+  width: 800,
+  height: 600,
+  density: 1,
+  usesRadians: () => currentAngleMode.value === "radians",
+  fromDegrees: (angle) =>
+    currentAngleMode.value === "radians" ? (angle * Math.PI) / 180 : angle,
+  createColor: () => ({}),
+  getAffineMatrix: () => ({ a: 1, b: 0, c: 0, d: 1, x: 0, y: 0 }),
+});
+const mockState = defaultContext.state;
 
 // getHatchLines() takes the drawing context first (core/context.js).
 const getHatchLines = (polygons) => getHatchLinesCtx(defaultContext, polygons);

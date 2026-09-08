@@ -91,7 +91,7 @@ function createFillSurface(ctx, Renderer, mask) {
       // Same padding rule as the old mask.js: stroke half-width + 1.
       // Dirty rects are tracked in FINAL device px.
       const pad = 1 + lwDevice / 2;
-      Color.Mix.markDirtyRect(ctx, mask, {
+      ctx.mix.markDirtyRect(ctx, mask, {
         minX: bounds.minX / SS - pad,
         minY: bounds.minY / SS - pad,
         maxX: bounds.maxX / SS + pad,

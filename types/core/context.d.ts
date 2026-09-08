@@ -1,13 +1,20 @@
 /**
- * Creates a drawing context.
- *
- * Every context created today is a view onto the same singletons, so calling
- * this twice does NOT give two independent paintings — it gives two handles
- * onto one. Ownership moves here in later steps.
+ * Creates a drawing context that owns its own state.
  *
  * @returns {BrushContext}
  */
 export function createContext(): BrushContext;
+/**
+ * Registers a per-context initializer.
+ *
+ * Called at import time by every module that owns a piece of drawing state.
+ * The initializer runs for each context built from here on, and immediately
+ * against `defaultContext` — which is created before those modules load, so
+ * it would otherwise miss everything registered after it.
+ *
+ * @param {(ctx: BrushContext) => void} init
+ */
+export function registerContextInit(init: (ctx: BrushContext) => void): void;
 /**
  * Installs the host's deferred-call recorder on a context. Core never imports
  * an adapter, so the adapter registers itself here instead.
@@ -99,13 +106,13 @@ export type BrushRng = {
 export type BrushContext = {
     /**
      * Brush state slices (stroke, fill, wash, hatch,
-     * mass, field).
+     * mass, field), each installed by its owning module.
      */
     state: object;
     /**
-     * Compositor / blending object.
+     * Compositor / blending object (core/color.js).
      */
-    mix: object;
+    mix: object | null;
     /**
      * Logical target width.
      */
@@ -123,7 +130,7 @@ export type BrushContext = {
      */
     renderer: object;
     /**
-     * Seeded randomness.
+     * Seeded randomness (still module-global).
      */
     rng: BrushRng;
     /**
@@ -153,6 +160,14 @@ export type BrushContext = {
      * Tells the host a draw call happened.
      */
     notifyDraw: () => void;
+    /**
+     * Host compositor hooks (core/compositor_runtime.js).
+     */
+    compositor: object;
+    /**
+     * push()/pop() brush-state stack (core/save.js).
+     */
+    stateStack: object[];
     /**
      * Host deferred-call recorder, or null.
      */

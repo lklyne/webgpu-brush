@@ -1,4 +1,3 @@
-import { usesRadians as runtimeUsesRadians } from "./runtime.js";
 
 // =============================================================================
 // Section: Randomness & Noise
@@ -418,28 +417,35 @@ export const cossin = (angle) => {
 };
 
 /**
- * Converts radians to degrees, normalized to [0,360).
+ * Radians to degrees, wrapped into [0,360). No angle mode involved.
  * @param {number} rad
  * @returns {number}
  */
-export const toDegrees = (rad, isRad = false) => {
-  if (isRad || runtimeUsesRadians()) {
-    let angle = ((rad * 180) / Math.PI) % 360;
-    return angle < 0 ? angle + 360 : angle;
-  } else {
-    return rad;
-  }
+const radToDegrees = (rad) => {
+  const angle = ((rad * 180) / Math.PI) % 360;
+  return angle < 0 ? angle + 360 : angle;
 };
+
+/**
+ * Converts radians to degrees, normalized to [0,360).
+ * The host angle mode is per-context, hence the leading `ctx`.
+ * @param {import("./context.js").BrushContext} ctx
+ * @param {number} rad
+ * @returns {number}
+ */
+export const toDegrees = (ctx, rad, isRad = false) =>
+  isRad || ctx.usesRadians() ? radToDegrees(rad) : rad;
 
 /**
  * Converts radians to degrees without wrapping the result.
  * Preserves signed angles so downstream scaling keeps its direction.
+ * @param {import("./context.js").BrushContext} ctx
  * @param {number} angle
  * @param {boolean} [isRad=false]
  * @returns {number}
  */
-export const toDegreesSigned = (angle, isRad = false) =>
-  isRad || runtimeUsesRadians()
+export const toDegreesSigned = (ctx, angle, isRad = false) =>
+  isRad || ctx.usesRadians()
     ? (angle * 180) / Math.PI
     : angle;
 
@@ -483,7 +489,7 @@ export const dist = (x1, y1, x2, y2) => Math.hypot(x2 - x1, y2 - y1);
  * @returns {number}
  */
 export const calcAngle = (x1, y1, x2, y2) =>
-  toDegrees(Math.atan2(-(y2 - y1), x2 - x1), true);
+  radToDegrees(Math.atan2(-(y2 - y1), x2 - x1));
 
 /**
  * Intersection of two line segments, or false if none.

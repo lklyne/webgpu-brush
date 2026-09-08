@@ -1595,3 +1595,154 @@ Verification (all identical to step 1): `vitest` 111/111, `pnpm build` clean
 `assert-structure --identity` PASS with geomHash `3878505443`,
 `oracle-w8.mjs` 7/7 with pixel hash `2970327761`, `oracle-grow.mjs` 8/8.
 Bundle: `dist/brush.esm.js` 233 422 → 238 897 bytes (+2.3%).
+
+### Step 3 — the state moves onto the context
+
+Step 3 of the plan's order of work: `createContext()` stops being a facade and
+starts OWNING the state. Read sites did not move — step 2 already routed every
+one of them through `ctx` — so this is still a pure refactor of the
+single-context path, and every gate number is bit-identical to step 2's.
+
+**How a context is assembled.** Core cannot import the modules that own the
+individual state slices (stroke, fill, wash, hatch, mass, flowfield all import
+core), so those modules register an initializer with
+`registerContextInit(init)` at import time and `createContext()` runs the
+registered set. Registering also runs the initializer against
+`defaultContext`, which is created before any of them are imported — exactly
+what `State.stroke = {...}` at module scope used to do, minus the shared
+object. A context built while only part of the library is in the graph gets
+only the slices of the modules that are; the unit suites depend on that.
+
+**What moved onto the context**
+
+- **`ctx.state`** — `{stroke, fill, wash, hatch, mass, field}`, each from a
+  factory in its owning module: `createStrokeState()` (stroke.js),
+  `createFillState()` (fill.js), `createWashState()` (wash.js),
+  `createHatchState()` (hatch.js), `createMassState()` (mass.js),
+  `createFieldState()` (flowfield.js). `export const State = {}` in
+  core/color.js is gone.
+- **`ctx.mix`** — `createMix()` in core/color.js; `export const Mix` is gone.
+  It owns the mask buffers, the blend-cycle flags and the cached blend color,
+  all per painting.
+- **`ctx.width` / `ctx.height` / `ctx.density` / `ctx.renderer`** — real
+  fields, written by `setTarget(ctx, {...})` (core/target.js) from the
+  standalone adapter's `applyLoadedTarget()` and `syncDensity(ctx)`. The
+  exported `let Cwidth, Cheight, Density, Renderer` live bindings are gone.
+  `Instance` was written and never read; deleted, along with the `Instance`
+  assignments in the default target hook table. The public `instance` export
+  still forwards to the adapter's no-op, so `types/index.standalone.d.ts` is
+  untouched.
+- **Runtime hooks** — `usesRadians`, `fromDegrees`, `createColor`,
+  `getAffineMatrix`, `notifyDraw` are context fields with neutral defaults set
+  in `createContext()`; `setRuntime(ctx, hooks)` installs the host's. The
+  standalone adapter installs through `registerContextInit`, so every context
+  gets them, and `initStandaloneRuntime()` keeps its signature and its
+  behavior (hooks only).
+- **Compositor hooks** — `ctx.compositor`, installed by
+  `setCompositorRuntime(ctx, hooks)`. The hooks are stateless (they take the
+  renderer they act on), so the standalone adapter installs one table on every
+  context. `stroke/composite.js` reads `createFramebuffer` off the context
+  instead of importing it.
+- **Angle mode and transforms** — `ctx.angleMode`, `ctx.transform`,
+  `ctx.transformStack` (adapters/standalone/runtime.js). The module-level
+  `currentAngleMode` / `currentTransform` / `transformStack` are gone; the
+  public `angleMode()`, `push()`, `pop()`, `translate()`, `rotate()`,
+  `scale()` keep their signatures and drive `defaultContext` until step 5.
+- **`ctx.stateStack`** — the push/pop brush-state stack (core/save.js).
+- **In-flight cursors** — `ctx.shape` (open `beginShape()` path and its
+  curvature, open `beginStroke()` plot and origin, from primitives.js;
+  `SubPath` takes its curvature as a constructor argument now),
+  `ctx.strokeCursor` (`position`, `length`, `plot`, `dir`, `cachedPlotAngle`
+  and the per-stroke `current` scratch, from stroke.js), `ctx.fillCursor`
+  (the polygon being filled and its bounding box, from fill.js),
+  `ctx.hatchScratch` (the six scanline buffers in hatch.js). Four stroke
+  helpers that read the cursor from module scope now take the context first:
+  `calculatePressure`, `simPressure`, `gauss`, `spacing`.
+- **`ctx.fields`** — the flow-field grid cache and its geometry latch:
+  `isLoaded`, `resolution`, `left_x`, `top_y`, `num_columns`, `num_rows`,
+  `gridWidth`, `gridHeight`, `epoch` (was `_fieldEpoch`), and `grids`, a Map
+  of name → generated grid. `_onTargetResized(ctx, w, h)`,
+  `_fieldEpochNow(ctx)` and `isFieldReady(ctx)` are per context.
+
+**What stayed global, and why**
+
+- **Field definitions.** `list` in flowfield.js still holds `{gen, angleMode}`
+  per name — a definition is not painting state. `addStandard()` now runs once
+  at module load instead of again inside `createField()` on every grid build
+  (step 1's note), so a `addField()` override of a standard name is no longer
+  clobbered the first time the grid is built. Each cached grid records the
+  definition object it came from, so re-registering a name invalidates it
+  without a registry of live contexts. The generators receive the pre-sized
+  grid and `ctx.rng` as arguments (`gen(t, field, rng)`), so one definition
+  serves every context; `fillField()` reads the column and row counts off the
+  grid it was handed rather than from module geometry.
+- **Brush definitions** (`list` in stroke.js), image tips (`T`), `STREAM`, the
+  trig tables, `pipeline.js`'s id map, `stroke/runtime.js`'s tip hooks and
+  `core/target.js`'s target hook table: registries and host-level tables, not
+  per-painting state. The target hook table stays global because the
+  standalone adapter still drives exactly one target — that is step 5.
+- **The CSS color parser** in adapters/standalone/runtime.js (`colorContext`):
+  a parser, one per document.
+
+**The alias story.** There are no aliases. `State`, `Mix`, `Cwidth`, `Cheight`,
+`Density`, `Renderer` and `Instance` are deleted outright, not kept as thin
+views onto `defaultContext`, because step 2 had already removed every read of
+them: after it, `State` and `Mix` were exported only from core/color.js and
+imported by nothing, and the only remaining live-binding import was
+`Renderer` in adapters/standalone/snapshot.js (now `defaultContext.renderer`).
+The one collateral signature change is `toDegrees` / `toDegreesSigned` in
+core/utils.js, which read the angle mode: they take the context first now.
+`calcAngle()` called `toDegrees(..., true)` purely for the radians→degrees
+arithmetic, so that arithmetic was split into a private `radToDegrees()` and
+`calcAngle()` needs no context.
+
+**Left for step 4** (module-level, deliberately untouched): core/utils.js's
+`rng` / `rng2` / `_seedU32` / `_seedCallbacks` / `noise` / `noise2` and the
+gaussian spare; the counters and pools keyed to them — `_strokeId` and
+`gaussians` / `_gaussPoolReady` (stroke.js), `_fillId` / `_fillOp` /
+`_gaussians` / `_poolsVersion` / `GROW_CAP` and the `_grow*` scratch arrays
+(fill.js), `_hatchId` (hatch.js); the whole of gl_draw.js's batcher state
+(`host`, the size latch, the matrix snapshot, the dirty rects, the lazy
+walker/builder/raster objects, `envState`, `pending`/`groups`/`openGroup`,
+`useCpuWalk`); the deferred recorder (`deferring`, `queue`, `armListeners`)
+and precheck.js's `shadow`; webgpu/inspect.js's hooks, stream cursors and
+capture staging; spectral.js's color memo; and the standalone adapter's
+single active target (`activeTarget`, `activeRenderer`, `activeWidth`,
+`activeHeight`, `activeDensity`, `activeReady`, `isLoaded`), snapshot.js's
+texture pool and frame.js's render-reminder flags. `_strokeId` and
+`_gaussPoolReady` are bumped and reset in the same lines the stroke cursor is,
+and `GROW_CAP` and the `_grow*` scratch are injected as free variables by
+`test/webgpu/grow-cpu-ref.js`'s source extraction; both carry a comment saying
+so.
+
+**The circular dependency dissolved.** Rollup no longer reports
+`core/context.js -> core/color.js -> core/context.js`, because context.js now
+imports only core/utils.js: the state slices and the compositor reach it
+through `registerContextInit` instead of an import, and the runtime hook
+defaults are declared in `createContext()` itself. Build output is warning
+free.
+
+**Test updates.** The four suites that mocked `core/color.js` for `State` /
+`Mix`, `core/target.js` for `Cwidth` / `Cheight` / `Renderer` / `Density` and
+`core/runtime.js` for the angle-mode hooks (`unit`, `flowfield`, `hatch`,
+`fill`, plus `mass` and `stroke_pressure` for the same reason) now assign
+those onto `defaultContext` after import and read `defaultContext.state`; the
+color.js mock shrank to the compositor entry points each suite actually needs,
+and the target.js and runtime.js mocks are gone. `flowfield.test.js`'s mutable
+canvas size became a getter pair defined on the context, and its
+`_onTargetResized` / `_fieldEpochNow` calls bind the context in a one-line
+local wrapper the way step 2 did for `isFieldReady`. `test/webgpu/grow-cpu-ref.js`
+is unchanged: `trim()` and `grow()` and everything they read were not touched.
+New: `test/unit/context.test.js` (4 cases, node only, no WebGPU) — two
+`createContext()` instances get independent state slices and stroke cursors,
+independent push/pop stacks, grids sized from their own target, and resizing
+one leaves the other's grid and epoch alone.
+
+Verification (all identical to step 2): `vitest` 115/115 (was 111; +4),
+`pnpm build` clean (rollup + tsc, **no cycle warning**), `git diff --stat
+types/index.standalone.d.ts types/three/index.d.ts` empty, `pnpm test:smoke`
+3/3 PASS, `pnpm test:goldens` 54 tiles · worst 4.7957 · mean 1.2771 · failing
+2 (edge-subpixel 3.7466, edge-self-intersect 4.7957), `assert-structure
+--identity` PASS with geomHash `3878505443`, `oracle-w8.mjs` 7/7 with pixel
+hash `2970327761`, `oracle-grow.mjs` 8/8. Bundle: `dist/brush.esm.js`
+238 897 → 241 541 bytes (+1.1%).

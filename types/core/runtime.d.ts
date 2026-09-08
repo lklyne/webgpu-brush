@@ -1,18 +1,12 @@
 /**
- * Registers or updates host-runtime hooks used by core modules.
+ * Registers or updates host-runtime hooks on a drawing context.
  *
+ * The hooks are fields on the context, not module slots, so two contexts can
+ * run against different angle modes and transforms. Their neutral defaults
+ * live in `createContext()` (core/context.js), which is what core does when
+ * no adapter has registered.
+ *
+ * @param {import("./context.js").BrushContext} ctx
  * @param {object} hooks
  */
-export function setRuntime(hooks: object): void;
-export function usesRadians(): boolean;
-export function fromDegrees(angle: any): any;
-export function createColor(): never;
-export function getAffineMatrix(): {
-    a: number;
-    b: number;
-    c: number;
-    d: number;
-    x: number;
-    y: number;
-};
-export function notifyDraw(): void;
+export function setRuntime(ctx: import("./context.js").BrushContext, hooks: object): void;

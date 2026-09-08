@@ -1,4 +1,9 @@
 /**
+ * A context's hatch state.
+ * @returns {object} The `ctx.state.hatch` slice.
+ */
+export function createHatchState(): object;
+/**
  * Returns a shallow snapshot of the current hatch modifier state.
  *
  * @param {import("../core/context.js").BrushContext} ctx

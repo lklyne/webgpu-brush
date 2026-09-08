@@ -1,17 +1,8 @@
 import { describe, it, expect, vi } from "vitest";
 
 vi.mock("../../src/core/color.js", () => ({
-  Mix: {},
-  State: {},
   isCanvasReady: () => {},
   registerStrokeComposite: () => {},
-}));
-
-vi.mock("../../src/core/target.js", () => ({
-  Cwidth: 800,
-  Cheight: 600,
-  Renderer: {},
-  Instance: null,
 }));
 
 vi.mock("../../src/core/utils.js", () => ({

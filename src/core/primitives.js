@@ -9,7 +9,7 @@ import {
 } from "./utils.js";
 import { Polygon } from "./polygon.js";
 import { Plot } from "./plot.js";
-import { defaultContext } from "./context.js";
+import { defaultContext, registerContextInit } from "./context.js";
 
 // =============================================================================
 // Section: Primitives and Geommetry
@@ -152,8 +152,8 @@ export function arc(x, y, radius, start, end) {
  * @returns {Plot|null} The drawn Plot, or null when the sweep is zero.
  */
 export function _arc(ctx, x, y, radius, start, end) {
-  const startDeg = toDegreesSigned(start);
-  const endDeg = toDegreesSigned(end);
+  const startDeg = toDegreesSigned(ctx, start);
+  const endDeg = toDegreesSigned(ctx, end);
   const sweepDeg = ((endDeg - startDeg) % 360 + 360) % 360;
   if (sweepDeg === 0) return null;
 
@@ -173,14 +173,36 @@ export function _arc(ctx, x, y, radius, start, end) {
   return p;
 }
 
-// Variables for managing paths and strokes
-let _current;
-let _curvature;
+// ---------------------------------------------------------------------------
+// In-flight path and stroke cursors
+// ---------------------------------------------------------------------------
+
+/**
+ * The open beginShape()/vertex()/endShape() path and the open
+ * beginStroke()/move()/endStroke() plot. One set per context, so two
+ * paintings can each have a shape open.
+ */
+function createShapeCursor() {
+  return {
+    /** @type {SubPath|false|undefined} open beginShape() path */
+    current: undefined,
+    /** curvature captured by the open beginShape() */
+    curvature: undefined,
+    /** @type {Plot|false|undefined} open beginStroke() plot */
+    strokeArray: undefined,
+    /** @type {number[]|undefined} [x, y] origin of the open stroke */
+    strokeOrigin: undefined,
+  };
+}
+
+registerContextInit((ctx) => {
+  ctx.shape = createShapeCursor();
+});
 
 class SubPath {
-  constructor() {
+  constructor(curvature) {
     this.isClosed = false;
-    this.curvature = _curvature;
+    this.curvature = curvature;
     this.vert = [];
   }
   /**
@@ -217,8 +239,9 @@ export function beginShape(curvature = 0) {
  * @param {number} [curvature=0] - Curvature from 0 to 1.
  */
 export function _beginShape(ctx, curvature = 0) {
-  _curvature = constrain(curvature, 0, 1);
-  _current = new SubPath();
+  const shape = ctx.shape;
+  shape.curvature = constrain(curvature, 0, 1);
+  shape.current = new SubPath(shape.curvature);
 }
 
 /**
@@ -239,12 +262,13 @@ export function vertex(x, y, pressure = 1) {
  * @param {number} [pressure=1] - Pressure value.
  */
 export function _vertex(ctx, x, y, pressure = 1) {
-  if (!_current) {
+  const open = ctx.shape.current;
+  if (!open) {
     throw new Error(
       "vertex() called outside of beginShape()/endShape(). Call beginShape() first.",
     );
   }
-  _current.vertex(x, y, pressure);
+  open.vertex(x, y, pressure);
 }
 
 /**
@@ -262,26 +286,25 @@ export function endShape(close = false) {
  * @returns {Plot} The rendered Plot for the completed shape.
  */
 export function _endShape(ctx, close = false) {
-  if (!_current) {
+  const open = ctx.shape.current;
+  if (!open) {
     throw new Error(
       "endShape() called without beginShape(). Call beginShape() first.",
     );
   }
-  if (_current.vert.length < 2) {
+  if (open.vert.length < 2) {
     throw new Error(
       "endShape() requires at least 2 vertices. Add more with vertex().",
     );
   }
   if (close) {
-    _current.vertex(..._current.vert[0]);
-    _current.isClosed = true;
+    open.vertex(...open.vert[0]);
+    open.isClosed = true;
   }
-  const plot = _current.show(ctx);
-  _current = false;
+  const plot = open.show(ctx);
+  ctx.shape.current = false;
   return plot;
 }
-
-let _strokeArray, _strokeOrigin;
 
 /**
  * Begins a new stroke with a given type and starting position.
@@ -306,8 +329,8 @@ export function _beginStroke(ctx, type, x, y) {
       `beginStroke() type must be "curve" or "segments", got "${type}".`,
     );
   }
-  _strokeOrigin = [x, y];
-  _strokeArray = new Plot(type);
+  ctx.shape.strokeOrigin = [x, y];
+  ctx.shape.strokeArray = new Plot(type);
 }
 
 /**
@@ -328,12 +351,13 @@ export function move(angle, length, pressure) {
  * @param {number} pressure - Segment pressure.
  */
 export function _move(ctx, angle, length, pressure) {
-  if (!_strokeArray) {
+  const open = ctx.shape.strokeArray;
+  if (!open) {
     throw new Error(
       "move() called without beginStroke(). Call beginStroke() first.",
     );
   }
-  _strokeArray.addSegment(angle, length, pressure);
+  open.addSegment(angle, length, pressure);
 }
 
 /**
@@ -352,14 +376,16 @@ export function endStroke(angle, pressure) {
  * @param {number} pressure - End pressure.
  */
 export function _endStroke(ctx, angle, pressure) {
-  if (!_strokeArray) {
+  const shape = ctx.shape;
+  const open = shape.strokeArray;
+  if (!open) {
     throw new Error(
       "endStroke() called without beginStroke(). Call beginStroke() first.",
     );
   }
-  _strokeArray.endPlot(angle, pressure);
-  _strokeArray.draw(_strokeOrigin[0], _strokeOrigin[1], 1);
-  _strokeArray = false;
+  open.endPlot(angle, pressure);
+  open.draw(shape.strokeOrigin[0], shape.strokeOrigin[1], 1);
+  shape.strokeArray = false;
 }
 
 /**

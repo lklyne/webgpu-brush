@@ -1,4 +1,9 @@
 /**
+ * A context's stroke state.
+ * @returns {object} The `ctx.state.stroke` slice.
+ */
+export function createStrokeState(): object;
+/**
  * Retrieves a shallow copy of the current stroke state.
  * @param {import("../core/context.js").BrushContext} ctx
  * @returns {object} The stroke state.

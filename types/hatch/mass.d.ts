@@ -1,4 +1,9 @@
 /**
+ * A context's mass state.
+ * @returns {object} The `ctx.state.mass` slice.
+ */
+export function createMassState(): object;
+/**
  * Enables massing mode with a brush, color, and optional configuration.
  *
  * @param {string} brush - Brush name to use for the mass pass.

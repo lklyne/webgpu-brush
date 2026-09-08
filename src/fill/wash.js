@@ -10,15 +10,25 @@
  */
 
 import { isCanvasReady } from "../core/target.js";
-import { defaultContext } from "../core/context.js";
+import { defaultContext, registerContextInit } from "../core/context.js";
 import { Polygon } from "../core/polygon.js";
 import { Plot } from "../core/plot.js";
 
-defaultContext.state.wash = {
-  color: null,
-  opacity: 150,
-  isActive: false,
-};
+/**
+ * A context's wash state.
+ * @returns {object} The `ctx.state.wash` slice.
+ */
+export function createWashState() {
+  return {
+    color: null,
+    opacity: 150,
+    isActive: false,
+  };
+}
+
+registerContextInit((ctx) => {
+  ctx.state.wash = createWashState();
+});
 
 // =============================================================================
 // Public API

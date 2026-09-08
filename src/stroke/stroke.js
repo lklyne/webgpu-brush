@@ -13,7 +13,7 @@
 
 // Core imports
 import { isCanvasReady } from "../core/target.js";
-import { defaultContext } from "../core/context.js";
+import { defaultContext, registerContextInit } from "../core/context.js";
 import {
   map,
   dist,
@@ -52,15 +52,47 @@ initStrokeComposite(); // Register the stroke composite system for offscreen mas
 // ---------------------------------------------------------------------------
 
 /**
- * Global stroke state settings.
+ * A context's stroke state.
+ * @returns {object} The `ctx.state.stroke` slice.
  */
-defaultContext.state.stroke = {
-  color: null,
-  weight: 1,
-  type: "HB",
-  isActive: false,
-  opacity: 1,
-};
+export function createStrokeState() {
+  return {
+    color: null,
+    weight: 1,
+    type: "HB",
+    isActive: false,
+    opacity: 1,
+  };
+}
+
+/**
+ * The in-flight stroke: where the walk currently is, and the per-stroke
+ * parameters saveState() latches for the tip functions. One per context, so
+ * two paintings can be mid-stroke at once.
+ *
+ * @returns {object} The `ctx.strokeCursor` object.
+ */
+function createStrokeCursor() {
+  return {
+    /** @type {Position|undefined} walking position */
+    position: undefined,
+    /** stroke length in sketch units */
+    length: undefined,
+    /** @type {Plot|false|undefined} plot being followed, or false */
+    plot: undefined,
+    /** stroke direction in internal degrees */
+    dir: undefined,
+    /** plot angle cached for the current step */
+    cachedPlotAngle: 0,
+    /** per-stroke parameters latched by saveState() */
+    current: {},
+  };
+}
+
+registerContextInit((ctx) => {
+  ctx.state.stroke = createStrokeState();
+  ctx.strokeCursor = createStrokeCursor();
+});
 
 let list = new Map();
 
@@ -372,10 +404,6 @@ export function noClip() {
 // ---------------------------------------------------------------------------
 // Drawing Variables and Functions
 // ---------------------------------------------------------------------------
-let _position, _length, _plot, _dir;
-let _cachedPlotAngle = 0;
-const current = {};
-
 /**
  * Initializes the drawing state.
  * @param {import("../core/context.js").BrushContext} ctx
@@ -385,11 +413,12 @@ const current = {};
  * @param {Plot|false} [plot=false] - Plot object for path-following strokes.
  */
 function initializeDrawingState(ctx, x, y, length, plot = false) {
+  const sc = ctx.strokeCursor;
   snapshotMatrix(ctx);
-  _position = new Position(x + ctx.width / 2, y + ctx.height / 2, ctx);
-  _length = length;
-  _plot = plot;
-  if (_plot) _plot.calcIndex(0);
+  sc.position = new Position(x + ctx.width / 2, y + ctx.height / 2, ctx);
+  sc.length = length;
+  sc.plot = plot;
+  if (sc.plot) sc.plot.calcIndex(0);
 }
 
 // Fixed-size gaussian pool, hash-picked per stamp. Filled with the
@@ -416,6 +445,10 @@ const gaussPick = (ctx, streamId, salt, index) =>
 // Per-stroke scope counter for the hash streams. The stamp salt reserves the
 // low 2 bits for the draw phase: 0 = main stamp loop, 1 = markerTip at stroke
 // start, 2 = markerTip at stroke end.
+//
+// Still module-level, along with the gaussian pool above: both are keyed to
+// the seed, and the seed and its reset callbacks have not moved onto the
+// context yet. The cursor they are bumped alongside has (`ctx.strokeCursor`).
 let _strokeId = 0;
 
 defaultContext.rng.onSeed(() => {
@@ -430,28 +463,30 @@ defaultContext.rng.onSeed(() => {
  * @param {boolean} isPlot - True if plotting a shape.
  */
 function draw(ctx, angleScale, isPlot) {
-  if (!isPlot) _dir = angleScale;
+  const sc = ctx.strokeCursor;
+  const cur = sc.current;
+  if (!isPlot) sc.dir = angleScale;
   // Route eligible line/flowLine strokes to the GPU flow-field walk.
   // Plots, image/custom tips, function-curve pressures, non-translation
   // transforms, and Stats-instrumented runs take the retained CPU walk.
   if (!isPlot && tryGpuWalk(ctx, angleScale)) return;
   saveState(ctx);
 
-  const stepSize = spacing();
+  const stepSize = spacing(ctx);
   const totalSteps = Math.round(
-    (_length * (isPlot ? angleScale : 1)) / stepSize,
+    (sc.length * (isPlot ? angleScale : 1)) / stepSize,
   );
   if (Stats.enabled && Stats._stroke) Stats._stroke.steps = totalSteps;
-  current.pressureCount = 10;
-  current.cachedPressure = undefined;
+  cur.pressureCount = 10;
+  cur.cachedPressure = undefined;
 
   for (let i = 0; i < totalSteps; i++) {
-    if (isPlot) _cachedPlotAngle = _plot.angle(_position.plotted);
+    if (isPlot) sc.cachedPlotAngle = sc.plot.angle(sc.position.plotted);
     tip(ctx, i);
     if (isPlot) {
-      _position.plotTo(_plot, stepSize, stepSize, angleScale, _cachedPlotAngle);
+      sc.position.plotTo(sc.plot, stepSize, stepSize, angleScale, sc.cachedPlotAngle);
     } else {
-      _position._moveToDegrees(angleScale, stepSize, stepSize);
+      sc.position._moveToDegrees(angleScale, stepSize, stepSize);
     }
   }
   restoreState(ctx);
@@ -469,6 +504,8 @@ function draw(ctx, angleScale, isPlot) {
  * @returns {boolean} true when the stroke was queued on the GPU path
  */
 function tryGpuWalk(ctx, dirDegrees) {
+  const sc = ctx.strokeCursor;
+  const cur = sc.current;
   const State = ctx.state;
   const Mix = ctx.mix;
   const param = list.get(State.stroke.type)?.param;
@@ -486,19 +523,19 @@ function tryGpuWalk(ctx, dirDegrees) {
   const chain = queueWalkStroke(ctx, {
     strokeId: _strokeId,
     kind: param.type === "marker" || param.type === "spray" ? param.type : "default",
-    x: _position.x - ctx.width / 2,
-    y: _position.y - ctx.height / 2,
+    x: sc.position.x - ctx.width / 2,
+    y: sc.position.y - ctx.height / 2,
     dir: dirDegrees,
-    length: _length,
+    length: sc.length,
     brush: param,
     strokeWeight: State.stroke.weight,
     fieldActive: State.field?.isActive ?? false,
     wiggle: State.field?.wiggle ?? 1,
     gaussPool: gaussians,
-    chain: { pc: current.pressureCount, cached: current.cachedPressure },
+    chain: { pc: cur.pressureCount, cached: cur.cachedPressure },
   });
-  current.pressureCount = chain.pc;
-  current.cachedPressure = chain.cached;
+  cur.pressureCount = chain.pc;
+  cur.cachedPressure = chain.cached;
   return true;
 }
 
@@ -507,6 +544,8 @@ function tryGpuWalk(ctx, dirDegrees) {
  * @param {import("../core/context.js").BrushContext} ctx
  */
 function saveState(ctx) {
+  const sc = ctx.strokeCursor;
+  const cur = sc.current;
   const State = ctx.state;
   const Mix = ctx.mix;
   const { rh, nh, hash01 } = ctx.rng;
@@ -516,40 +555,40 @@ function saveState(ctx) {
   // Inspection seam: latch the stream/hook decision for this CPU-walked stroke.
   if (_iflag.active) _notifyStrokeBegin(_strokeId);
   // Stamp salt: low 2 bits reserved for draw phase (0 loop, 1 start, 2 end).
-  current.salt = (_strokeId << 2) >>> 0;
-  current.phase = 0;
-  const salt = current.salt;
-  current.seed = hash01(STREAM.STROKE_SETUP, salt, 6) * 999999;
+  cur.salt = (_strokeId << 2) >>> 0;
+  cur.phase = 0;
+  const salt = cur.salt;
+  cur.seed = hash01(STREAM.STROKE_SETUP, salt, 6) * 999999;
   const { param } = list.get(State.stroke.type) ?? {};
   if (!param) return;
-  current.p = param;
+  cur.p = param;
 
   // Set pressure values for the stroke — STROKE_SETUP slots 0..5: a, b, cp,
   // ct, cs, ck (slot 6 above is the legacy per-stroke seed).
   const { pressure } = param;
-  current.isCustomPressure = pressure.type === "custom";
-  current.a = !current.isCustomPressure ? rh(STREAM.STROKE_SETUP, salt, 0, -1, 1) : 0;
-  current.b = !current.isCustomPressure ? rh(STREAM.STROKE_SETUP, salt, 1, 1, 1.5) : 0;
-  if (!current.isCustomPressure) {
-    current.cp = rh(STREAM.STROKE_SETUP, salt, 2, 3, 3.5);
-    current.ct = 0;
-    current.cs = 1;
-    current.ck = 0;
+  cur.isCustomPressure = pressure.type === "custom";
+  cur.a = !cur.isCustomPressure ? rh(STREAM.STROKE_SETUP, salt, 0, -1, 1) : 0;
+  cur.b = !cur.isCustomPressure ? rh(STREAM.STROKE_SETUP, salt, 1, 1, 1.5) : 0;
+  if (!cur.isCustomPressure) {
+    cur.cp = rh(STREAM.STROKE_SETUP, salt, 2, 3, 3.5);
+    cur.ct = 0;
+    cur.cs = 1;
+    cur.ck = 0;
   } else {
     const variation = pressure.variation ?? DEFAULT_CUSTOM_PRESSURE_VARIATION;
-    current.cp = rh(STREAM.STROKE_SETUP, salt, 2, -variation.offset, variation.offset);
-    current.ct = rh(STREAM.STROKE_SETUP, salt, 3, -variation.warp, variation.warp);
-    current.cs = rh(STREAM.STROKE_SETUP, salt, 4, 1 - variation.scale, 1 + variation.scale);
-    current.ck = rh(STREAM.STROKE_SETUP, salt, 5, -variation.tilt, variation.tilt);
+    cur.cp = rh(STREAM.STROKE_SETUP, salt, 2, -variation.offset, variation.offset);
+    cur.ct = rh(STREAM.STROKE_SETUP, salt, 3, -variation.warp, variation.warp);
+    cur.cs = rh(STREAM.STROKE_SETUP, salt, 4, 1 - variation.scale, 1 + variation.scale);
+    cur.ck = rh(STREAM.STROKE_SETUP, salt, 5, -variation.tilt, variation.tilt);
   }
-  [current.min, current.max] = pressure.min_max;
+  [cur.min, cur.max] = pressure.min_max;
 
 
 
   // Cache stroke direction for direction-aware dispersion (non-plot strokes only)
-  if (!_plot) {
-    current.cos = cos(_dir);
-    current.sin = sin(_dir);
+  if (!sc.plot) {
+    cur.cos = cos(sc.dir);
+    cur.sin = sin(sc.dir);
   }
 
   // Ensure GL is ready and blend state
@@ -563,15 +602,15 @@ function saveState(ctx) {
   // Stroke-level noise: modulate alpha once per stroke so whole strokes are
   // subtly lighter or darker — organic variation without per-tip cost.
   const baseAlpha = calculateAlpha(ctx);
-  const noiseStrength = 0.1 * (current.p.noise ?? 0);
-  current.alpha = noiseStrength > 0
+  const noiseStrength = 0.1 * (cur.p.noise ?? 0);
+  cur.alpha = noiseStrength > 0
     ? Math.max(0, baseAlpha * (1 + nh(STREAM.STROKE_ALPHA_NOISE, salt, 0, 0, noiseStrength)))
     : baseAlpha;
-  current.overscan = getImageTipOverscan(ctx);
-  current.drawFn =
-    current.p.type === "spray"  ? drawSpray :
-    current.p.type === "marker" ? drawMarker :
-    (current.p.type === "custom" || current.p.type === "image") ? drawImageTip :
+  cur.overscan = getImageTipOverscan(ctx);
+  cur.drawFn =
+    cur.p.type === "spray"  ? drawSpray :
+    cur.p.type === "marker" ? drawMarker :
+    (cur.p.type === "custom" || cur.p.type === "image") ? drawImageTip :
     drawDefault;
 
   markerTip(ctx, 1);
@@ -582,12 +621,13 @@ function saveState(ctx) {
  * @param {import("../core/context.js").BrushContext} ctx
  */
 function restoreState(ctx) {
+  const cur = ctx.strokeCursor.current;
   markerTip(ctx, 2);
   if (Stats.enabled) Stats.endStroke();
   glDraw(ctx);
-  const type = current.p?.type;
-  if (type === "image") glDrawImages(ctx, T.tips.get(current.p.image.src), current.p.image.src);
-  else if (type === "custom") glDrawImages(ctx, T.tips.get(current.p.tipKey), current.p.tipKey);
+  const type = cur.p?.type;
+  if (type === "image") glDrawImages(ctx, T.tips.get(cur.p.image.src), cur.p.image.src);
+  else if (type === "custom") glDrawImages(ctx, T.tips.get(cur.p.tipKey), cur.p.tipKey);
 }
 
 /**
@@ -596,49 +636,56 @@ function restoreState(ctx) {
  * @param {number} index - Stamp index along the stroke.
  */
 function tip(ctx, index) {
-  const pressure = calculatePressure();
+  const pressure = calculatePressure(ctx);
 
-  current.drawFn(ctx, pressure, index);
+  ctx.strokeCursor.current.drawFn(ctx, pressure, index);
 }
 
 /**
  * Calculates the effective brush pressure.
+ * @param {import("../core/context.js").BrushContext} ctx
  * @returns {number} The calculated pressure.
  */
-function calculatePressure() {
-  if (current.pressureCount >= 10 || current.cachedPressure === undefined) {
-    current.cachedPressure = _plot
-      ? simPressure() * _plot.pressure(_position.plotted)
-      : simPressure();
-    current.pressureCount = 0;
+function calculatePressure(ctx) {
+  const sc = ctx.strokeCursor;
+  const cur = sc.current;
+  if (cur.pressureCount >= 10 || cur.cachedPressure === undefined) {
+    cur.cachedPressure = sc.plot
+      ? simPressure(ctx) * sc.plot.pressure(sc.position.plotted)
+      : simPressure(ctx);
+    cur.pressureCount = 0;
   }
-  current.pressureCount++;
-  return current.cachedPressure;
+  cur.pressureCount++;
+  return cur.cachedPressure;
 }
 
 /**
  * Simulates brush pressure based on stroke parameters.
+ * @param {import("../core/context.js").BrushContext} ctx
  * @returns {number} Simulated pressure value.
  */
-function simPressure() {
-  if (!current.isCustomPressure) return gauss();
-  const t = _position.plotted / _length;
+function simPressure(ctx) {
+  const sc = ctx.strokeCursor;
+  const cur = sc.current;
+  if (!cur.isCustomPressure) return gauss(ctx);
+  const t = sc.position.plotted / sc.length;
   return map(
-    current.p.pressure.curve(
-      Math.max(0, Math.min(1, 0.5 + (t - 0.5 + current.ct) * current.cs)),
+    cur.p.pressure.curve(
+      Math.max(0, Math.min(1, 0.5 + (t - 0.5 + cur.ct) * cur.cs)),
     ) +
-      current.cp +
-      current.ck * (t - 0.5),
+      cur.cp +
+      cur.ck * (t - 0.5),
     0,
     1,
-    current.min,
-    current.max,
+    cur.min,
+    cur.max,
     true,
   );
 }
 
 /**
  * Generates a Gaussian-based pressure value.
+ * @param {import("../core/context.js").BrushContext} ctx
  * @param {number} [a] - Center parameter.
  * @param {number} [b] - Width parameter.
  * @param {number} [c] - Shape parameter.
@@ -646,20 +693,21 @@ function simPressure() {
  * @param {number} [max] - Maximum pressure.
  * @returns {number} Gaussian pressure value.
  */
-function gauss(
-  a = 0.5 + current.p.pressure.curve[0] * current.a,
-  b = 1 - current.p.pressure.curve[1] * current.b,
-  c = current.cp,
-  min = current.min,
-  max = current.max,
-) {
-  const peakPos = a * _length;
+function gauss(ctx, a, b, c, min, max) {
+  const sc = ctx.strokeCursor;
+  const cur = sc.current;
+  a ??= 0.5 + cur.p.pressure.curve[0] * cur.a;
+  b ??= 1 - cur.p.pressure.curve[1] * cur.b;
+  c ??= cur.cp;
+  min ??= cur.min;
+  max ??= cur.max;
+  const peakPos = a * sc.length;
   const halfWidth =
-    (_position.plotted < peakPos ? b * 1.2 : b * 0.8) * (_length / 2);
+    (sc.position.plotted < peakPos ? b * 1.2 : b * 0.8) * (sc.length / 2);
   return map(
     1 /
       (1 +
-        Math.pow(Math.abs((_position.plotted - peakPos) / halfWidth), 2 * c)),
+        Math.pow(Math.abs((sc.position.plotted - peakPos) / halfWidth), 2 * c)),
     0,
     1,
     min,
@@ -673,27 +721,30 @@ function gauss(
  * @returns {number} The calculated opacity.
  */
 function calculateAlpha(ctx) {
-  return ["default", "spray"].includes(current.p.type)
-    ? current.p.opacity
-    : current.p.opacity / Math.min(ctx.state.stroke.weight, 1.3);
+  const cur = ctx.strokeCursor.current;
+  return ["default", "spray"].includes(cur.p.type)
+    ? cur.p.opacity
+    : cur.p.opacity / Math.min(ctx.state.stroke.weight, 1.3);
 }
 
 /**
  * Calculates the step spacing based on the current brush parameters.
+ * @param {import("../core/context.js").BrushContext} ctx
  * @returns {number} The spacing value.
  */
-function spacing() {
-  return current.p?.spacing ?? 1;
+function spacing(ctx) {
+  return ctx.strokeCursor.current.p?.spacing ?? 1;
 }
 
 /**
  * @param {import("../core/context.js").BrushContext} ctx
  */
 function getImageTipOverscan(ctx) {
+  const cur = ctx.strokeCursor.current;
   const weight = ctx.state.stroke.weight;
-  const maxPressure = Math.max(1, current.max ?? 1);
-  const scatterReach = weight * current.p.scatter;
-  const tipReach = weight * current.p.weight * maxPressure;
+  const maxPressure = Math.max(1, cur.max ?? 1);
+  const scatterReach = weight * cur.p.scatter;
+  const tipReach = weight * cur.p.weight * maxPressure;
 
   // Custom/image tips can extend beyond their nominal square because the tip
   // drawing itself may be large and because high scatter creates sparse large
@@ -711,14 +762,16 @@ function getImageTipOverscan(ctx) {
  * @param {number} pressure - Current pressure.
  */
 function drawSpray(ctx, pressure, idx) {
+  const sc = ctx.strokeCursor;
+  const cur = sc.current;
   const rh = ctx.rng.rh;
   const weight = ctx.state.stroke.weight;
-  const salt = (current.salt | current.phase) >>> 0;
+  const salt = (cur.salt | cur.phase) >>> 0;
   const vibration =
-    weight * current.p.scatter * pressure +
-    (weight * gaussPick(ctx, STREAM.SPRAY_GAUSS, salt, idx) * current.p.scatter) / 3;
-  const sw = current.p.weight * rh(STREAM.SPRAY_SW, salt, idx, 0.9, 1.1);
-  const iterations = Math.ceil(current.p.grain / pressure);
+    weight * cur.p.scatter * pressure +
+    (weight * gaussPick(ctx, STREAM.SPRAY_GAUSS, salt, idx) * cur.p.scatter) / 3;
+  const sw = cur.p.weight * rh(STREAM.SPRAY_SW, salt, idx, 0.9, 1.1);
+  const iterations = Math.ceil(cur.p.grain / pressure);
   for (let j = 0; j < iterations; j++) {
     const dotIdx = ((idx << 12) + j) >>> 0;
     const r = rh(STREAM.SPRAY_DOT_R, salt, dotIdx, 0.9, 1.1);
@@ -726,10 +779,10 @@ function drawSpray(ctx, pressure, idx) {
     const yRandomFactor = rh(STREAM.SPRAY_DOT_Y, salt, dotIdx, -1, 1);
     const sqrtPart = Math.sqrt((r * vibration) ** 2 - rX ** 2);
     circle(
-      _position.x + rX,
-      _position.y + yRandomFactor * sqrtPart,
+      sc.position.x + rX,
+      sc.position.y + yRandomFactor * sqrtPart,
       sw,
-      current.alpha,
+      cur.alpha,
     );
   }
 }
@@ -740,17 +793,25 @@ function drawSpray(ctx, pressure, idx) {
  * @param {number} pressure - Current pressure.
  * @param {boolean} [vibrate=true] - Whether to apply vibration.
  */
-function drawMarker(ctx, pressure, idx, vibrate = true, alpha = current.alpha) {
+function drawMarker(
+  ctx,
+  pressure,
+  idx,
+  vibrate = true,
+  alpha = ctx.strokeCursor.current.alpha,
+) {
+  const sc = ctx.strokeCursor;
+  const cur = sc.current;
   const rh = ctx.rng.rh;
   const weight = ctx.state.stroke.weight;
-  const salt = (current.salt | current.phase) >>> 0;
-  const vibration = vibrate ? weight * current.p.scatter : 0;
+  const salt = (cur.salt | cur.phase) >>> 0;
+  const vibration = vibrate ? weight * cur.p.scatter : 0;
   const rx = vibrate ? vibration * rh(STREAM.MARKER_VIB_X, salt, idx, -1, 1) : 0;
   const ry = vibrate ? vibration * rh(STREAM.MARKER_VIB_Y, salt, idx, -1, 1) : 0;
   circle(
-    _position.x + rx,
-    _position.y + ry,
-    weight * current.p.weight * pressure,
+    sc.position.x + rx,
+    sc.position.y + ry,
+    weight * cur.p.weight * pressure,
     alpha * Math.max(0.8, pressure) * rh(STREAM.MARKER_ALPHA, salt, idx, 0.9, 1.1),
   );
 }
@@ -762,24 +823,31 @@ function drawMarker(ctx, pressure, idx, vibrate = true, alpha = current.alpha) {
  * @param {number} pressure - Current pressure.
  * @param {number} alpha - Opacity [0..255].
  */
-function drawImageTip(ctx, pressure, idx, alpha = current.alpha) {
+function drawImageTip(
+  ctx,
+  pressure,
+  idx,
+  alpha = ctx.strokeCursor.current.alpha,
+) {
+  const sc = ctx.strokeCursor;
+  const cur = sc.current;
   const rh = ctx.rng.rh;
   const weight = ctx.state.stroke.weight;
-  const salt = (current.salt | current.phase) >>> 0;
-  const vibration = weight * current.p.scatter;
+  const salt = (cur.salt | cur.phase) >>> 0;
+  const vibration = weight * cur.p.scatter;
   const rx = vibration * rh(STREAM.TIP_VIB_X, salt, idx, -1, 1);
   const ry = vibration * rh(STREAM.TIP_VIB_Y, salt, idx, -1, 1);
-  const size = current.p.weight * weight * pressure;
-  const overscan = current.overscan;
+  const size = cur.p.weight * weight * pressure;
+  const overscan = cur.overscan;
   let angle = 0;
-  if (current.p.rotate === "random") {
+  if (cur.p.rotate === "random") {
     angle = ~~rh(STREAM.TIP_ROT, salt, idx, 0, 360) * (Math.PI / 180);
-  } else if (current.p.rotate === "natural") {
-    angle = ((_plot ? -_cachedPlotAngle : -_dir) + _position.angle()) * (Math.PI / 180);
+  } else if (cur.p.rotate === "natural") {
+    angle = ((sc.plot ? -sc.cachedPlotAngle : -sc.dir) + sc.position.angle()) * (Math.PI / 180);
   }
   stampImage(
-    _position.x + rx,
-    _position.y + ry,
+    sc.position.x + rx,
+    sc.position.y + ry,
     size,
     angle,
     alpha * Math.max(0.8, pressure) * rh(STREAM.TIP_ALPHA, salt, idx, 0.9, 1.1),
@@ -793,18 +861,20 @@ function drawImageTip(ctx, pressure, idx, alpha = current.alpha) {
  * @param {number} pressure - Current pressure.
  */
 function drawDefault(ctx, pressure, idx) {
+  const sc = ctx.strokeCursor;
+  const cur = sc.current;
   const rh = ctx.rng.rh;
   const weight = ctx.state.stroke.weight;
-  const salt = (current.salt | current.phase) >>> 0;
-  if (ctx.rng.hash01(STREAM.DEFAULT_GATE, salt, idx) >= current.p.grain * pressure) return;
+  const salt = (cur.salt | cur.phase) >>> 0;
+  if (ctx.rng.hash01(STREAM.DEFAULT_GATE, salt, idx) >= cur.p.grain * pressure) return;
   const vibration =
     weight *
-    current.p.scatter *
-    (current.p.sharpness +
-      ((1 - current.p.sharpness) * gaussPick(ctx, STREAM.DEFAULT_SCATTER, salt, idx)) / pressure);
+    cur.p.scatter *
+    (cur.p.sharpness +
+      ((1 - cur.p.sharpness) * gaussPick(ctx, STREAM.DEFAULT_SCATTER, salt, idx)) / pressure);
     let dx, dy;
-    if (_plot) {
-      const plotAngle = _cachedPlotAngle;
+    if (sc.plot) {
+      const plotAngle = sc.cachedPlotAngle;
       const plotCos = cos(plotAngle);
       const plotSin = sin(plotAngle);
       const perp = vibration * rh(STREAM.DEFAULT_PERP, salt, idx, -1, 1);
@@ -814,19 +884,19 @@ function drawDefault(ctx, pressure, idx) {
     } else {
       const perp = vibration * rh(STREAM.DEFAULT_PERP, salt, idx, -1, 1);
       const along = 0.3 * vibration * rh(STREAM.DEFAULT_ALONG, salt, idx, -1, 1);
-      dx = perp * current.sin + along * current.cos;
-      dy = perp * current.cos - along * current.sin;
+      dx = perp * cur.sin + along * cur.cos;
+      dy = perp * cur.cos - along * cur.sin;
     }
     const diameter =
       pressure *
       pressure *
-      current.p.weight *
+      cur.p.weight *
       rh(STREAM.DEFAULT_SIZE, salt, idx, 0.85, 1.15) *
       weight;
-    const alpha = Math.max(0.9, pressure) * current.alpha * rh(STREAM.DEFAULT_ALPHA, salt, idx, 0.75, 1.1);
+    const alpha = Math.max(0.9, pressure) * cur.alpha * rh(STREAM.DEFAULT_ALPHA, salt, idx, 0.75, 1.1);
     circle(
-      _position.x + dx,
-      _position.y + dy,
+      sc.position.x + dx,
+      sc.position.y + dy,
       diameter,
       alpha,
     );
@@ -839,21 +909,22 @@ function drawDefault(ctx, pressure, idx) {
  * @param {number} phase - 1 = stroke start, 2 = stroke end.
  */
 function markerTip(ctx, phase) {
-  if (current.p.markerTip === false) return;
-  const prevPhase = current.phase;
-  current.phase = phase; // 1 = stroke start, 2 = stroke end
-  let pressure = calculatePressure();
-  let alpha = current.alpha;
-  if (current.p.type === "marker") {
+  const cur = ctx.strokeCursor.current;
+  if (cur.p.markerTip === false) return;
+  const prevPhase = cur.phase;
+  cur.phase = phase; // 1 = stroke start, 2 = stroke end
+  let pressure = calculatePressure(ctx);
+  let alpha = cur.alpha;
+  if (cur.p.type === "marker") {
     for (let s = 1; s < 10; s++) {
       drawMarker(ctx, (pressure * s) / 10, s, true, alpha * 8);
     }
-  } else if (current.p.type === "custom" || current.p.type === "image") {
+  } else if (cur.p.type === "custom" || cur.p.type === "image") {
     for (let s = 1; s < 5; s++) {
       drawImageTip(ctx, (pressure * s) / 10, s, alpha * 2);
     }
   }
-  current.phase = prevPhase;
+  cur.phase = prevPhase;
 }
 
 // ---------------------------------------------------------------------------
@@ -922,7 +993,7 @@ export function _flowLine(ctx, x, y, length, dir) {
   }
   isFieldReady(ctx);
   initializeDrawingState(ctx, x, y, length);
-  draw(ctx, toDegrees(dir), false);
+  draw(ctx, toDegrees(ctx, dir), false);
 }
 
 /**

@@ -2,6 +2,8 @@
 // Compositor Runtime Hooks
 // =============================================================================
 
+import { registerContextInit } from "./context.js";
+
 /**
  * Shared compositor helpers and host hooks.
  *
@@ -44,44 +46,37 @@ export const get2DContext = (canvas, willReadFrequently = false) => {
   return canvas.drawingContext;
 };
 
-let compositorRuntime = {
-  clearTarget: () => {
-    throw new Error("No compositor runtime adapter registered.");
-  },
-  ensureBlendShaderProgram: () => {
-    throw new Error("No compositor runtime adapter registered.");
-  },
-  ensureBlendSourceFramebuffer: () => {
-    throw new Error("No compositor runtime adapter registered.");
-  },
-  createFramebuffer: () => {
-    throw new Error("No compositor runtime adapter registered.");
-  },
-  runBlendShaderPass: () => {
-    throw new Error("No compositor runtime adapter registered.");
-  },
-  blitSourceToFramebuffer: () => {
-    throw new Error("No compositor runtime adapter registered.");
-  },
-};
-
 /**
- * Registers or updates host compositor hooks used by core compositing code.
+ * The compositor hooks are per-context: `ctx.compositor`. The standalone
+ * adapter installs the same table on every context it drives, but a host that
+ * paints into two different surfaces can install two.
  *
- * @param {object} hooks
+ * @returns {object} A hook table that fails loudly until an adapter registers.
  */
-export function setCompositorRuntime(hooks) {
-  compositorRuntime = { ...compositorRuntime, ...hooks };
+function createCompositorHooks() {
+  const missing = () => {
+    throw new Error("No compositor runtime adapter registered.");
+  };
+  return {
+    clearTarget: missing,
+    ensureBlendShaderProgram: missing,
+    ensureBlendSourceFramebuffer: missing,
+    createFramebuffer: missing,
+    runBlendShaderPass: missing,
+    blitSourceToFramebuffer: missing,
+  };
 }
 
-export const clearTarget = (...args) => compositorRuntime.clearTarget(...args);
-export const ensureBlendShaderProgram = (...args) =>
-  compositorRuntime.ensureBlendShaderProgram(...args);
-export const ensureBlendSourceFramebuffer = (...args) =>
-  compositorRuntime.ensureBlendSourceFramebuffer(...args);
-export const createFramebuffer = (...args) =>
-  compositorRuntime.createFramebuffer(...args);
-export const runBlendShaderPass = (...args) =>
-  compositorRuntime.runBlendShaderPass(...args);
-export const blitSourceToFramebuffer = (...args) =>
-  compositorRuntime.blitSourceToFramebuffer(...args);
+registerContextInit((ctx) => {
+  ctx.compositor = createCompositorHooks();
+});
+
+/**
+ * Registers or updates host compositor hooks on a drawing context.
+ *
+ * @param {import("./context.js").BrushContext} ctx
+ * @param {object} hooks
+ */
+export function setCompositorRuntime(ctx, hooks) {
+  ctx.compositor = { ...ctx.compositor, ...hooks };
+}

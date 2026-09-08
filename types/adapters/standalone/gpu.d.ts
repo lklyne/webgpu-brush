@@ -11,7 +11,7 @@ export function createGpuHost(canvas: HTMLCanvasElement | OffscreenCanvas, width
     device?: GPUDevice;
     adapter?: GPUAdapter | null;
 }): {
-    canvas: OffscreenCanvas | HTMLCanvasElement;
+    canvas: HTMLCanvasElement | OffscreenCanvas;
     width: number;
     height: number;
     density: number;

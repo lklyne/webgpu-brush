@@ -7,42 +7,15 @@
 
 import { describe, it, expect, vi, beforeAll, beforeEach } from "vitest";
 
-const { currentAngleMode, mockState, plotInstances } = vi.hoisted(() => ({
+const { currentAngleMode, plotInstances } = vi.hoisted(() => ({
   currentAngleMode: { value: "radians" },
-  mockState: {},
   plotInstances: [],
 }));
 
 // Mock color.js (pulls in GLSL shaders and WebGL — not available in Node)
 vi.mock("../../src/core/color.js", () => ({
-  Mix: {},
-  State: mockState,
   isCanvasReady: () => {},
   isMixReady: () => {},
-}));
-
-// Mock runtime.js to properly handle angle mode
-vi.mock("../../src/core/runtime.js", () => ({
-  usesRadians: () => currentAngleMode.value === "radians",
-  fromDegrees: (angle) => currentAngleMode.value === "radians" ? (angle * Math.PI) / 180 : angle,
-  createColor: () => ({}),
-  getAffineMatrix: () => ({ a: 1, b: 0, c: 0, d: 1, x: 0, y: 0 }),
-  setRuntime: () => {},
-}));
-
-vi.mock("../../src/core/target.js", () => ({
-  Renderer: {
-    angleMode: () => currentAngleMode.value,
-    RADIANS: "radians",
-    DEGREES: "degrees",
-    _renderer: {
-      uModelMatrix: {
-        mat4: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
-      },
-    },
-  },
-  Cwidth: 800,
-  Cheight: 600,
 }));
 
 vi.mock("../../src/stroke/stroke.js", () => ({
@@ -82,15 +55,33 @@ import {
   STREAM,
   seed,
   weightedRand,
-  toDegreesSigned,
+  toDegreesSigned as toDegreesSignedCtx,
 } from "../../src/core/utils.js";
 import { arc, beginShape, vertex, endShape } from "../../src/core/primitives.js";
 import { Position, addField, field as activateField, noField } from "../../src/core/flowfield.js";
 import { getHatchLines as getHatchLinesCtx, hatch } from "../../src/hatch/hatch.js";
 import { defaultContext } from "../../src/core/context.js";
 
+// The state, the target and the host hooks are context fields now, so the
+// suite drives the default context directly.
+Object.assign(defaultContext, {
+  renderer: {},
+  width: 800,
+  height: 600,
+  density: 1,
+  usesRadians: () => currentAngleMode.value === "radians",
+  fromDegrees: (angle) =>
+    currentAngleMode.value === "radians" ? (angle * Math.PI) / 180 : angle,
+  createColor: () => ({}),
+  getAffineMatrix: () => ({ a: 1, b: 0, c: 0, d: 1, x: 0, y: 0 }),
+});
+const mockState = defaultContext.state;
+
 // getHatchLines() takes the drawing context first (core/context.js).
 const getHatchLines = (polygons) => getHatchLinesCtx(defaultContext, polygons);
+// toDegreesSigned() reads the angle mode from the context.
+const toDegreesSigned = (angle, isRad) =>
+  toDegreesSignedCtx(defaultContext, angle, isRad);
 
 beforeEach(() => {
   currentAngleMode.value = "radians";

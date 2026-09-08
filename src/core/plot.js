@@ -45,7 +45,9 @@ export class Plot {
    */
   addSegment(_a = 0, _length = 0, _pres = 1, _degrees = false) {
     if (this.angles.length > 0) this.angles.pop(); // Remove the last angle
-    _a = _degrees ? ((_a % 360) + 360) % 360 : toDegrees(_a); // Normalize angle
+    _a = _degrees
+      ? ((_a % 360) + 360) % 360
+      : toDegrees(this.owner ?? defaultContext, _a); // Normalize angle
     this.angles.push(_a, _a); // Push angle twice for continuity
     this.pres.push(_pres);
     this._cumLen.push(this.length); // cumulative start of this segment
@@ -60,7 +62,9 @@ export class Plot {
    * @param {boolean} _degrees - Whether the angle is in degrees.
    */
   endPlot(_a = 0, _pres = 1, _degrees = false) {
-    _a = _degrees ? ((_a % 360) + 360) % 360 : toDegrees(_a);
+    _a = _degrees
+      ? ((_a % 360) + 360) % 360
+      : toDegrees(this.owner ?? defaultContext, _a);
     this.angles[this.angles.length - 1] = _a; // Update the last angle
     this.pres.push(_pres);
   }
@@ -70,7 +74,7 @@ export class Plot {
    * @param {number} _a - The angle to rotate the plot.
    */
   rotate(_a) {
-    this.dir = toDegrees(_a);
+    this.dir = toDegrees(this.owner ?? defaultContext, _a);
   }
 
   /**

@@ -4,7 +4,6 @@ const {
   arc,
   BrushSetState,
   getHatchLines,
-  mockState,
   set,
   wiggle,
 } = vi.hoisted(() => ({
@@ -13,15 +12,8 @@ const {
   getHatchLines: vi.fn(() => [
     { x1: 0, y1: 0, x2: 10, y2: 0, isConnector: false },
   ]),
-  mockState: {
-    field: {},
-  },
   set: vi.fn(),
   wiggle: vi.fn(),
-}));
-
-vi.mock("../../src/core/color.js", () => ({
-  State: mockState,
 }));
 
 vi.mock("../../src/core/primitives.js", () => ({
@@ -30,11 +22,6 @@ vi.mock("../../src/core/primitives.js", () => ({
 
 vi.mock("../../src/core/plot.js", () => ({
   Plot: class Plot {},
-}));
-
-vi.mock("../../src/core/runtime.js", () => ({
-  fromDegrees: (angle) => angle,
-  usesRadians: () => false,
 }));
 
 vi.mock("../../src/hatch/hatch.js", () => ({
@@ -77,6 +64,14 @@ vi.mock("../../src/core/polygon.js", () => ({
 
 import { createMass as createMassCtx, createMassArray, mass } from "../../src/hatch/mass.js";
 import { defaultContext } from "../../src/core/context.js";
+
+// The state and the host hooks are context fields now. flowfield.js is mocked
+// away, so its state slice is set here.
+Object.assign(defaultContext, {
+  fromDegrees: (angle) => angle,
+  usesRadians: () => false,
+});
+const mockState = defaultContext.state;
 import { Polygon } from "../../src/core/polygon.js";
 
 // createMass() takes the drawing context first (core/context.js).

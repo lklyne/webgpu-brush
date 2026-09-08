@@ -1,4 +1,9 @@
 /**
+ * A context's wash state.
+ * @returns {object} The `ctx.state.wash` slice.
+ */
+export function createWashState(): object;
+/**
  * Enables wash mode with a color and opacity.
  *
  * @param {number|string|Color} a - Either the red component, a CSS color string, or a Color object.

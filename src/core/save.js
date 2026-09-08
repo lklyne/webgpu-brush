@@ -5,14 +5,6 @@ import { isFieldReady } from "./flowfield.js";
 // =============================================================================
 
 /**
- * Stack of saved brush states for push/pop operations.
- * A stack (not a single slot) is required because applyShader() internally
- * calls Renderer.push()/pop(), which fires our hook — a flat object would be
- * overwritten mid-draw and pop() would restore the wrong state.
- */
-const _stateStack = [];
-
-/**
  * Pushes the current brush state onto the stack.
  *
  * @param {import("./context.js").BrushContext} ctx
@@ -20,7 +12,7 @@ const _stateStack = [];
 export function push(ctx) {
   isFieldReady(ctx);
   const State = ctx.state;
-  _stateStack.push({
+  ctx.stateStack.push({
     fill: { ...State.fill },
     wash: State.wash ? { ...State.wash } : null,
     stroke: { ...State.stroke },
@@ -36,7 +28,7 @@ export function push(ctx) {
  * @param {import("./context.js").BrushContext} ctx
  */
 export function pop(ctx) {
-  const saved = _stateStack.pop();
+  const saved = ctx.stateStack.pop();
   if (!saved) return;
   const State = ctx.state;
   State.stroke = { ...saved.stroke };

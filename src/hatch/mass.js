@@ -2,7 +2,7 @@
 // Module: Mass
 // =============================================================================
 
-import { defaultContext } from "../core/context.js";
+import { defaultContext, registerContextInit } from "../core/context.js";
 import { _arc } from "../core/primitives.js";
 import { Polygon } from "../core/polygon.js";
 import { Plot } from "../core/plot.js";
@@ -15,12 +15,22 @@ import { _wiggle } from "../core/flowfield.js";
 // Mass State
 // ---------------------------------------------------------------------------
 
-defaultContext.state.mass = {
-  isActive: false,
-  brush: null,
-  color: null,
-  options: {},
-};
+/**
+ * A context's mass state.
+ * @returns {object} The `ctx.state.mass` slice.
+ */
+export function createMassState() {
+  return {
+    isActive: false,
+    brush: null,
+    color: null,
+    options: {},
+  };
+}
+
+registerContextInit((ctx) => {
+  ctx.state.mass = createMassState();
+});
 
 /**
  * Enables massing mode with a brush, color, and optional configuration.

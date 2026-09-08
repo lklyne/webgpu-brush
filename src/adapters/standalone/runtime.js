@@ -3,7 +3,7 @@
 // =============================================================================
 
 import { setRuntime } from "../../core/runtime.js";
-import { defaultContext } from "../../core/context.js";
+import { defaultContext, registerContextInit } from "../../core/context.js";
 import { push as pushState, pop as popState } from "../../core/save.js";
 
 const clamp = (value, min, max) => Math.max(min, Math.min(value, max));
@@ -11,17 +11,9 @@ const clamp = (value, min, max) => Math.max(min, Math.min(value, max));
 export const DEGREES = "degrees";
 export const RADIANS = "radians";
 
+// The 2D context used to parse CSS color strings is a parser, not drawing
+// state: one per document is correct, and it stays module-level.
 let colorContext = null;
-let currentAngleMode = RADIANS;
-const transformStack = [];
-let currentTransform = {
-  a: 1,
-  b: 0,
-  c: 0,
-  d: 1,
-  x: 0,
-  y: 0,
-};
 
 function getColorContext() {
   if (colorContext) return colorContext;
@@ -141,7 +133,7 @@ export function angleMode(mode) {
   if (mode !== DEGREES && mode !== RADIANS) {
     throw new Error(`Invalid angle mode "${mode}". Use "degrees" or "radians".`);
   }
-  currentAngleMode = mode;
+  defaultContext.angleMode = mode;
 }
 
 /**
@@ -150,7 +142,7 @@ export function angleMode(mode) {
  * @returns {"degrees"|"radians"}
  */
 export function getAngleMode() {
-  return currentAngleMode;
+  return defaultContext.angleMode;
 }
 
 /**
@@ -158,15 +150,15 @@ export function getAngleMode() {
  */
 export function push() {
   pushState(defaultContext);
-  transformStack.push({ ...currentTransform });
+  defaultContext.transformStack.push({ ...defaultContext.transform });
 }
 
 /**
  * Pops the last standalone transform from the stack.
  */
 export function pop() {
-  if (transformStack.length === 0) return;
-  currentTransform = transformStack.pop();
+  if (defaultContext.transformStack.length === 0) return;
+  defaultContext.transform = defaultContext.transformStack.pop();
   popState(defaultContext);
 }
 
@@ -177,7 +169,7 @@ export function pop() {
  * @param {number} y
  */
 export function translate(x, y) {
-  currentTransform = multiplyTransform(currentTransform, {
+  defaultContext.transform = multiplyTransform(defaultContext.transform, {
     a: 1,
     b: 0,
     c: 0,
@@ -194,10 +186,10 @@ export function translate(x, y) {
  */
 export function rotate(angle) {
   const theta =
-    currentAngleMode === RADIANS ? angle : (angle * Math.PI) / 180;
+    defaultContext.angleMode === RADIANS ? angle : (angle * Math.PI) / 180;
   const cosTheta = Math.cos(theta);
   const sinTheta = Math.sin(theta);
-  currentTransform = multiplyTransform(currentTransform, {
+  defaultContext.transform = multiplyTransform(defaultContext.transform, {
     a: cosTheta,
     b: sinTheta,
     c: -sinTheta,
@@ -214,7 +206,7 @@ export function rotate(angle) {
  * @param {number} [y=x]
  */
 export function scale(x, y = x) {
-  currentTransform = multiplyTransform(currentTransform, {
+  defaultContext.transform = multiplyTransform(defaultContext.transform, {
     a: x,
     b: 0,
     c: 0,
@@ -225,17 +217,37 @@ export function scale(x, y = x) {
 }
 
 /**
- * Installs the standalone runtime hooks used by core modules.
+ * Installs the standalone runtime hooks on a context. They close over the
+ * context's own angle mode and transform, so two contexts can disagree.
+ *
+ * @param {import("../../core/context.js").BrushContext} ctx
  */
-export function initStandaloneRuntime() {
-  setRuntime({
-    usesRadians: () => currentAngleMode === "radians",
+function installRuntime(ctx) {
+  setRuntime(ctx, {
+    usesRadians: () => ctx.angleMode === "radians",
     fromDegrees: (angle) =>
-      currentAngleMode === "radians" ? (angle * Math.PI) / 180 : angle,
+      ctx.angleMode === "radians" ? (angle * Math.PI) / 180 : angle,
     createColor: (...args) => {
       if (args.length === 1 && args[0]?._array) return args[0];
       return new Color(...args);
     },
-    getAffineMatrix: () => currentTransform,
+    getAffineMatrix: () => ctx.transform,
   });
+}
+
+// Angle mode and the transform stack are context state, not module state.
+// Every context this adapter drives gets its own, including `defaultContext`,
+// which exists before this module is imported.
+registerContextInit((ctx) => {
+  ctx.angleMode = RADIANS;
+  ctx.transform = { a: 1, b: 0, c: 0, d: 1, x: 0, y: 0 };
+  ctx.transformStack = [];
+  installRuntime(ctx);
+});
+
+/**
+ * Installs the standalone runtime hooks used by core modules.
+ */
+export function initStandaloneRuntime() {
+  installRuntime(defaultContext);
 }

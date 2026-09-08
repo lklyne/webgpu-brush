@@ -11,8 +11,9 @@
 
 import {
   setTargetRuntime,
-  setTargetState,
+  setTarget,
 } from "../../core/target.js";
+import { defaultContext } from "../../core/context.js";
 import { _onTargetResized } from "../../core/flowfield.js";
 import { createGpuHost } from "./gpu.js";
 import { armDeferred, flushDeferred } from "./deferred.js";
@@ -67,7 +68,9 @@ function applyLoadedTarget(target, width, height, density, gpuOptions = {}) {
   activeDensity = density;
 
   activeRenderer = createRenderer(target, width, height, density, gpuOptions);
-  setTargetState({
+  // One active target per adapter until the instance API lands, so the
+  // default context is the one that gets it.
+  setTarget(defaultContext, {
     Renderer: activeRenderer,
     Cwidth: width,
     Cheight: height,
@@ -75,7 +78,7 @@ function applyLoadedTarget(target, width, height, density, gpuOptions = {}) {
   });
   // The flow-field grid is derived from the target size; a target of a
   // different size needs a new one. Same size: nothing is discarded.
-  _onTargetResized(width, height);
+  _onTargetResized(defaultContext, width, height);
   isLoaded = true;
   // Record stateful calls until the device is ready, then replay them.
   // ready() starts now so a sketch that never awaits it still runs; the
@@ -258,10 +261,11 @@ export function createCanvas(width, height, options = {}) {
 /**
  * Refreshes the standalone target density.
  *
+ * @param {import("../../core/context.js").BrushContext} ctx
  * @returns {number}
  */
-export function syncDensity() {
-  setTargetState({
+export function syncDensity(ctx) {
+  setTarget(ctx, {
     Cwidth: activeWidth,
     Cheight: activeHeight,
     Density: activeDensity,

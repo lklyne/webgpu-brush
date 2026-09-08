@@ -16,6 +16,7 @@
 // =============================================================================
 
 import { setCompositorRuntime } from "../../core/compositor_runtime.js";
+import { defaultContext, registerContextInit } from "../../core/context.js";
 
 function requireHost(renderer) {
   const host = renderer?.host;
@@ -116,13 +117,19 @@ function runBlendShaderPass({
   });
 }
 
+const hooks = {
+  clearTarget,
+  ensureBlendShaderProgram,
+  ensureBlendSourceFramebuffer,
+  createFramebuffer,
+  runBlendShaderPass,
+  blitSourceToFramebuffer,
+};
+
+// The hooks are stateless — they take the renderer they act on — so every
+// context this adapter drives gets the same table.
+registerContextInit((ctx) => setCompositorRuntime(ctx, hooks));
+
 export function initStandaloneCompositorRuntime() {
-  setCompositorRuntime({
-    clearTarget,
-    ensureBlendShaderProgram,
-    ensureBlendSourceFramebuffer,
-    createFramebuffer,
-    runBlendShaderPass,
-    blitSourceToFramebuffer,
-  });
+  setCompositorRuntime(defaultContext, hooks);
 }

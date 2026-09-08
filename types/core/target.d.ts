@@ -1,22 +1,23 @@
 /**
- * Updates the shared target state consumed by core modules.
+ * Points a drawing context at a target.
  *
- * @param {object} state
+ * @param {import("./context.js").BrushContext} ctx
+ * @param {{Renderer?: object, Cwidth?: number, Cheight?: number, Density?: number}} state
  */
-export function setTargetState(state: object): void;
+export function setTarget(ctx: import("./context.js").BrushContext, state: {
+    Renderer?: object;
+    Cwidth?: number;
+    Cheight?: number;
+    Density?: number;
+}): void;
 /**
  * Registers or updates host target hooks used by core modules.
  *
  * @param {object} hooks
  */
 export function setTargetRuntime(hooks: object): void;
-export let Cwidth: any;
-export let Cheight: any;
-export let Instance: any;
-export let Renderer: any;
-export let Density: any;
 export function load(buffer: boolean, options: any): never;
-export function syncDensity(): any;
+export function syncDensity(ctx: any): any;
 export function isCanvasReady(): never;
 export function instance(inst: any): void;
 export function activateInstance(inst: any): void;

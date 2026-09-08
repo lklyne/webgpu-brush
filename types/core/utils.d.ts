@@ -82,8 +82,8 @@ export function constrain(n: number, low: number, high: number): number;
 export function cos(angle: number): number;
 export function sin(angle: number): number;
 export function cossin(angle: any): Float32Array<ArrayBuffer>;
-export function toDegrees(rad: number, isRad?: boolean): number;
-export function toDegreesSigned(angle: number, isRad?: boolean): number;
+export function toDegrees(ctx: import("./context.js").BrushContext, rad: number, isRad?: boolean): number;
+export function toDegreesSigned(ctx: import("./context.js").BrushContext, angle: number, isRad?: boolean): number;
 export function rotate(cx: number, cy: number, x: number, y: number, angle: number): {
     x: number;
     y: number;

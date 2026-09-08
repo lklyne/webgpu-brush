@@ -86,9 +86,10 @@ export function createCanvas(width: number, height: number, options?: {
 /**
  * Refreshes the standalone target density.
  *
+ * @param {import("../../core/context.js").BrushContext} ctx
  * @returns {number}
  */
-export function syncDensity(): number;
+export function syncDensity(ctx: import("../../core/context.js").BrushContext): number;
 /**
  * Ensures a standalone target has been loaded.
  */
