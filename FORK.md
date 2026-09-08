@@ -1434,3 +1434,50 @@ All re-run on the final tree after `pnpm build` (Metal, headless Chromium):
 - `src/` vs `upstream/main`: 18 files modified, 20 added, 18 deleted
   (the p5 adapter, GLSL, and the no-op renderer hooks); `scripts/*.mjs`
   2656 → 1874 lines including the new shared module.
+
+## W10 — three.js entry, type declarations, packaging fixes
+
+Externalizes the bridge that had lived in the host site
+(`src/lib/brush-three.ts`, the draw tab's shared-device wiring) so the
+package carries its own three.js support. No change to any shader,
+geometry path, or the standalone API.
+
+- **`brush-gpu/three`** (`src/three/index.js` → `dist/three.esm.js`, ESM
+  only). `createPaintingTexture(interop)` is the site bridge verbatim
+  (ExternalTexture behind a TSL `texture()` node, v flipped, wrapper swapped
+  on `onPaintingChanged`). Two attach constructors cover both
+  device-ownership directions: `attachToRenderer(renderer, w, h)` awaits
+  `renderer.init()` (idempotent in three), takes `renderer.backend.device`,
+  checks the painting against `maxTextureDimension2D` (three requests
+  default limits unless given `requiredLimits`), and calls
+  `createCanvas(w, h, { device, parent: null })`; `createSharedDevice(w, h)`
+  has brush own the device for `new WebGPURenderer({ device })`. Both
+  resolve to an `Attachment` `{ brush, canvas, interop, device, painting,
+  node, dispose }`. A module-level slot enforces one live attachment
+  (brush-gpu is a singleton; the flow-field grid latches to the first
+  canvas); `dispose()` frees it.
+- The bridge bundle marks `three`, `three/*` and the core entry external;
+  rollup `output.paths` rewrites the core import to `./brush.esm.js` so the
+  bridge shares the consumer's module instance instead of bundling a second
+  singleton. `three` is an optional peer (`>=0.184.0`, the version verified).
+- **Type declarations.** `tsc -p tsconfig.types.json` (allowJs,
+  emitDeclarationOnly) emits `types/` from the JSDoc; `guard()`'s
+  `@template` keeps every wrapped export at its real signature (no `any` in
+  `index.standalone.d.ts`). Wired into `pnpm build` and the `types`
+  conditions of every export.
+- **Packaging.** Root `.` export restored (bare `import 'brush-gpu'` had
+  failed with ERR_PACKAGE_PATH_NOT_EXPORTED because `exports` shadowed
+  `main`/`module`); `author` is the fork maintainer with the upstream author
+  under `contributors`; `types` added to `files`.
+- **Smoke test.** `test/three/{attach,shared-device}.html` (import map over
+  `node_modules/three/build`) each draw two strokes, sample the painting on
+  a plane through the bridge node, render into a three `RenderTarget` on the
+  same device and read it back, and publish `window.__smoke = { ok,
+  sameDevice, darkThroughThree, inkedInBrush }`; `test/e2e/smoke.mjs` gained
+  a `windowCheck` hook. Both pages PASS alongside the visual suite (Metal).
+- The host site imports `createPaintingTexture` from `brush-gpu/three`; its
+  local copy and the `declare module 'brush-gpu/standalone'` stub are gone.
+
+Verification: `vitest` 109/109, `pnpm build` clean (rollup + tsc),
+`pnpm test:smoke` 3/3.
+

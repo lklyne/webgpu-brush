@@ -1,0 +1,31 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>brush-gpu/three — attachToRenderer (three owns the device)</title>
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "/node_modules/three/build/three.module.js",
+          "three/webgpu": "/node_modules/three/build/three.webgpu.js",
+          "three/tsl": "/node_modules/three/build/three.tsl.js"
+        }
+      }
+    </script>
+    <style>body { font: 13px monospace; padding: 16px; } canvas { display: block; border: 1px solid #999; margin-bottom: 8px; }</style>
+  </head>
+  <body>
+    <h3>brush-gpu/three — attachToRenderer (three owns the device)</h3>
+    <canvas id="view" width="256" height="256"></canvas>
+    <pre id="out">running…</pre>
+    <script type="module">
+      import * as THREE from "three/webgpu";
+      import { attachToRenderer } from "/dist/three.esm.js";
+      import { exercise } from "./common.js";
+
+      const renderer = new THREE.WebGPURenderer({ canvas: document.getElementById("view") });
+      const att = await attachToRenderer(renderer, 256, 256);
+      await exercise(att, renderer);
+    </script>
+  </body>
+</html>

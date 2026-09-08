@@ -22,8 +22,13 @@ const plugins = [
   }),
 ];
 
-// One build: the standalone WebGPU library. WGSL ships as string exports
-// (src/webgpu/wgsl/*.wgsl.js), so no shader loader plugin is needed.
+// Two builds. The standalone WebGPU library (UMD + ESM; WGSL ships as string
+// exports under src/webgpu/wgsl, so no shader loader plugin is needed), and
+// the three.js bridge (ESM only, three is ESM only). The bridge imports the
+// library from ./brush.esm.js rather than bundling a second copy: brush-gpu
+// is a module singleton and the bridge must share it with the consumer.
+const CORE = /index\.standalone\.js$/;
+
 export default [
   {
     input: "src/index.standalone.js",
@@ -40,6 +45,17 @@ export default [
         sourcemap: true,
       },
     ],
+    plugins,
+  },
+  {
+    input: "src/three/index.js",
+    external: (id) => id === "three" || id.startsWith("three/") || CORE.test(id),
+    output: {
+      file: "dist/three.esm.js",
+      format: "esm",
+      sourcemap: true,
+      paths: (id) => (CORE.test(id) ? "./brush.esm.js" : id),
+    },
     plugins,
   },
 ];

@@ -30,9 +30,22 @@ const PAGES = [
     name: "standalone WebGPU",
     path: "test/standalone/visual_suite.html",
   },
+  // three.js bridge, both device-ownership directions. Each page renders the
+  // painting through three into a render target and reads it back; it
+  // publishes window.__smoke = { ok, ... } (see test/three/common.js).
+  {
+    name: "three bridge: attachToRenderer",
+    path: "test/three/attach.html",
+    windowCheck: "__smoke",
+  },
+  {
+    name: "three bridge: createSharedDevice",
+    path: "test/three/shared-device.html",
+    windowCheck: "__smoke",
+  },
 ];
 
-async function runSuite(page, { name, path }, baseUrl) {
+async function runSuite(page, { name, path, windowCheck }, baseUrl) {
   const url = `${baseUrl}/${path}`;
   const pageErrors = [];
   const consoleErrors = [];
@@ -93,6 +106,15 @@ async function runSuite(page, { name, path }, baseUrl) {
   });
   if (!(inked > 0)) {
     failures.push(`Painting is empty (${inked} pixels with alpha).`);
+  }
+
+  if (windowCheck) {
+    const result = await page.evaluate((key) => window[key] ?? null, windowCheck);
+    if (!result) {
+      failures.push(`window.${windowCheck} was never set (page did not finish).`);
+    } else if (!result.ok) {
+      failures.push(`window.${windowCheck} reports failure: ${JSON.stringify(result)}`);
+    }
   }
 
   return failures;

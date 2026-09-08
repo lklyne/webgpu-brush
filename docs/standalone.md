@@ -268,19 +268,7 @@ const { device, adapter, format, painting, onPaintingChanged } = brush.gpu();
 
 Because both sides share one device and one queue, brush-gpu's submissions land before the host's render in submission order. No fences, no copies.
 
-With three.js:
-
-```js
-brush.createCanvas(W, H);
-await brush.ready();
-
-const { device, painting, onPaintingChanged } = brush.gpu();
-const renderer = new WebGPURenderer({ device });
-let tex = new ExternalTexture(painting);
-onPaintingChanged((next) => {
-  tex = new ExternalTexture(next); // swap into your material
-});
-```
+With three.js, use the `brush-gpu/three` entry instead of doing this by hand. `attachToRenderer(renderer, w, h)` adopts a renderer's device; `createSharedDevice(w, h)` has brush own the device for `new WebGPURenderer({ device })`. Both return `{ brush, canvas, interop, device, painting, node, dispose }`, where `node` is a TSL texture node that samples the live painting and survives resizes. `createPaintingTexture(interop)` is the low-level wrapper if you already hold a `brush.gpu()` handle. See the [README](../README.md#threejs).
 
 To draw on a device you already own, pass it in: `brush.createCanvas(W, H, { device, adapter })`, or `brush.load(canvas, { device, adapter })` for a canvas you created yourself. The device must have limits large enough for the target. brush-gpu never destroys a device it did not create.
 

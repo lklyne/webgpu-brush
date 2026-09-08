@@ -20,8 +20,11 @@ There is ONE build. It does not use p5.js. Do not write p5 code (`setup()`, `dra
 ```
 
 ```js
-// ESM — via npm (npm install brush-gpu)
+// ESM — via npm (npm install brush-gpu); 'brush-gpu' and 'brush-gpu/standalone' are the same module
 import * as brush from 'brush-gpu/standalone'
+
+// three.js bridge (ESM; `three` is an optional peer dependency)
+import { attachToRenderer, createSharedDevice, createPaintingTexture } from 'brush-gpu/three'
 
 // ESM — local file
 import * as brush from './dist/brush.esm.js'
@@ -167,6 +170,7 @@ brush.render()  // required
 
 ### GPU interop
 
+- `brush-gpu/three` — three.js bridge. `await attachToRenderer(renderer, w, h)` (three owns the device; brush adopts it) or `await createSharedDevice(w, h)` then `new WebGPURenderer({ device: att.device })` (brush owns the device). Both resolve to `{ brush, canvas, interop, device, painting, node, dispose }`; put `att.node` in a material's `colorNode` to sample the live painting with zero copies. One attachment live at a time: `dispose()` before attaching again. Painting is premultiplied, not sRGB-typed: linear output color space, tone mapping off.
 - `brush.gpu()` — Returns `{ device, adapter, format, painting, onPaintingChanged }`. Synchronous; requires `await brush.ready()`. `painting` is a getter for the live painting `GPUTexture` (row 0 = top, premultiplied, in `format`); it is recreated on resize, so subscribe with `onPaintingChanged(fn)` (returns a dispose fn). Use for zero-copy sampling by another renderer on the same device (e.g. three.js `WebGPURenderer({ device })` + `ExternalTexture(painting)`).
 - `brush.createCanvas(w, h, { device, adapter })` — Adopt an externally owned device instead of requesting one. brush-gpu never destroys an adopted device.
 

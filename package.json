@@ -1,27 +1,40 @@
 {
   "name": "brush-gpu",
   "version": "3.0.0",
-  "description": "Pure-WebGPU fork of p5.brush (Alejandro Campos Uribe, MIT): custom brushes, natural fill effects and intuitive hatching, with GPU-resident geometry. Standalone build only \u2014 no p5.js dependency.",
+  "description": "Pure-WebGPU fork of p5.brush (Alejandro Campos Uribe, MIT): custom brushes, natural fill effects and intuitive hatching, with GPU-resident geometry. Standalone build only — no p5.js dependency.",
   "main": "dist/brush.js",
   "module": "dist/brush.esm.js",
   "browser": "dist/brush.js",
+  "types": "types/index.standalone.d.ts",
   "exports": {
-    "./standalone": {
+    ".": {
+      "types": "./types/index.standalone.d.ts",
       "import": "./dist/brush.esm.js",
       "require": "./dist/brush.js"
+    },
+    "./standalone": {
+      "types": "./types/index.standalone.d.ts",
+      "import": "./dist/brush.esm.js",
+      "require": "./dist/brush.js"
+    },
+    "./three": {
+      "types": "./types/three/index.d.ts",
+      "import": "./dist/three.esm.js"
     }
   },
   "scripts": {
-    "build": "rollup --config",
+    "build": "rollup --config && tsc -p tsconfig.types.json",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:smoke": "node test/e2e/smoke.mjs",
     "test:goldens": "node scripts/diff-parity.mjs --webgpu --goldens /test/goldens/tiles --regime character --tolerance 3.0",
-    "coverage": "vitest run --coverage"
+    "coverage": "vitest run --coverage",
+    "build:types": "tsc -p tsconfig.types.json"
   },
   "files": [
     "dist",
-    "src"
+    "src",
+    "types"
   ],
   "sideEffects": false,
   "type": "module",
@@ -36,29 +49,45 @@
     "flowfield",
     "webgpu",
     "wgsl",
-    "generative"
+    "generative",
+    "three",
+    "threejs",
+    "tsl",
+    "r3f"
   ],
-  "author": "Alejandro Campos Uribe",
+  "author": "Lyle Klyne",
+  "contributors": [
+    "Alejandro Campos Uribe (p5.brush, the original library)"
+  ],
   "license": "MIT",
   "bugs": {
     "url": "https://github.com/lklyne/brush-gpu/issues"
   },
   "homepage": "https://github.com/lklyne/brush-gpu#readme",
+  "dependencies": {
+    "simplex-noise": "^4.0.3"
+  },
+  "peerDependencies": {
+    "three": ">=0.184.0"
+  },
+  "peerDependenciesMeta": {
+    "three": {
+      "optional": true
+    }
+  },
   "devDependencies": {
     "@rollup/plugin-node-resolve": "^15.2.3",
     "@rollup/plugin-terser": "^1.0.0",
+    "@types/three": "0.184.1",
     "@vitest/coverage-v8": "^4.1.9",
+    "@webgpu/types": "^0.1.72",
     "p5.brush": "2.2.2",
     "playwright-chromium": "^1.58.2",
     "rollup": "^4.9.4",
     "rollup-plugin-cleanup": "^3.2.1",
+    "three": "0.184.0",
+    "typescript": "^5.9.3",
     "vite": "^8.0.16",
     "vitest": "^4.1.9"
-  },
-  "dependencies": {
-    "simplex-noise": "^4.0.3"
-  },
-  "contributors": [
-    "Lyle Klyne"
-  ]
+  }
 }

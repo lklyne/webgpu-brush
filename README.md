@@ -18,6 +18,7 @@ It does not depend on p5.js.
 - [Requirements](#requirements)
 - [Installation](#installation)
 - [Quick Start](#quick-start)
+- [three.js](#threejs)
 - [Differences from upstream p5.brush](#differences-from-upstream-p5brush)
 - [Reference](#reference)
 - [Further reading](#further-reading)
@@ -40,7 +41,7 @@ npm install brush-gpu
 import * as brush from 'brush-gpu/standalone';
 ```
 
-The package exposes one subpath, `brush-gpu/standalone`. It resolves to `dist/brush.esm.js` for `import` and `dist/brush.js` for `require`. In a pnpm workspace, add `"brush-gpu": "workspace:*"` and import the same way.
+`brush-gpu` and `brush-gpu/standalone` are the same module: `dist/brush.esm.js` for `import`, `dist/brush.js` for `require`. `brush-gpu/three` is the three.js bridge (ESM only, `three` is an optional peer dependency). TypeScript declarations ship with the package. In a pnpm workspace, add `"brush-gpu": "workspace:*"` and import the same way.
 
 ### Script tag
 
@@ -90,6 +91,51 @@ The order is always: create a canvas, set state (`set`, `fill`, `hatch`, ...), d
 
 You can start drawing right after `createCanvas()`. The WebGPU device comes up asynchronously; calls made before it is ready are recorded and replayed in order. `await brush.ready()` when you need to know the painting is current (before `readPixels()`, `gpu()`, or `snapshot()`).
 
+## three.js
+
+`brush-gpu/three` puts the painting on the same `GPUDevice` as a three.js `WebGPURenderer` and hands you a TSL texture node that samples it directly. No upload, no readback: the painting `GPUTexture` is bound as an `ExternalTexture`, and because both sides share one queue, brush's submissions land before three's render in submission order.
+
+Two ways to share a device. Pick the one that matches who creates the renderer.
+
+**Three already owns a renderer** (an existing scene, or react-three-fiber's `<Canvas>`): brush adopts its device.
+
+```js
+import * as THREE from 'three/webgpu';
+import { attachToRenderer } from 'brush-gpu/three';
+
+const renderer = new THREE.WebGPURenderer({ canvas });
+const att = await attachToRenderer(renderer, 1024, 1024);
+
+const material = new THREE.MeshBasicNodeMaterial();
+material.colorNode = att.node;              // samples the live painting
+scene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), material));
+
+att.brush.pick('HB');
+att.brush.stroke('#101020');
+att.brush.line(-300, -300, 300, 300);
+att.brush.render();
+await renderer.renderAsync(scene, camera);
+```
+
+A device three requested has WebGPU's default limits unless you passed `requiredLimits` to the renderer. Paintings up to 8192 device pixels per side fit; `attachToRenderer` throws a clear error otherwise.
+
+**Brush owns the device**, three adopts it. brush requests the adapter's full limits and every supported feature, so the renderer is never in compatibility mode.
+
+```js
+import { createSharedDevice } from 'brush-gpu/three';
+
+const att = await createSharedDevice(1024, 1024);
+const renderer = new THREE.WebGPURenderer({ canvas, device: att.device });
+```
+
+Both return an `Attachment`: `{ brush, canvas, interop, device, painting, node, dispose }`. `brush` is the drawing API (the same module as `brush-gpu/standalone`), `node` is the TSL node for materials, `painting.texture` is the current `ExternalTexture`, and `dispose()` releases the three wrappers. The node keeps working across resizes: brush recreates the painting texture, and the bridge swaps a fresh wrapper into the node.
+
+The painting is premultiplied and not sRGB-typed, so for a 1:1 display use a renderer with linear output color space and tone mapping off.
+
+brush-gpu keeps one active painting per page, so only one attachment can be live at a time. `dispose()` before attaching again. With react-three-fiber, do the attach once at module level or in a ref-guarded effect, not per mount.
+
+`createPaintingTexture(interop)` is also exported for the low-level path: call `brush.gpu()` yourself and wrap the handle.
+
 ## Differences from upstream p5.brush
 
 The drawing API is upstream's, unchanged. What differs:
@@ -98,7 +144,7 @@ The drawing API is upstream's, unchanged. What differs:
 - **`brush.ready()`** resolves when the device is up. Awaiting it is optional: stateful calls made before that are recorded and replayed in program order. One caveat, pre-ready only: a `brush.random()` value read after a `seed()` is that stream's first draw, where a synchronous run would have consumed the intervening drawing first. Once ready, `random()` continues where the synchronous sequence would.
 - **`brush.readPixels()`** (async) is the supported way to capture output. `drawImage()` of a WebGPU canvas onto a 2D canvas can be blank in headless browsers.
 - **`brush.cpuGeometry()` / `brush.noCpuGeometry()`** force or release the CPU geometry producers. Same image, slower. A toggle pair like `fill()`/`noFill()`.
-- **`brush.gpu()`** returns `{ device, adapter, format, painting, onPaintingChanged }` for zero-copy interop with another renderer on the same device (three.js `WebGPURenderer`, for example). `createCanvas()` accepts `{ device, adapter }` to adopt an externally owned device.
+- **`brush.gpu()`** returns `{ device, adapter, format, painting, onPaintingChanged }` for zero-copy interop with another renderer on the same device. `createCanvas()` accepts `{ device, adapter }` to adopt an externally owned device. `brush-gpu/three` wraps both directions for three.js; see [three.js](#threejs).
 - **`brush.snapshot()` / `brush.restore()` / `brush.freeSnapshot()`** copy the painting texture aside and back on the GPU. Undo for host applications.
 - **Geometry inspection:** `brush.stream()`, `brush.onGeometry()`, `brush.beginGeometry()` / `brush.endGeometry()`, `brush.readGeometry()` expose and let you edit stroke stamps between generation and rasterization.
 - **Hash RNG.** Internal random draws are a counter-based hash, which GPU compute can reproduce and a sequential stream cannot. The same seed gives a different, equally plausible image than upstream p5.brush. Run-to-run reproducibility per seed is preserved. `random()`, `wRand()`, and `noise()` are unchanged.
