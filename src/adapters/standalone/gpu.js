@@ -30,7 +30,7 @@ import { createPipelineCache, createUniformRing } from "../../webgpu/pipeline.js
 import { createStampRenderer } from "../../webgpu/stamps.js";
 import { createFillRenderer } from "../../webgpu/fill.js";
 import { createGpuFillDriver } from "../../webgpu/fillgpu.js";
-import { packBlendUniforms, BLEND_UNIFORM_BYTES } from "../../webgpu/spectral.js";
+import { BLEND_FLAG_OPAQUE, packBlendUniforms, BLEND_UNIFORM_BYTES } from "../../webgpu/spectral.js";
 import { SPECTRAL_WGSL } from "../../webgpu/wgsl/spectral.wgsl.js";
 
 /** Thrown helper for pre-ready GPU use. */
@@ -546,7 +546,7 @@ fn ordU32ToF32(v: u32) -> f32 {
     }
     ensureRectCompositePipeline();
     packBlendUniforms(
-      { color: o.color, isBrush: o.isBrush, targetIsFramebuffer: false, flags: 0 },
+      { color: o.color, isBrush: o.isBrush, targetIsFramebuffer: false, flags: blendFlags(o) },
       blendScratch,
     );
     const slot = blendRing.write(blendScratch);
@@ -574,6 +574,9 @@ fn ordU32ToF32(v: u32) -> f32 {
     blendRing.reset();
   }
 
+  /** composite flags: bits 0–1 are the UV flips (never set here), bit 2 = opaque brush */
+  const blendFlags = (o) => (o.opaque ? BLEND_FLAG_OPAQUE : 0);
+
   host.runComposite = (o) => {
     host.requireReady();
     const device = host.gpu.device;
@@ -599,7 +602,7 @@ fn ordU32ToF32(v: u32) -> f32 {
         color: o.color,
         isBrush: o.isBrush,
         targetIsFramebuffer: toFramebuffer,
-        flags: 0, // image convention everywhere — no UV flips
+        flags: blendFlags(o), // image convention everywhere — no UV flips
       },
       blendScratch,
     );
@@ -685,7 +688,7 @@ fn ordU32ToF32(v: u32) -> f32 {
     blit.end();
 
     packBlendUniforms(
-      { color: o.color, isBrush: true, targetIsFramebuffer: false, flags: 0 },
+      { color: o.color, isBrush: true, targetIsFramebuffer: false, flags: blendFlags(o) },
       blendScratch,
     );
     const slot = blendRing.write(blendScratch);

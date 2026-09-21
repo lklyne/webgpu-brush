@@ -523,6 +523,7 @@ Choosing brushes, adding your own, and clipping where strokes may appear.
       - `rotate`: `"none"` keeps the tip fixed, `"natural"` follows the stroke direction, `"random"` spins randomly.
       - `markerTip`: `"marker"`, `"custom"`, and `"image"` types. Set `false` to disable the soft tip buildup at the start and end of each stroke. Defaults to `true`.
       - `noise`: Per-stroke opacity variation. `0` makes every stroke identical; `1` is maximum variation. Defaults to `0.3`.
+      - `opaque`: Set `true` for a tip that should keep its colour under heavy coverage. By default the brush composite darkens pigment where the stroke mask builds up past 70% (paint build-up, the marker look), which caps a white stroke at roughly 78% and darkens every colour a little; an opaque tip skips that. Defaults to `false`.
   - **Usage**:
     ```javascript
     // Image brush. brush.add() returns a Promise for type "image";

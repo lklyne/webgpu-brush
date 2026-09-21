@@ -608,10 +608,12 @@ export function queueWalkStroke(ctx, o) {
   const b = ctx.batch;
   const Mix = ctx.mix;
   const color = ctx.state.stroke.color._array;
+  const opaque = Mix.opaque === true;
   const immediate = Mix.glMask.isDrawn === true;
   if (
     b.openGroup &&
     (b.openGroup.immediate !== immediate ||
+      b.openGroup.opaque !== opaque ||
       b.openGroup.key.mx !== b.mx || b.openGroup.key.my !== b.my ||
       b.openGroup.key.r !== color[0] || b.openGroup.key.g !== color[1] ||
       b.openGroup.key.b !== color[2])
@@ -624,6 +626,7 @@ export function queueWalkStroke(ctx, o) {
       end: b.pending.length,
       key: { mx: b.mx, my: b.my, r: color[0], g: color[1], b: color[2] },
       color: [color[0], color[1], color[2], color[3] ?? 1],
+      opaque,
       immediate,
     };
   }
@@ -819,6 +822,7 @@ export function flushWalkBatch(ctx, joinMask = false) {
       source: ctx.renderer.blendSourceFramebuffer,
       maskView: Mix.glMask.view,
       color: g.color,
+      opaque: g.opaque === true,
       rect: { buffer: batch.rectsBuffer, offset: gi * RECT_BYTES, size: RECT_BYTES },
     });
     maskHoldsDeferred = true;

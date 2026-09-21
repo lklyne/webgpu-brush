@@ -237,6 +237,11 @@ export function add(name, params) {
   if (params.markerTip === undefined) params.markerTip = true;
   if (params.noise === undefined) params.noise = 0.3;
   params.noise = Math.max(0, Math.min(1, params.noise));
+  // An opaque tip skips the composite's pigment build-up darkening (the
+  // brush-path "blacken" above DARKEN_THRESHOLD in spectral.wgsl), so heavy
+  // coverage keeps the set colour instead of going black. Off by default:
+  // upstream's markers rely on the build-up.
+  params.opaque = params.opaque === true;
   // Accept legacy param names for backward compatibility
   if (params.vibration !== undefined && params.scatter === undefined)
     params.scatter = params.vibration;
@@ -585,6 +590,7 @@ function tryGpuWalk(ctx, dirDegrees) {
   const switchingToBrush = Mix.isBrush !== true;
   Mix.isBrush = true;
   if (switchingToBrush) Mix.justChanged = true;
+  setOpaque(ctx, param.opaque);
   Mix.blend(ctx, State.stroke.color);
 
   const chain = queueWalkStroke(ctx, {
@@ -664,6 +670,7 @@ function saveState(ctx) {
   const switchingToBrush = Mix.isBrush !== true;
   Mix.isBrush = true;
   if (switchingToBrush) Mix.justChanged = true;
+  setOpaque(ctx, param.opaque);
   Mix.blend(ctx, State.stroke.color);
 
   // Set additional state values
@@ -682,6 +689,22 @@ function saveState(ctx) {
     drawDefault;
 
   markerTip(ctx, 1);
+}
+
+/**
+ * Latches the brush's `opaque` flag on the compositor. The flag rides on the
+ * per-colour composite, so a change between two strokes of the *same* colour
+ * has to end the running blend cycle first — under the old flag — or both
+ * brushes' stamps would share one mask and one composite.
+ * @param {import("../core/context.js").BrushContext} ctx
+ * @param {boolean} opaque
+ */
+function setOpaque(ctx, opaque) {
+  const Mix = ctx.mix;
+  const want = opaque === true;
+  if (Mix.opaque === want) return;
+  if (Mix.isBlending) Mix.blend(ctx, false, true);
+  Mix.opaque = want;
 }
 
 /**

@@ -222,6 +222,9 @@ let cachedColor = [];
 /** Byte size of BlendUniforms. */
 export const BLEND_UNIFORM_BYTES = 192;
 /** Float32 offsets into the packed array. */
+/** composite `flags` bit: the brush mask belongs to an `opaque` tip */
+export const BLEND_FLAG_OPAQUE = 4;
+
 export const BLEND_UNIFORM_OFFSETS = {
   r2: 0, // 40 floats (array<vec4f, 10>)
   lum2: 40,
@@ -245,7 +248,8 @@ export function packBlendUniforms(opts, out = new Float32Array(48)) {
   const u32 = new Uint32Array(out.buffer, out.byteOffset, 48);
   u32[BLEND_UNIFORM_OFFSETS.isBrush] = opts.isBrush ? 1 : 0;
   u32[BLEND_UNIFORM_OFFSETS.targetIsFramebuffer] = opts.targetIsFramebuffer ? 1 : 0;
-  // UV-flip flags (bit 0 source V, bit 1 mask V); 0 = image convention.
+  // bit 0 flips source V, bit 1 flips mask V (0 = image convention);
+  // bit 2 (BLEND_FLAG_OPAQUE) skips the brush path's build-up darkening.
   u32[43] = opts.flags ?? 0;
   out[BLEND_UNIFORM_OFFSETS.color + 0] = opts.color[0];
   out[BLEND_UNIFORM_OFFSETS.color + 1] = opts.color[1];
