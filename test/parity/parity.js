@@ -1,5 +1,5 @@
 // ============================================================
-// brush-gpu split-screen parity grid (headless-drivable)
+// webgpu-brush split-screen parity grid (headless-drivable)
 //
 // Browser half of scripts/diff-parity.mjs — same shape as
 // test/standalone/visual_suite.js: a plain module script served

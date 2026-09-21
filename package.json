@@ -1,5 +1,5 @@
 {
-  "name": "brush-gpu",
+  "name": "webgpu-brush",
   "version": "3.0.0",
   "description": "Pure-WebGPU fork of p5.brush (Alejandro Campos Uribe, MIT): custom brushes, natural fill effects and intuitive hatching, with GPU-resident geometry. Standalone build only — no p5.js dependency.",
   "main": "dist/brush.js",
@@ -40,7 +40,7 @@
   "type": "module",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/lklyne/brush-gpu.git"
+    "url": "git+https://github.com/lklyne/webgpu-brush.git"
   },
   "keywords": [
     "brush",
@@ -61,9 +61,9 @@
   ],
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/lklyne/brush-gpu/issues"
+    "url": "https://github.com/lklyne/webgpu-brush/issues"
   },
-  "homepage": "https://github.com/lklyne/brush-gpu#readme",
+  "homepage": "https://github.com/lklyne/webgpu-brush#readme",
   "dependencies": {
     "simplex-noise": "^4.0.3"
   },

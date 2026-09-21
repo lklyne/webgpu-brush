@@ -25,7 +25,7 @@ const plugins = [
 // Two builds. The standalone WebGPU library (UMD + ESM; WGSL ships as string
 // exports under src/webgpu/wgsl, so no shader loader plugin is needed), and
 // the three.js bridge (ESM only, three is ESM only). The bridge imports the
-// library from ./brush.esm.js rather than bundling a second copy: brush-gpu
+// library from ./brush.esm.js rather than bundling a second copy: webgpu-brush
 // is a module singleton and the bridge must share it with the consumer.
 const CORE = /index\.standalone\.js$/;
 

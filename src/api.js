@@ -417,7 +417,7 @@ function disposeInstance(api, ctx) {
 
   const dead = (name) => () => {
     throw new Error(
-      `brush-gpu: ${name}() was called on a disposed painting. ` +
+      `webgpu-brush: ${name}() was called on a disposed painting. ` +
         "createBrush() a new one — dispose() is final.",
     );
   };

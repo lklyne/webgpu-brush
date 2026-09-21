@@ -21,7 +21,7 @@ import { defaultContext, registerContextInit } from "../../core/context.js";
 function requireHost(renderer) {
   const host = renderer?.host;
   if (!host) {
-    throw new Error("brush-gpu: renderer has no WebGPU host — was a target loaded?");
+    throw new Error("webgpu-brush: renderer has no WebGPU host — was a target loaded?");
   }
   host.requireReady();
   return host;
@@ -41,7 +41,7 @@ function clearTarget(renderer, target, isFramebufferTarget) {
     target.__clearFillMask();
     return;
   }
-  throw new Error("brush-gpu: clearTarget received an unknown target type.");
+  throw new Error("webgpu-brush: clearTarget received an unknown target type.");
 }
 
 /**
@@ -105,7 +105,7 @@ function runBlendShaderPass({
     // getActiveFramebuffer() returns null in the standalone build (matches
     // upstream — see target.js); the framebuffer-target composite path is
     // p5-adapter-only and deliberately unimplemented here.
-    throw new Error("brush-gpu standalone: framebuffer targets are not supported.");
+    throw new Error("webgpu-brush standalone: framebuffer targets are not supported.");
   }
   const maskView = mask.view ?? mask.colorTexture?.createView();
   host.runComposite({

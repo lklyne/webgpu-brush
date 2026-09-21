@@ -36,7 +36,7 @@ import { SPECTRAL_WGSL } from "../../webgpu/wgsl/spectral.wgsl.js";
 /** Thrown helper for pre-ready GPU use. */
 function notReady() {
   throw new Error(
-    "brush-gpu: the WebGPU device is still initializing. " +
+    "webgpu-brush: the WebGPU device is still initializing. " +
       "await brush.ready() after brush.createCanvas()/brush.load() before drawing.",
   );
 }
@@ -542,7 +542,7 @@ fn ordU32ToF32(v: u32) -> f32 {
   function runCompositeRect(o, gpuRect) {
     const device = host.gpu.device;
     if (o.targetFramebuffer) {
-      throw new Error("brush-gpu standalone: framebuffer targets are not supported.");
+      throw new Error("webgpu-brush standalone: framebuffer targets are not supported.");
     }
     ensureRectCompositePipeline();
     packBlendUniforms(

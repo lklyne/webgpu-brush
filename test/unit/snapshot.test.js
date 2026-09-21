@@ -1,5 +1,5 @@
 // ============================================================
-// brush-gpu – painting snapshots belong to their painting
+// webgpu-brush – painting snapshots belong to their painting
 //
 // The pooled textures match the painting they were copied from, so a
 // handle taken by one context must not restore into another.

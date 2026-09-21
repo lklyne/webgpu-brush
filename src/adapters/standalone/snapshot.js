@@ -80,7 +80,7 @@ function requireHost(ctx) {
   isCanvasReady(ctx);
   const host = ctx.renderer.host;
   if (!host) {
-    throw new Error("brush-gpu: renderer has no WebGPU host — was a target loaded?");
+    throw new Error("webgpu-brush: renderer has no WebGPU host — was a target loaded?");
   }
   host.requireReady();
   return host;

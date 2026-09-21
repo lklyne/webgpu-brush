@@ -1,5 +1,5 @@
 // ============================================================
-// brush-gpu – drawing context independence
+// webgpu-brush – drawing context independence
 //
 // The context owns the drawing state. Two contexts must not share
 // a brush state slice, a push/pop stack, a flow-field grid, or a

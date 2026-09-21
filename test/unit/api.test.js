@@ -1,5 +1,5 @@
 // ============================================================
-// brush-gpu – createBrush() instances
+// webgpu-brush – createBrush() instances
 //
 // The instance surface must stay the module surface, name for name, or a
 // sketch written against `import * as brush` cannot be moved onto an
