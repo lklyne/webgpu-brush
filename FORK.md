@@ -3,10 +3,11 @@
 Fork of [p5.brush](https://github.com/acamposuribe/p5.brush) (Alejandro Campos
 Uribe, MIT) at upstream commit `fc37da3da3fa07e58edf880fb2788c5529a51ebe`
 (v2.2.2), being ported to pure WebGPU + WGSL with GPU-resident geometry.
+Upstream fixes are synced through `f2ffc89` (v2.2.3); see "Upstream sync".
 Plan: `docs/plans/p5-brush-pure-webgpu.md` in the host repo.
 
 **The reference is upstream p5.brush installed from npm at the pinned version
-(`p5.brush@2.2.2`, a devDependency here and in the host site), not code in this
+(`p5.brush@2.2.3`, a devDependency here and in the host site), not code in this
 fork.** It cannot drift, which frees this fork to replace or delete its
 renderer outright. The split-screen parity harness always keeps upstream in
 the left pane.
@@ -2244,3 +2245,27 @@ it to `encodeRectComposite`; the three `packBlendUniforms` call sites in the
 standalone `gpu.js` map it to the bit. Default `false`, so every existing
 brush, golden and oracle is untouched.
 
+## Upstream sync — v2.2.3 (`f2ffc89`)
+
+Upstream moved three commits past the fork point. Both fixes applied from
+upstream's `src`/`test`/`docs` diff; upstream's `dist` was not taken, ours is
+rebuilt.
+
+- **`42a0b1f` — standalone `Color` rejects what it cannot parse.** Arrays
+  (`[r, g, b]`, `[r, g, b, a]`) are accepted, non-finite channels throw, and
+  `standardize()` probes `fillStyle` against two sentinels so a typo throws
+  instead of inheriting the last parsed colour. Applies here unchanged: our
+  compositor's colour-change check (`src/core/color.js`, `cachedColor`
+  componentwise `!==`) is the same one, so a NaN channel defeated batching in
+  this fork too. Brings `test/unit/color.test.js` (9 tests) and four
+  error-suite cases in `test/standalone/visual_suite.js`. The
+  `docs/standalone.md` conflict was resolved keeping our wording.
+- **`f2ffc89` — segment spline pressure.** For `curvature === 0`, each segment
+  takes pressure from its start point (`p1[2]`, was `p2[2]`) and `endPlot`
+  takes the last point's pressure (was a hard-coded `1`). `_createSpline` is
+  CPU-side and shared by every stroke path, so there is no WGSL twin to patch.
+
+The reference pin moved to `p5.brush@2.2.3` here and in the host site, so the
+parity harness left pane includes the pressure fix. `test/goldens/` are ours
+and were not regenerated; `coverage-envelope.json` still records its 2.2.2
+source.

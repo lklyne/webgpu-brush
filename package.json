@@ -81,7 +81,7 @@
     "@types/three": "0.184.1",
     "@vitest/coverage-v8": "^4.1.9",
     "@webgpu/types": "^0.1.72",
-    "p5.brush": "2.2.2",
+    "p5.brush": "2.2.3",
     "playwright-chromium": "^1.58.2",
     "rollup": "^4.9.4",
     "rollup-plugin-cleanup": "^3.2.1",
