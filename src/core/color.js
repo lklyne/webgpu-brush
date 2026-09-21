@@ -156,6 +156,8 @@ function createMix() {
   return {
     isBlending: false,
     cachedColor: null,
+    /** the active brush's `opaque` flag; rides on the brush-mask composite */
+    opaque: false,
 
     /**
      * Merges a new dirty rectangle into the target's accumulated draw bounds.
@@ -353,6 +355,7 @@ function createMix() {
         mask: shaderMask,
         color: this.cachedColor,
         isBrushMask,
+        opaque: isBrushMask && this.opaque === true,
         Cwidth: ctx.width,
         Cheight: ctx.height,
         dirtyRect,
@@ -386,6 +389,7 @@ export const flushActiveComposite = (ctx) => {
   mix.isBlending = false;
   mix.isBrush = null;
   mix.cachedColor = null;
+  mix.opaque = false;
 };
 
 /**

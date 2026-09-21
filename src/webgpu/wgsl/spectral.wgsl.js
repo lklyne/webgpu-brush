@@ -312,10 +312,11 @@ struct BlendUniforms {
   lum2: f32,
   isBrush: u32,
   targetIsFramebuffer: u32,
-  // UV-flip flags — bit 0 flips source V, bit 1 flips mask V.
+  // bit 0 flips source V, bit 1 flips mask V.
   // 0 = image convention everywhere (row 0 = top), which is what the
   // WebGPU adapter uses for every texture; the GL-emulating flips the
   // verbatim port carried are opt-in for oracle/parity use.
+  // bit 2: the brush mask is an opaque tip (brush param opaque) — no build-up darkening.
   flags: u32,
   color: vec4f,
 };
@@ -417,7 +418,7 @@ fn ordU32ToF32(v: u32) -> f32 {
   let bgColor = mix(vec3f(1.0), source.rgb, source.a);
 
   if (u.isBrush != 0u) {
-    if (maskColor.a > DARKEN_THRESHOLD) {
+    if (maskColor.a > DARKEN_THRESHOLD && (u.flags & 4u) == 0u) {
       // Pigment perturbed per-pixel → precomputed R2 no longer matches;
       // the only surviving consumer of the full path.
       let blacken = 0.5 * (min(maskColor.a, 1.0) - DARKEN_THRESHOLD);

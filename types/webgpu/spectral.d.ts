@@ -61,6 +61,9 @@ export const SPECTRAL_R_TO_XYZ: number[][];
 export const SPECTRAL_XYZ_TO_RGB: number[][];
 /** Byte size of BlendUniforms. */
 export const BLEND_UNIFORM_BYTES: 192;
+/** Float32 offsets into the packed array. */
+/** composite `flags` bit: the brush mask belongs to an `opaque` tip */
+export const BLEND_FLAG_OPAQUE: 4;
 export namespace BLEND_UNIFORM_OFFSETS {
     let r2: number;
     let lum2: number;

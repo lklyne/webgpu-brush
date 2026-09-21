@@ -96,6 +96,7 @@ function runBlendShaderPass({
   mask,
   color,
   isBrushMask,
+  opaque,
   dirtyRect,
   targetIsFramebuffer,
 }) {
@@ -112,6 +113,7 @@ function runBlendShaderPass({
     maskView,
     color,
     isBrush: isBrushMask,
+    opaque: opaque === true,
     rect: dirtyRect ?? null,
     targetFramebuffer: null,
   });

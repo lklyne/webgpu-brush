@@ -2219,3 +2219,28 @@ mean 1.2771 · failing 2 (edge-subpixel 3.7466, edge-self-intersect 4.7957);
 `oracle-w4b.mjs` 4/4; `oracle-w5.mjs` 4/4; `oracle-instances.mjs` 21/21.
 `grep -rn '\bW[0-9]' src` matches nothing. Bundle: `dist/brush.esm.js`
 246 694 → 251 683 bytes (+2.0%), `dist/three.esm.js` 1682 → 1650.
+
+## W12 — `opaque` brush param
+
+The brush-path composite (`spectral.wgsl` `fs`, `u.isBrush`) darkens the
+pigment wherever the stroke mask's alpha passes `DARKEN_THRESHOLD` (0.7):
+`blacken = 0.5·(a − 0.7)`, `pigment = color·(1 − blacken) − 0.5·blacken`.
+That is upstream's paint build-up — the reason a marker goes darker where
+strokes overlap — and it is right for every built-in tip. It is wrong for a
+tip meant to *cover*: at full coverage every colour takes a fixed bite
+(`#3f6fd1` → `#224b9f`) and white tops out near 78%, so an opaque oil dab
+comes out as mud however it is stamped.
+
+`brush.add(name, { …, opaque: true })` opts a tip out. The flag rides on the
+per-colour composite as `flags` bit 2 (`BLEND_FLAG_OPAQUE` in
+`webgpu/spectral.js`; bits 0–1 are the UV flips) and the shader gates the
+blacken on it — everything else on the brush path (mask alpha as mix
+intensity, no `blurEdge`) is unchanged. Plumbing: `stroke.js` `setOpaque`
+latches it on `ctx.mix.opaque` from both `saveState` (CPU walk) and
+`tryGpuWalk`, ending the running blend cycle first when it changes so two
+tips of one colour never share a composite; `color.js` `applyShader` passes
+it to `runBlendShaderPass`; `gl_draw.js` deferred groups key on it and carry
+it to `encodeRectComposite`; the three `packBlendUniforms` call sites in the
+standalone `gpu.js` map it to the bit. Default `false`, so every existing
+brush, golden and oracle is untouched.
+
