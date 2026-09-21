@@ -1,6 +1,6 @@
 # Standalone Adapter
 
-The WebGPU host for brush-gpu. It implements the core's hook contracts (see [../README.md](../README.md)) and adds the lifecycle the public API needs.
+The WebGPU host for webgpu-brush. It implements the core's hook contracts (see [../README.md](../README.md)) and adds the lifecycle the public API needs.
 
 - `gpu.js`: the WebGPU host. Owns the device and canvas context, the pipeline cache, the stamp renderer, the fill renderers, the spectral composite pipeline, and the persistent painting texture. Everything else in this folder reaches the GPU through `renderer.host`.
 - `target.js`: target hooks (`core/target.js`). `createCanvas()`, `load()`, `ready()`, `readPixels()`, `gpu()`; creates the renderer object and starts device acquisition.

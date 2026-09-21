@@ -1,5 +1,5 @@
 // ============================================================
-// brush-gpu Structural Assertions (W1b gate)
+// webgpu-brush Structural Assertions (W1b gate)
 //
 // Drives test/parity/structure.html headlessly (same server/browser
 // resolution as diff-parity.mjs) and either captures a structural JSON

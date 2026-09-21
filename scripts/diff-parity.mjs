@@ -1,5 +1,5 @@
 // ============================================================
-// brush-gpu Headless Parity Diff
+// webgpu-brush Headless Parity Diff
 //
 // Drives test/parity/parity.html in headless Chromium (same shape as
 // test/e2e/smoke.mjs: local static server + playwright-chromium) and

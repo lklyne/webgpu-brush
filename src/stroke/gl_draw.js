@@ -339,7 +339,7 @@ export function glDrawImages(ctx, p5img, src) {
   }
   if (b.host?.stamps.imageCount === 0 || !p5img) {
     if (b.host && b.host.stamps.imageCount > 0 && !p5img) {
-      throw new Error(`brush-gpu: no tip surface for image brush "${src}"`);
+      throw new Error(`webgpu-brush: no tip surface for image brush "${src}"`);
     }
     return;
   }
@@ -463,7 +463,7 @@ function initWalker(host) {
       slice.walkerReady = true;
     },
     (err) => {
-      console.warn("brush-gpu: GPU stroke walk unavailable, using CPU walk:", err);
+      console.warn("webgpu-brush: GPU stroke walk unavailable, using CPU walk:", err);
       slice.walker = null;
     },
   );

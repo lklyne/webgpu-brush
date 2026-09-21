@@ -1,6 +1,6 @@
-# brush-gpu
+# webgpu-brush
 
-brush-gpu is a natural drawing library for the browser: pencils, charcoal, markers, watercolor fills, hatch patterns, and vector fields. It is a fork of p5.brush (Alejandro Campos Uribe, MIT) with the renderer replaced by pure WebGPU + WGSL. The drawing API is p5.brush's, unchanged.
+webgpu-brush is a natural drawing library for the browser: pencils, charcoal, markers, watercolor fills, hatch patterns, and vector fields. It is a fork of p5.brush (Alejandro Campos Uribe, MIT) with the renderer replaced by pure WebGPU + WGSL. The drawing API is p5.brush's, unchanged.
 
 There is ONE build. It does not use p5.js. Do not write p5 code (`setup()`, `draw()`, `createCanvas(w, h, WEBGL)`, `background()`, `push()`, `randomSeed()`) for this library; every call is on the `brush` object.
 
@@ -20,17 +20,17 @@ There is ONE build. It does not use p5.js. Do not write p5 code (`setup()`, `dra
 ```
 
 ```js
-// ESM — via npm (npm install brush-gpu); 'brush-gpu' and 'brush-gpu/standalone' are the same module
-import * as brush from 'brush-gpu/standalone'
+// ESM — via npm (npm install webgpu-brush); 'webgpu-brush' and 'webgpu-brush/standalone' are the same module
+import * as brush from 'webgpu-brush/standalone'
 
 // three.js bridge (ESM; `three` is an optional peer dependency)
-import { attachToRenderer, createSharedDevice, createPaintingTexture } from 'brush-gpu/three'
+import { attachToRenderer, createSharedDevice, createPaintingTexture } from 'webgpu-brush/three'
 
 // ESM — local file
 import * as brush from './dist/brush.esm.js'
 
 // Extra paintings: same surface, own canvas/state/seed/GPU resources
-import { createBrush } from 'brush-gpu/standalone'
+import { createBrush } from 'webgpu-brush/standalone'
 ```
 
 ---
@@ -98,7 +98,7 @@ Pre-ready caveats:
 
 ## Frame lifecycle — mandatory
 
-brush-gpu does not flush or clear automatically. Do both yourself every frame.
+webgpu-brush does not flush or clear automatically. Do both yourself every frame.
 
 ```js
 brush.clear('#f5f0e0')       // clear to background color
@@ -142,7 +142,7 @@ brush.wRand({ a: 3, b: 1 })  // weighted key pick
 brush.noise(x, y)       // seeded 2D simplex noise, [-1, 1]
 ```
 
-The internal RNG is a counter-based hash, not upstream's sequential stream. **The same seed produces a different (equally plausible) image than upstream p5.brush.** Per-seed reproducibility within brush-gpu is preserved. `random()`, `wRand()`, `noise()` are unchanged.
+The internal RNG is a counter-based hash, not upstream's sequential stream. **The same seed produces a different (equally plausible) image than upstream p5.brush.** Per-seed reproducibility within webgpu-brush is preserved. `random()`, `wRand()`, `noise()` are unchanged.
 
 ## Capturing output
 
@@ -158,7 +158,7 @@ Use `readPixels()`. `drawImage()` of a WebGPU canvas onto a 2D canvas can be bla
 ## Example
 
 ```js
-import * as brush from 'brush-gpu/standalone'
+import * as brush from 'webgpu-brush/standalone'
 
 const W = 600, H = 600
 brush.createCanvas(W, H, { parent: document.body })
@@ -188,9 +188,9 @@ brush.render()  // required
 
 ### GPU interop
 
-- `brush-gpu/three` — three.js bridge. `await attachToRenderer(renderer, w, h)` (three owns the device; brush adopts it) or `await createSharedDevice(w, h)` then `new WebGPURenderer({ device: att.device })` (brush owns the device). Both create their OWN painting and resolve to `{ brush, canvas, interop, device, painting, node, dispose }`; `att.brush` is that instance — draw with `att.brush.line(...)`, not the module-level exports — and `att.node` goes in a material's `colorNode` to sample the live painting with zero copies. Any number of attachments can be live; `att.dispose()` releases the wrappers and the instance it created. Pass `{ brush: existingInstance }` to attach a painting you already have (dispose it yourself). Painting is premultiplied, not sRGB-typed: linear output color space, tone mapping off.
+- `webgpu-brush/three` — three.js bridge. `await attachToRenderer(renderer, w, h)` (three owns the device; brush adopts it) or `await createSharedDevice(w, h)` then `new WebGPURenderer({ device: att.device })` (brush owns the device). Both create their OWN painting and resolve to `{ brush, canvas, interop, device, painting, node, dispose }`; `att.brush` is that instance — draw with `att.brush.line(...)`, not the module-level exports — and `att.node` goes in a material's `colorNode` to sample the live painting with zero copies. Any number of attachments can be live; `att.dispose()` releases the wrappers and the instance it created. Pass `{ brush: existingInstance }` to attach a painting you already have (dispose it yourself). Painting is premultiplied, not sRGB-typed: linear output color space, tone mapping off.
 - `brush.gpu()` — Returns `{ device, adapter, format, painting, onPaintingChanged }`. Synchronous; requires `await brush.ready()`. `painting` is a getter for the live painting `GPUTexture` (row 0 = top, premultiplied, in `format`); it is recreated on resize, so subscribe with `onPaintingChanged(fn)` (returns a dispose fn). Use for zero-copy sampling by another renderer on the same device (e.g. three.js `WebGPURenderer({ device })` + `ExternalTexture(painting)`).
-- `brush.createCanvas(w, h, { device, adapter })` / `createBrush({ device, adapter })` — Adopt an externally owned device instead of requesting one. brush-gpu never destroys an adopted device.
+- `brush.createCanvas(w, h, { device, adapter })` / `createBrush({ device, adapter })` — Adopt an externally owned device instead of requesting one. webgpu-brush never destroys an adopted device.
 
 ### CPU geometry
 
@@ -463,7 +463,7 @@ new brush.Color('#3a2f1e'); new brush.Color(r, g, b); new brush.Color(gray)
 - **Always call `brush.render()` at the end of every drawing pass** — nothing appears otherwise.
 - **`await brush.ready()` is optional** for drawing; required before `gpu()` and `snapshot()`. A `random()` read before ready and after a `seed()` returns the stream's first draw (see Readiness).
 - **Capture with `await brush.readPixels()`**, not canvas2d `drawImage()`.
-- **Same seed, different image than upstream p5.brush** (hash RNG). Reproducible per seed within brush-gpu.
+- **Same seed, different image than upstream p5.brush** (hash RNG). Reproducible per seed within webgpu-brush.
 - The origin is at the canvas **center**. Use `brush.translate(-W/2, -H/2)` to work in top-left coordinates.
 - Use `brush.clear(color?)` to clear, `brush.push/pop/translate/rotate/scale` for transforms, `brush.angleMode(brush.DEGREES)` for angles, `brush.seed(n)` / `brush.noiseSeed(n)` for seeding. There are no p5 equivalents here.
 - `brush.load()` always needs a canvas argument. There are no framebuffer targets and `brush.instance()` is a no-op.

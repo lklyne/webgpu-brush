@@ -1,6 +1,6 @@
 /**
  * One painting's public API — what `createBrush()` returns and what the
- * module-level `brush-gpu` exports are the default instance of.
+ * module-level `webgpu-brush` exports are the default instance of.
  * @typedef {ReturnType<typeof createBrush>} BrushInstance
  */
 /**
@@ -93,7 +93,7 @@ export function attachToRenderer(renderer: import("three/webgpu").WebGPURenderer
 export function createSharedDevice(width: number, height: number, options?: AttachOptions): Promise<Attachment>;
 /**
  * One painting's public API — what `createBrush()` returns and what the
- * module-level `brush-gpu` exports are the default instance of.
+ * module-level `webgpu-brush` exports are the default instance of.
  */
 export type BrushInstance = ReturnType<typeof createBrush>;
 /**

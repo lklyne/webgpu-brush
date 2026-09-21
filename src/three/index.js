@@ -1,7 +1,7 @@
 // =============================================================================
-// brush-gpu/three — three.js bridge (shared device, zero copies)
+// webgpu-brush/three — three.js bridge (shared device, zero copies)
 //
-// The painting is a GPUTexture owned by brush-gpu. On the same GPUDevice,
+// The painting is a GPUTexture owned by webgpu-brush. On the same GPUDevice,
 // three's WebGPURenderer can bind it directly as an ExternalTexture: no
 // upload, no readback. Same device means same queue, so brush submissions
 // issued before the renderer's render call land first in submission order;
@@ -32,7 +32,7 @@ import { ExternalTexture } from "three/webgpu";
 
 /**
  * One painting's public API — what `createBrush()` returns and what the
- * module-level `brush-gpu` exports are the default instance of.
+ * module-level `webgpu-brush` exports are the default instance of.
  * @typedef {ReturnType<typeof createBrush>} BrushInstance
  */
 
@@ -131,7 +131,7 @@ function checkLimits(device, width, height, density) {
   const h = Math.round(height * density);
   if (w > limit || h > limit) {
     throw new Error(
-      `brush-gpu/three: painting ${w}x${h} exceeds the device's maxTextureDimension2D (${limit}). ` +
+      `webgpu-brush/three: painting ${w}x${h} exceeds the device's maxTextureDimension2D (${limit}). ` +
         "Construct the WebGPURenderer with { requiredLimits: { maxTextureDimension2D: <adapter limit> } }, " +
         "or let brush own the device via createSharedDevice().",
     );
@@ -209,7 +209,7 @@ export async function attachToRenderer(renderer, width, height, options = {}) {
   const device = backend?.device;
   if (!device) {
     throw new Error(
-      "brush-gpu/three: the renderer has no WebGPU device. attachToRenderer() needs a " +
+      "webgpu-brush/three: the renderer has no WebGPU device. attachToRenderer() needs a " +
         "three.js WebGPURenderer on the WebGPU backend (the WebGL fallback cannot share a painting).",
     );
   }

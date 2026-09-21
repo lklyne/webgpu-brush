@@ -1,5 +1,5 @@
 // ============================================================
-// brush-gpu Playwright Smoke Test
+// webgpu-brush Playwright Smoke Test
 //
 // Loads the standalone visual suite in headless Chromium (real GPU, WebGPU
 // via Metal ANGLE) and asserts:

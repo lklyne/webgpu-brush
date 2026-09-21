@@ -1,5 +1,5 @@
 // ============================================================
-// brush-gpu structural capture (headless-drivable)
+// webgpu-brush structural capture (headless-drivable)
 //
 // Browser half of scripts/assert-structure.mjs. Renders the parity tile
 // suite through ONE module (default: this fork's dist) with the `_stats`

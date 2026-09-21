@@ -1,4 +1,4 @@
-# FORK.md — brush-gpu
+# FORK.md — webgpu-brush
 
 Fork of [p5.brush](https://github.com/acamposuribe/p5.brush) (Alejandro Campos
 Uribe, MIT) at upstream commit `fc37da3da3fa07e58edf880fb2788c5529a51ebe`
@@ -48,7 +48,7 @@ the left pane.
    been broken at runtime since W3 and unbuilt since W8. W9 deleted it
    along with the WebGL shader sources, `index.p5.js`/`index.shared.js`,
    the p5 test pages, the examples, the online tools and the Pages deploy.
-   The package ships the standalone build only (`brush-gpu/standalone`;
+   The package ships the standalone build only (`webgpu-brush/standalone`;
    `main`/`module` point at it too). Upstream's GLSL shaders survive
    verbatim under `test/reference/glsl/` because two component oracles
    (spectral, stamps) render them in WebGL2 as their reference, and the
@@ -1403,7 +1403,7 @@ what no longer described the library, not merging.
 - **Packaging.** `repository`/`bugs`/`homepage` point at the fork,
   keywords drop `p5`, `pnpm test:goldens` runs the goldens gate, and the
   README, `docs/standalone.md`, `llms.txt` and the adapter READMEs
-  describe a single WebGPU build (install `brush-gpu/standalone`;
+  describe a single WebGPU build (install `webgpu-brush/standalone`;
   requirements, `ready()` optional with the `random()` caveat,
   `readPixels`, `gpu()`, `cpuGeometry`, snapshots, inspection API, hash
   RNG divergence).
@@ -1448,7 +1448,7 @@ Externalizes the bridge that had lived in the host site
 package carries its own three.js support. No change to any shader,
 geometry path, or the standalone API.
 
-- **`brush-gpu/three`** (`src/three/index.js` → `dist/three.esm.js`, ESM
+- **`webgpu-brush/three`** (`src/three/index.js` → `dist/three.esm.js`, ESM
   only). `createPaintingTexture(interop)` is the site bridge verbatim
   (ExternalTexture behind a TSL `texture()` node, v flipped, wrapper swapped
   on `onPaintingChanged`). Two attach constructors cover both
@@ -1460,7 +1460,7 @@ geometry path, or the standalone API.
   has brush own the device for `new WebGPURenderer({ device })`. Both
   resolve to an `Attachment` `{ brush, canvas, interop, device, painting,
   node, dispose }`. A module-level slot enforces one live attachment
-  (brush-gpu is a singleton; the flow-field grid latches to the first
+  (webgpu-brush is a singleton; the flow-field grid latches to the first
   canvas); `dispose()` frees it.
 - The bridge bundle marks `three`, `three/*` and the core entry external;
   rollup `output.paths` rewrites the core import to `./brush.esm.js` so the
@@ -1471,7 +1471,7 @@ geometry path, or the standalone API.
   `@template` keeps every wrapped export at its real signature (no `any` in
   `index.standalone.d.ts`). Wired into `pnpm build` and the `types`
   conditions of every export.
-- **Packaging.** Root `.` export restored (bare `import 'brush-gpu'` had
+- **Packaging.** Root `.` export restored (bare `import 'webgpu-brush'` had
   failed with ERR_PACKAGE_PATH_NOT_EXPORTED because `exports` shadowed
   `main`/`module`); `author` is the fork maintainer with the upstream author
   under `contributors`; `types` added to `files`.
@@ -1481,8 +1481,8 @@ geometry path, or the standalone API.
   same device and read it back, and publish `window.__smoke = { ok,
   sameDevice, darkThroughThree, inkedInBrush }`; `test/e2e/smoke.mjs` gained
   a `windowCheck` hook. Both pages PASS alongside the visual suite (Metal).
-- The host site imports `createPaintingTexture` from `brush-gpu/three`; its
-  local copy and the `declare module 'brush-gpu/standalone'` stub are gone.
+- The host site imports `createPaintingTexture` from `webgpu-brush/three`; its
+  local copy and the `declare module 'webgpu-brush/standalone'` stub are gone.
 
 Verification: `vitest` 109/109, `pnpm build` clean (rollup + tsc),
 `pnpm test:smoke` 3/3.
@@ -1491,7 +1491,7 @@ Verification: `vitest` 109/109, `pnpm build` clean (rollup + tsc),
 ## W11 — Instance API
 
 Turning the module singleton into `createBrush()` instances
-(`docs/plans/brush-gpu-instance-api.md` in the host repo). Step 1 of the
+(`docs/plans/webgpu-brush-instance-api.md` in the host repo). Step 1 of the
 plan's order of work, shipped ahead of the instance work as a plain bug fix.
 
 - **Flow-field grid latch fixed.** `isFieldReady()` built the grid geometry
@@ -1909,7 +1909,7 @@ inspect.js's `stream`/`onGeometry`/`beginGeometry`/`endGeometry`/`readGeometry`
 and gl_draw.js's `initWalkRouter` / `_setUseCpuWalk` defaults — which is step
 5's `buildApi(ctx)` / `createBrush()` work, together with the `owner` field on
 `Polygon`/`Plot`/`Position` and the one-live-attachment fence in
-`brush-gpu/three`.
+`webgpu-brush/three`.
 
 ### Step 4b — the recorder, the adapter's target, snapshots and the frame
 
@@ -2052,7 +2052,7 @@ nothing. Bundle: `dist/brush.esm.js` 244 616 → 246 694 bytes (+0.85%).
 - `Polygon` / `Plot` / `Position` owners: the `owner` field exists and every
   prototype patch already resolves `this.owner ?? defaultContext`, but nothing
   sets it — the instance factory methods do.
-- The one-live-attachment fence in `brush-gpu/three` (`src/three/index.js`).
+- The one-live-attachment fence in `webgpu-brush/three` (`src/three/index.js`).
 - Docs and types: README, `docs/standalone.md`, `llms.txt` and the generated
   declarations describe a module singleton.
 
@@ -2146,7 +2146,7 @@ modules (WebGPU has no destroy for those; they go with their last reference).
 member of the api object is replaced with a thrower — "was called on a
 disposed painting" — leaving `dispose()` itself idempotent.
 
-**`brush-gpu/three`.** The one-live-attachment fence is gone.
+**`webgpu-brush/three`.** The one-live-attachment fence is gone.
 `attachToRenderer` and `createSharedDevice` each build their own instance and
 return it as `attachment.brush`, so `att.brush.line(…)` draws into that
 painting and several attachments can be live at once. `options.brush` adopts

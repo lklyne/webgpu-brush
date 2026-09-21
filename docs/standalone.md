@@ -1,8 +1,8 @@
-# brush-gpu — Standalone Build
+# webgpu-brush — Standalone Build
 
-brush-gpu ships one build (`dist/brush.js` / `dist/brush.esm.js`). It runs without p5.js and needs nothing beyond a WebGPU-capable browser (`navigator.gpu`).
+webgpu-brush ships one build (`dist/brush.js` / `dist/brush.esm.js`). It runs without p5.js and needs nothing beyond a WebGPU-capable browser (`navigator.gpu`).
 
-The drawing API is upstream p5.brush's; see the [README reference](../README.md#reference) for every stroke, fill, hatch, primitive, and field function. This page covers setup, the frame lifecycle, and the APIs that exist only in brush-gpu.
+The drawing API is upstream p5.brush's; see the [README reference](../README.md#reference) for every stroke, fill, hatch, primitive, and field function. This page covers setup, the frame lifecycle, and the APIs that exist only in webgpu-brush.
 
 ---
 
@@ -40,8 +40,8 @@ The drawing API is upstream p5.brush's; see the [README reference](../README.md#
 ### ESM module via npm
 
 ```js
-// After: npm install brush-gpu
-import * as brush from 'brush-gpu/standalone';
+// After: npm install webgpu-brush
+import * as brush from 'webgpu-brush/standalone';
 ```
 
 ### ESM module via local file
@@ -72,7 +72,7 @@ brush.createCanvas(width, height, options?)
 | `device`, `adapter` | Adopt an externally owned `GPUDevice` instead of requesting one. See [Sharing the GPU device](#sharing-the-gpu-device). |
 
 ```js
-import * as brush from 'brush-gpu/standalone';
+import * as brush from 'webgpu-brush/standalone';
 
 brush.createCanvas(800, 600, {
   parent: '#sketch-container',
@@ -107,7 +107,7 @@ brush.load(canvas);
 The module-level functions draw into one default painting. `brush.createBrush()` returns another one — the same public surface under the same names, over its own canvas, state, transform stack, seed stream, flow-field grids, snapshots and GPU resources. Any number can be live at once, drawing in any order.
 
 ```js
-import { createBrush } from 'brush-gpu/standalone';
+import { createBrush } from 'webgpu-brush/standalone';
 
 const left  = createBrush({ width: 400, height: 400, parent: '#left' });
 const right = createBrush({ width: 400, height: 400, parent: '#right' });
@@ -195,7 +195,7 @@ After the first replay, every wrapped call costs one boolean check.
 
 ## Frame lifecycle
 
-brush-gpu does not flush or clear automatically. Do both yourself each frame.
+webgpu-brush does not flush or clear automatically. Do both yourself each frame.
 
 ### `brush.render()`
 
@@ -227,7 +227,7 @@ brush.clear(240, 235, 220); // RGB
 
 ## Transforms
 
-brush-gpu manages its own transform stack.
+webgpu-brush manages its own transform stack.
 
 ```js
 brush.push()           // save current transform + brush state
@@ -297,7 +297,7 @@ brush.seed(42);
 brush.noiseSeed(42);
 ```
 
-The internal RNG is a counter-based hash rather than upstream's sequential stream, because GPU compute cannot reproduce a sequential stream. A given seed produces the same image on every run of brush-gpu, but a different image than upstream p5.brush produces for that seed. `brush.random()`, `brush.wRand()`, and `brush.noise()` are unchanged from upstream.
+The internal RNG is a counter-based hash rather than upstream's sequential stream, because GPU compute cannot reproduce a sequential stream. A given seed produces the same image on every run of webgpu-brush, but a different image than upstream p5.brush produces for that seed. `brush.random()`, `brush.wRand()`, and `brush.noise()` are unchanged from upstream.
 
 ---
 
@@ -325,17 +325,17 @@ const { device, adapter, format, painting, onPaintingChanged } = brush.gpu();
 
 | Field | Description |
 |---|---|
-| `device` | The `GPUDevice` brush-gpu draws with. |
+| `device` | The `GPUDevice` webgpu-brush draws with. |
 | `adapter` | The `GPUAdapter`, or `null` for an adopted device without one. |
 | `format` | The preferred canvas format. Colors are premultiplied; the format is not sRGB-typed. |
 | `painting` | Getter for the live painting `GPUTexture`. Row 0 is the top of the canvas. Recreated on resize. |
 | `onPaintingChanged(fn)` | Called with the new texture whenever the painting is recreated. Returns a dispose function. |
 
-Because both sides share one device and one queue, brush-gpu's submissions land before the host's render in submission order. No fences, no copies.
+Because both sides share one device and one queue, webgpu-brush's submissions land before the host's render in submission order. No fences, no copies.
 
-With three.js, use the `brush-gpu/three` entry instead of doing this by hand. `attachToRenderer(renderer, w, h)` adopts a renderer's device; `createSharedDevice(w, h)` has brush own the device for `new WebGPURenderer({ device })`. Both create their own painting (`createBrush`) and return `{ brush, canvas, interop, device, painting, node, dispose }`, where `brush` is that instance — draw with `att.brush.line(...)` — and `node` is a TSL texture node that samples the live painting and survives resizes. Several attachments can be live at once; `att.dispose()` releases the three wrappers and the instance it created. Pass `options.brush` to attach a painting you already have instead, and dispose it yourself. `createPaintingTexture(interop)` is the low-level wrapper if you already hold a `brush.gpu()` handle. See the [README](../README.md#threejs).
+With three.js, use the `webgpu-brush/three` entry instead of doing this by hand. `attachToRenderer(renderer, w, h)` adopts a renderer's device; `createSharedDevice(w, h)` has brush own the device for `new WebGPURenderer({ device })`. Both create their own painting (`createBrush`) and return `{ brush, canvas, interop, device, painting, node, dispose }`, where `brush` is that instance — draw with `att.brush.line(...)` — and `node` is a TSL texture node that samples the live painting and survives resizes. Several attachments can be live at once; `att.dispose()` releases the three wrappers and the instance it created. Pass `options.brush` to attach a painting you already have instead, and dispose it yourself. `createPaintingTexture(interop)` is the low-level wrapper if you already hold a `brush.gpu()` handle. See the [README](../README.md#threejs).
 
-To draw on a device you already own, pass it in: `brush.createCanvas(W, H, { device, adapter })`, or `brush.load(canvas, { device, adapter })` for a canvas you created yourself. The device must have limits large enough for the target. brush-gpu never destroys a device it did not create.
+To draw on a device you already own, pass it in: `brush.createCanvas(W, H, { device, adapter })`, or `brush.load(canvas, { device, adapter })` for a canvas you created yourself. The device must have limits large enough for the target. webgpu-brush never destroys a device it did not create.
 
 ---
 
@@ -380,7 +380,7 @@ brush.freeSnapshot(before);
 
 ## Geometry inspection
 
-Strokes are rasterized from stamps: discs, or rotated image tips. brush-gpu lets you read those stamps, or edit them between generation and rasterization.
+Strokes are rasterized from stamps: discs, or rotated image tips. webgpu-brush lets you read those stamps, or edit them between generation and rasterization.
 
 **Stamp format** (both producers, normalized):
 
@@ -429,13 +429,13 @@ const geo = await brush.readGeometry(cap);
 console.log(geo.counts.length, 'strokes,', geo.vertices.length / 4, 'stamps');
 ```
 
-`readGeometry()` is the one place brush-gpu reads GPU buffers back on your behalf. Call it outside the frame loop.
+`readGeometry()` is the one place webgpu-brush reads GPU buffers back on your behalf. Call it outside the frame loop.
 
 ---
 
 ## API reference
 
-Everything below is specific to brush-gpu or to running without p5. For the drawing API, see the [README reference](../README.md#reference).
+Everything below is specific to webgpu-brush or to running without p5. For the drawing API, see the [README reference](../README.md#reference).
 
 ### Configuration
 
@@ -611,7 +611,7 @@ brush.add('diamond', {
 
 ## Differences from upstream p5.brush
 
-| | upstream p5.brush (p5 build) | brush-gpu |
+| | upstream p5.brush (p5 build) | webgpu-brush |
 |---|---|---|
 | Renderer | p5's WebGL renderer | WebGPU + WGSL, GPU-resident geometry |
 | Requires | p5.js 2.x | A WebGPU-capable browser |
@@ -623,7 +623,7 @@ brush.add('diamond', {
 | Transforms | p5's `push/pop`, `translate`, `rotate`, `scale` | `brush.push/pop`, `brush.translate`, `brush.rotate`, `brush.scale` |
 | Angle mode | p5's `angleMode()` | `brush.angleMode(brush.DEGREES \| brush.RADIANS)` |
 | Seeding | `randomSeed()` / `noiseSeed()` seed the library too | `brush.seed()` / `brush.noiseSeed()` |
-| Same seed, same image as upstream | Yes | No: the internal RNG is a counter-based hash. Reproducible per seed within brush-gpu. |
+| Same seed, same image as upstream | Yes | No: the internal RNG is a counter-based hash. Reproducible per seed within webgpu-brush. |
 | Capturing output | `saveCanvas()`, `drawImage()` | `await brush.readPixels()` |
 | Instance mode | `brush.instance(p)` | Not applicable (`brush.instance()` is a no-op) |
 | Several paintings on a page | Not supported (module singleton) | `brush.createBrush()` per painting, `api.dispose()` to free one |
@@ -638,7 +638,7 @@ brush.add('diamond', {
 ## Full example
 
 ```js
-import * as brush from 'brush-gpu/standalone';
+import * as brush from 'webgpu-brush/standalone';
 
 const W = 800, H = 600;
 

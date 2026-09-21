@@ -1,5 +1,5 @@
 /**
- * @fileoverview Standalone entry point for brush-gpu (WebGPU).
+ * @fileoverview Standalone entry point for webgpu-brush (WebGPU).
  *
  * The stateful public API is wrapped by the deferred-call recorder
  * (adapters/standalone/deferred.js). Between createCanvas()/load() and the

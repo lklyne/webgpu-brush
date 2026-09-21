@@ -1,5 +1,5 @@
 // ============================================================
-// brush-gpu Baseline Profiler Runner
+// webgpu-brush Baseline Profiler Runner
 //
 // Loads each standalone test scenario headlessly (same scaffolding as
 // scripts/diff-parity.mjs) and captures the first-frame timing line that

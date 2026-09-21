@@ -1,5 +1,5 @@
 // ============================================================
-// Parity tile definitions — brush-gpu vs upstream p5.brush
+// Parity tile definitions — webgpu-brush vs upstream p5.brush
 //
 // JS port of the site harness tile list
 // (src/content/experiments/2026-08-30-brush-parity/tiles.ts).

@@ -1,4 +1,4 @@
-> **FORK NOTICE — brush-gpu**
+> **FORK NOTICE — webgpu-brush**
 >
 > This is a fork of [p5.brush](https://github.com/acamposuribe/p5.brush) by
 > Alejandro Campos Uribe (MIT License, preserved in [LICENSE.md](./LICENSE.md)),
@@ -8,9 +8,9 @@
 > the visual reference; see `FORK.md` for the baseline and the divergence list.
 > All credit for the library's design and algorithms belongs to upstream.
 
-# brush-gpu
+# webgpu-brush
 
-brush-gpu is a natural drawing library for the browser: pencils, charcoal, markers, watercolor fills, hatch patterns, and vector fields that bend strokes. It is p5.brush's drawing API on a WebGPU renderer. Stroke geometry is generated in compute shaders, fills are rasterized on the GPU, and the painting lives in a GPU texture that other WebGPU code can sample without copies.
+webgpu-brush is a natural drawing library for the browser: pencils, charcoal, markers, watercolor fills, hatch patterns, and vector fields that bend strokes. It is p5.brush's drawing API on a WebGPU renderer. Stroke geometry is generated in compute shaders, fills are rasterized on the GPU, and the painting lives in a GPU texture that other WebGPU code can sample without copies.
 
 It does not depend on p5.js.
 
@@ -35,14 +35,14 @@ A browser with WebGPU (`navigator.gpu`). Nothing else: no p5.js, no WebGL.
 ### npm
 
 ```
-npm install brush-gpu
+npm install webgpu-brush
 ```
 
 ```js
-import * as brush from 'brush-gpu/standalone';
+import * as brush from 'webgpu-brush/standalone';
 ```
 
-`brush-gpu` and `brush-gpu/standalone` are the same module: `dist/brush.esm.js` for `import`, `dist/brush.js` for `require`. `brush-gpu/three` is the three.js bridge (ESM only, `three` is an optional peer dependency). TypeScript declarations ship with the package. In a pnpm workspace, add `"brush-gpu": "workspace:*"` and import the same way.
+`webgpu-brush` and `webgpu-brush/standalone` are the same module: `dist/brush.esm.js` for `import`, `dist/brush.js` for `require`. `webgpu-brush/three` is the three.js bridge (ESM only, `three` is an optional peer dependency). TypeScript declarations ship with the package. In a pnpm workspace, add `"webgpu-brush": "workspace:*"` and import the same way.
 
 ### Script tag
 
@@ -61,7 +61,7 @@ import * as brush from './dist/brush.esm.js';
 ## Quick Start
 
 ```js
-import * as brush from 'brush-gpu/standalone';
+import * as brush from 'webgpu-brush/standalone';
 
 const W = 700, H = 410;
 
@@ -97,7 +97,7 @@ You can start drawing right after `createCanvas()`. The WebGPU device comes up a
 The module-level functions above draw into one default painting. `createBrush()` makes another one, with its own canvas, state, seed stream and GPU resources — as many as you want on a page, drawing in any order.
 
 ```js
-import { createBrush } from 'brush-gpu/standalone';
+import { createBrush } from 'webgpu-brush/standalone';
 
 const left  = createBrush({ width: 400, height: 400, parent: '#left' });
 const right = createBrush({ width: 400, height: 400, parent: '#right' });
@@ -137,7 +137,7 @@ Classes follow their painting. `new left.Polygon(pts)` and `new left.Plot('curve
 
 ## three.js
 
-`brush-gpu/three` puts the painting on the same `GPUDevice` as a three.js `WebGPURenderer` and hands you a TSL texture node that samples it directly. No upload, no readback: the painting `GPUTexture` is bound as an `ExternalTexture`, and because both sides share one queue, brush's submissions land before three's render in submission order.
+`webgpu-brush/three` puts the painting on the same `GPUDevice` as a three.js `WebGPURenderer` and hands you a TSL texture node that samples it directly. No upload, no readback: the painting `GPUTexture` is bound as an `ExternalTexture`, and because both sides share one queue, brush's submissions land before three's render in submission order.
 
 Two ways to share a device. Pick the one that matches who creates the renderer.
 
@@ -145,7 +145,7 @@ Two ways to share a device. Pick the one that matches who creates the renderer.
 
 ```js
 import * as THREE from 'three/webgpu';
-import { attachToRenderer } from 'brush-gpu/three';
+import { attachToRenderer } from 'webgpu-brush/three';
 
 const renderer = new THREE.WebGPURenderer({ canvas });
 const att = await attachToRenderer(renderer, 1024, 1024);
@@ -166,7 +166,7 @@ A device three requested has WebGPU's default limits unless you passed `required
 **Brush owns the device**, three adopts it. brush requests the adapter's full limits and every supported feature, so the renderer is never in compatibility mode.
 
 ```js
-import { createSharedDevice } from 'brush-gpu/three';
+import { createSharedDevice } from 'webgpu-brush/three';
 
 const att = await createSharedDevice(1024, 1024);
 const renderer = new THREE.WebGPURenderer({ canvas, device: att.device });
@@ -179,7 +179,7 @@ The painting is premultiplied and not sRGB-typed, so for a 1:1 display use a ren
 Every attach creates a new painting, so several can be live at once: two planes on one renderer, or one per `<Canvas>`. With react-three-fiber, attach in an effect and call `att.dispose()` in its cleanup. To attach a painting you already have — the default one, or an instance you made yourself — pass it as `options.brush`; `dispose()` then leaves it alive for you to dispose.
 
 ```js
-import * as brush from 'brush-gpu/standalone';
+import * as brush from 'webgpu-brush/standalone';
 const att = await attachToRenderer(renderer, 1024, 1024, { brush });
 ```
 
@@ -193,7 +193,7 @@ The drawing API is upstream's, unchanged. What differs:
 - **`brush.ready()`** resolves when the device is up. Awaiting it is optional: stateful calls made before that are recorded and replayed in program order. One caveat, pre-ready only: a `brush.random()` value read after a `seed()` is that stream's first draw, where a synchronous run would have consumed the intervening drawing first. Once ready, `random()` continues where the synchronous sequence would.
 - **`brush.readPixels()`** (async) is the supported way to capture output. `drawImage()` of a WebGPU canvas onto a 2D canvas can be blank in headless browsers.
 - **`brush.cpuGeometry()` / `brush.noCpuGeometry()`** force or release the CPU geometry producers. Same image, slower. A toggle pair like `fill()`/`noFill()`.
-- **`brush.gpu()`** returns `{ device, adapter, format, painting, onPaintingChanged }` for zero-copy interop with another renderer on the same device. `createCanvas()` accepts `{ device, adapter }` to adopt an externally owned device. `brush-gpu/three` wraps both directions for three.js; see [three.js](#threejs).
+- **`brush.gpu()`** returns `{ device, adapter, format, painting, onPaintingChanged }` for zero-copy interop with another renderer on the same device. `createCanvas()` accepts `{ device, adapter }` to adopt an externally owned device. `webgpu-brush/three` wraps both directions for three.js; see [three.js](#threejs).
 - **`brush.snapshot()` / `brush.restore()` / `brush.freeSnapshot()`** copy the painting texture aside and back on the GPU. Undo for host applications.
 - **Geometry inspection:** `brush.stream()`, `brush.onGeometry()`, `brush.beginGeometry()` / `brush.endGeometry()`, `brush.readGeometry()` expose and let you edit stroke stamps between generation and rasterization.
 - **Hash RNG.** Internal random draws are a counter-based hash, which GPU compute can reproduce and a sequential stream cannot. The same seed gives a different, equally plausible image than upstream p5.brush. Run-to-run reproducibility per seed is preserved. `random()`, `wRand()`, and `noise()` are unchanged.
@@ -375,7 +375,7 @@ brush.render();
 ---
 
 - `brush.seed(n)`
-  - **Description**: Seeds the library's random number generator. Call before drawing for reproducible output. The internal RNG is a counter-based hash, so a given seed produces the same image every run in brush-gpu but not the same image upstream p5.brush would produce.
+  - **Description**: Seeds the library's random number generator. Call before drawing for reproducible output. The internal RNG is a counter-based hash, so a given seed produces the same image every run in webgpu-brush but not the same image upstream p5.brush would produce.
 - `brush.noiseSeed(n)`
   - **Description**: Seeds the library's noise generator.
 - `brush.random(min, max)`
@@ -390,7 +390,7 @@ brush.render();
 <sub>[back to table](#table-of-functions)</sub>
 ### Vector Fields
 
-Vector fields bend strokes so they follow a flow across the canvas. If you do not use them, brush-gpu works like a normal drawing library.
+Vector fields bend strokes so they follow a flow across the canvas. If you do not use them, webgpu-brush works like a normal drawing library.
 
 #### Basic vector-field functions
 
@@ -1041,16 +1041,16 @@ Every color argument in the API accepts the same inputs, so constructing a `Colo
 <sub>[back to table](#table-of-functions)</sub>
 ### GPU interop and geometry
 
-Everything in this section is specific to brush-gpu.
+Everything in this section is specific to webgpu-brush.
 
 - `brush.gpu()`
-  - **Description**: Returns the shared-device interop handle for the active target. Synchronous; requires `await brush.ready()` and throws before it. Use it to let another renderer on the same `GPUDevice` sample the painting with zero copies: same device, same queue, so brush-gpu's submissions land before the host's in submission order.
+  - **Description**: Returns the shared-device interop handle for the active target. Synchronous; requires `await brush.ready()` and throws before it. Use it to let another renderer on the same `GPUDevice` sample the painting with zero copies: same device, same queue, so webgpu-brush's submissions land before the host's in submission order.
   - **Returns**: `{ device, adapter, format, painting, onPaintingChanged }`.
     - `device` (GPUDevice), `adapter` (GPUAdapter | null).
     - `format` (GPUTextureFormat): the preferred canvas format. Colors are premultiplied; the format is not sRGB-typed.
     - `painting` (GPUTexture): a getter for the live painting texture. Row 0 is the top of the canvas. The texture is recreated on resize.
     - `onPaintingChanged(fn)`: subscribe to painting recreation; `fn` receives the new texture. Returns a dispose function.
-  - **Adopting a device**: pass `{ device, adapter }` to `brush.createCanvas()` to draw on a device you own. The injected device must have limits large enough for the target. brush-gpu never destroys an injected device.
+  - **Adopting a device**: pass `{ device, adapter }` to `brush.createCanvas()` to draw on a device you own. The injected device must have limits large enough for the target. webgpu-brush never destroys an injected device.
   - **Usage** (three.js):
     ```javascript
     brush.createCanvas(W, H);
@@ -1110,7 +1110,7 @@ Geometry inspection exposes stroke stamps, the discs and image tips that make up
   - **Description**: Opens a capture scope. Every stroke generated while it is open is recorded, from both producers. GPU batches are retained on the GPU and read only when `readGeometry()` is awaited, so capture does not slow drawing. One scope at a time.
   - **Returns**: an opaque handle.
 - `brush.readGeometry(handle)`
-  - **Description**: Closes the scope and reads its geometry. The one place brush-gpu reads GPU buffers back on your behalf; call it outside the frame loop.
+  - **Description**: Closes the scope and reads its geometry. The one place webgpu-brush reads GPU buffers back on your behalf; call it outside the frame loop.
   - **Returns**: `Promise<{ vertices, counts, strokeIds, images }>`. `images` is `{ vertices, counts, strokeIds }` for image-tip stamps when any were captured, else `null`.
 - `brush.endGeometry(handle)`
   - **Description**: Abandons a capture without reading it and releases retained GPU batches. Only needed for an unread capture.
@@ -1134,7 +1134,7 @@ Geometry inspection exposes stroke stamps, the discs and image tips that make up
 
 ## License
 
-brush-gpu is released under the MIT License, the same license as p5.brush. See [LICENSE.md](./LICENSE.md).
+webgpu-brush is released under the MIT License, the same license as p5.brush. See [LICENSE.md](./LICENSE.md).
 
 ## Acknowledgements
 
