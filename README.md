@@ -96,4 +96,4 @@ export default () => (
 
 ## License
 
-MIT, same as p5.brush. See [LICENSE.md](LICENSE.md).
+[MIT](LICENSE.md)
