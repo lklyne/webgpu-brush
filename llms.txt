@@ -20,7 +20,7 @@ There is ONE build. It does not use p5.js. Do not write p5 code (`setup()`, `dra
 ```
 
 ```js
-// ESM — via npm (npm install webgpu-brush); 'webgpu-brush' and 'webgpu-brush/standalone' are the same module
+// ESM — via GitHub (npm install github:lklyne/webgpu-brush; not on npm yet); 'webgpu-brush' and 'webgpu-brush/standalone' are the same module
 import * as brush from 'webgpu-brush/standalone'
 
 // three.js bridge (ESM; `three` is an optional peer dependency)

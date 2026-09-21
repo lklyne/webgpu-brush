@@ -40,7 +40,7 @@ The drawing API is upstream p5.brush's; see the [p5.brush reference](https://git
 ### ESM module via npm
 
 ```js
-// After: npm install webgpu-brush
+// After: npm install github:lklyne/webgpu-brush
 import * as brush from 'webgpu-brush/standalone';
 ```
 
