@@ -2,7 +2,7 @@
 
 webgpu-brush ships one build (`dist/brush.js` / `dist/brush.esm.js`). It runs without p5.js and needs nothing beyond a WebGPU-capable browser (`navigator.gpu`).
 
-The drawing API is upstream p5.brush's; see the [README reference](../README.md#reference) for every stroke, fill, hatch, primitive, and field function. This page covers setup, the frame lifecycle, and the APIs that exist only in webgpu-brush.
+The drawing API is upstream p5.brush's; see the [p5.brush reference](https://github.com/acamposuribe/p5.brush#reference) for every stroke, fill, hatch, primitive, and field function. This page covers setup, the frame lifecycle, and the APIs that exist only in webgpu-brush.
 
 ---
 
@@ -333,7 +333,7 @@ const { device, adapter, format, painting, onPaintingChanged } = brush.gpu();
 
 Because both sides share one device and one queue, webgpu-brush's submissions land before the host's render in submission order. No fences, no copies.
 
-With three.js, use the `webgpu-brush/three` entry instead of doing this by hand. `attachToRenderer(renderer, w, h)` adopts a renderer's device; `createSharedDevice(w, h)` has brush own the device for `new WebGPURenderer({ device })`. Both create their own painting (`createBrush`) and return `{ brush, canvas, interop, device, painting, node, dispose }`, where `brush` is that instance — draw with `att.brush.line(...)` — and `node` is a TSL texture node that samples the live painting and survives resizes. Several attachments can be live at once; `att.dispose()` releases the three wrappers and the instance it created. Pass `options.brush` to attach a painting you already have instead, and dispose it yourself. `createPaintingTexture(interop)` is the low-level wrapper if you already hold a `brush.gpu()` handle. See the [README](../README.md#threejs).
+With three.js, use the `webgpu-brush/three` entry instead of doing this by hand. `attachToRenderer(renderer, w, h)` adopts a renderer's device; `createSharedDevice(w, h)` has brush own the device for `new WebGPURenderer({ device })`. Both create their own painting (`createBrush`) and return `{ brush, canvas, interop, device, painting, node, dispose }`, where `brush` is that instance — draw with `att.brush.line(...)` — and `node` is a TSL texture node that samples the live painting and survives resizes. Several attachments can be live at once; `att.dispose()` releases the three wrappers and the instance it created. Pass `options.brush` to attach a painting you already have instead, and dispose it yourself. `createPaintingTexture(interop)` is the low-level wrapper if you already hold a `brush.gpu()` handle. See [three.js](#threejs) below.
 
 To draw on a device you already own, pass it in: `brush.createCanvas(W, H, { device, adapter })`, or `brush.load(canvas, { device, adapter })` for a canvas you created yourself. The device must have limits large enough for the target. webgpu-brush never destroys a device it did not create.
 
@@ -435,7 +435,7 @@ console.log(geo.counts.length, 'strokes,', geo.vertices.length / 4, 'stamps');
 
 ## API reference
 
-Everything below is specific to webgpu-brush or to running without p5. For the drawing API, see the [README reference](../README.md#reference).
+Everything below is specific to webgpu-brush or to running without p5. For the drawing API, see the [p5.brush reference](https://github.com/acamposuribe/p5.brush#reference).
 
 ### Configuration
 
@@ -680,3 +680,53 @@ brush.render(); // flush to canvas
 await brush.ready();
 const { width, height, pixels } = await brush.readPixels();
 ```
+
+## three.js
+
+`webgpu-brush/three` puts the painting on the same `GPUDevice` as a three.js `WebGPURenderer` and hands you a TSL texture node that samples it directly. No upload, no readback: the painting `GPUTexture` is bound as an `ExternalTexture`, and because both sides share one queue, brush's submissions land before three's render in submission order.
+
+Two ways to share a device. Pick the one that matches who creates the renderer.
+
+**Three already owns a renderer** (an existing scene, or react-three-fiber's `<Canvas>`): brush adopts its device.
+
+```js
+import * as THREE from 'three/webgpu';
+import { attachToRenderer } from 'webgpu-brush/three';
+
+const renderer = new THREE.WebGPURenderer({ canvas });
+const att = await attachToRenderer(renderer, 1024, 1024);
+
+const material = new THREE.MeshBasicNodeMaterial();
+material.colorNode = att.node;              // samples the live painting
+scene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), material));
+
+att.brush.pick('HB');
+att.brush.stroke('#101020');
+att.brush.line(-300, -300, 300, 300);
+att.brush.render();
+await renderer.renderAsync(scene, camera);
+```
+
+A device three requested has WebGPU's default limits unless you passed `requiredLimits` to the renderer. Paintings up to 8192 device pixels per side fit; `attachToRenderer` throws a clear error otherwise.
+
+**Brush owns the device**, three adopts it. brush requests the adapter's full limits and every supported feature, so the renderer is never in compatibility mode.
+
+```js
+import { createSharedDevice } from 'webgpu-brush/three';
+
+const att = await createSharedDevice(1024, 1024);
+const renderer = new THREE.WebGPURenderer({ canvas, device: att.device });
+```
+
+Both return an `Attachment`: `{ brush, canvas, interop, device, painting, node, dispose }`. `brush` is **this attachment's own painting** — a `createBrush()` instance, not the module-level exports — so draw with `att.brush.line(...)`. `node` is the TSL node for materials, `painting.texture` is the current `ExternalTexture`, and `dispose()` releases the three wrappers and the instance. The node keeps working across resizes: brush recreates the painting texture, and the bridge swaps a fresh wrapper into the node.
+
+The painting is premultiplied and not sRGB-typed, so for a 1:1 display use a renderer with linear output color space and tone mapping off.
+
+Every attach creates a new painting, so several can be live at once: two planes on one renderer, or one per `<Canvas>`. With react-three-fiber, attach in an effect and call `att.dispose()` in its cleanup. To attach a painting you already have — the default one, or an instance you made yourself — pass it as `options.brush`; `dispose()` then leaves it alive for you to dispose.
+
+```js
+import * as brush from 'webgpu-brush/standalone';
+const att = await attachToRenderer(renderer, 1024, 1024, { brush });
+```
+
+`createPaintingTexture(interop)` is also exported for the low-level path: call `brush.gpu()` yourself and wrap the handle.
