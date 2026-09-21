@@ -5,7 +5,7 @@ A WebGPU port of [p5.brush](https://github.com/acamposuribe/p5.brush) by Alejand
 ## Install
 
 ```
-npm install github:lklyne/webgpu-brush#gpu-port
+npm install github:lklyne/webgpu-brush
 ```
 
 ## Use
